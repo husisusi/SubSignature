@@ -1,0 +1,6 @@
+# /private_data/.htaccess
+
+Require all denied
+
+Order Deny,Allow
+Deny from all

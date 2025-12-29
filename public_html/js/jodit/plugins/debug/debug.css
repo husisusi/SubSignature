@@ -1,0 +1,53 @@
+/*!
+ * jodit - Jodit is an awesome and useful wysiwyg editor with filebrowser
+ * Author: Chupurnov <chupurnov@gmail.com> (https://xdsoft.net/jodit/)
+ * Version: v4.7.9
+ * Url: https://xdsoft.net/jodit/
+ * License(s): MIT
+ */
+	
+.jodit-debug {
+  background: #f6f6f6;
+  position: relative;
+  padding: 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: stretch;
+}
+.jodit-debug > * {
+  padding: var(--jd-padding-default);
+}
+.jodit-debug__tree {
+  width: 40%;
+}
+.jodit-debug__tree .jodit-debug__tree-elm-name {
+  color: #052e88;
+}
+.jodit-debug__tree .jodit-debug__tree-element_selected {
+  background: #1e7e34;
+  color: #fff;
+}
+.jodit-debug__tree .jodit-debug__tree-cursor {
+  background: #dc3232;
+  color: #fff;
+}
+.jodit-debug__events {
+  width: 40%;
+  max-height: 500px;
+  overflow: auto;
+  background: #1e7e34;
+  color: #fff;
+}
+.jodit-debug__events span {
+  color: #cacaca;
+  font-size: 0.8em;
+}
+.jodit-debug__events .jodit-debug__events-clear {
+  position: absolute;
+  top: 0;
+  right: 0;
+  padding: 5px;
+  cursor: pointer;
+  color: red;
+}
+

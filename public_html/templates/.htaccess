@@ -1,0 +1,12 @@
+# Block direct access to templates directory
+Order Deny,Allow
+Deny from all
+
+# Allow access to specific files (if needed via PHP)
+<FilesMatch "\.(html|css|js)$">
+    Order Allow,Deny
+    Deny from all
+</FilesMatch>
+
+# Disable directory listing
+Options -Indexes
