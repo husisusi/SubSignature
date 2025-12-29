@@ -1,0 +1,41 @@
+RewriteEngine On
+
+# ======================================================================
+# 1. SECURITY SETTINGS
+# ======================================================================
+
+# Block access to sensitive directories inside public_html
+# We removed 'data' here because it is now safely outside the web root.
+# 'includes': Contains configuration files (must be blocked)
+# 'templates': Contains HTML templates (must be blocked)
+RewriteRule ^(includes|templates) - [F,L]
+
+# Disable directory listing
+# Prevents visitors from seeing a list of files
+Options -Indexes
+
+# Set Security Headers
+<IfModule mod_headers.c>
+    # Prevent browsers from MIME-sniffing the response
+    Header set X-Content-Type-Options "nosniff"
+    
+    # Prevent Clickjacking (page cannot be embedded in frames on other sites)
+    Header set X-Frame-Options "SAMEORIGIN"
+    
+    # Enable XSS protection for older browsers
+    Header set X-XSS-Protection "1; mode=block"
+</IfModule>
+
+# ======================================================================
+# 2. URL REWRITING (Pretty URLs)
+# ======================================================================
+
+# External redirect from .php to extensionless URL (for aesthetics/SEO)
+RewriteCond %{REQUEST_METHOD} !POST
+RewriteCond %{THE_REQUEST} ^[A-Z]{3,}\s([^.]+)\.php [NC]
+RewriteRule ^ %1 [R=301,L]
+
+# Internal rewrite (Server processing)
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteCond %{REQUEST_FILENAME}.php -f
+RewriteRule ^(.*?)/?$ $1.php [L]
