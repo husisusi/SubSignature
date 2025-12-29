@@ -16,7 +16,7 @@ The primary focus of this project is privacy and security. The application runs 
 ![Template Editor](https://raw.githubusercontent.com/husisusi/SubSignature/main/public_html/img/SubSignature_screenshot3.png)
 
 **Import CSV**
-![Import Function](https://raw.githubusercontent.com/husisusi/SubSignature/main/public_html/img/SubSignature_screenshot3.png)
+![Import Function](https://raw.githubusercontent.com/husisusi/SubSignature/main/public_html/img/SubSignature_screenshot2.png)
 
 ## Features
 
