@@ -4,7 +4,7 @@
 // ---------------------------------------------------------------------
 // 1. PATH DEFINITIONS (CONSTANTS) - Security Prio 1
 // ---------------------------------------------------------------------
-// Defining paths as constants solves the scope issue in functions.
+// Defining paths as constants solves scope issues in functions.
 define('BASE_DIR', __DIR__ . '/../../private_data');
 define('DB_PATH', BASE_DIR . '/signatures.db');
 define('LOG_DIR', BASE_DIR . '/logs');
@@ -22,7 +22,7 @@ if (!file_exists(LOG_DIR)) {
 if (session_status() === PHP_SESSION_NONE) {
     session_start([
         'cookie_httponly' => true,
-        'cookie_secure' => isset($_SERVER['HTTPS']),
+        'cookie_secure' => isset($_SERVER['HTTPS']), // Secure only if HTTPS is on
         'cookie_samesite' => 'Strict',
         'use_strict_mode' => true,
         'use_only_cookies' => true,
@@ -50,6 +50,7 @@ header("X-Frame-Options: DENY");
 header("X-Content-Type-Options: nosniff");
 header("X-XSS-Protection: 1; mode=block");
 header("Referrer-Policy: strict-origin-when-cross-origin");
+header("Permissions-Policy: geolocation=(), microphone=(), camera=()"); // Added for extra security
 
 // ---------------------------------------------------------------------
 // 4. DATABASE CONNECTION
@@ -67,6 +68,7 @@ try {
 // 5. DATABASE INITIALIZATION
 // ---------------------------------------------------------------------
 function initDatabase($db) {
+    // Users Table
     $db->exec("CREATE TABLE IF NOT EXISTS users (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         username TEXT UNIQUE NOT NULL,
@@ -82,6 +84,7 @@ function initDatabase($db) {
         account_locked_until DATETIME
     )");
     
+    // Signatures Table
     $db->exec("CREATE TABLE IF NOT EXISTS user_signatures (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         user_id INTEGER NOT NULL,
@@ -94,6 +97,7 @@ function initDatabase($db) {
         FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     )");
     
+    // User Settings Table
     $db->exec("CREATE TABLE IF NOT EXISTS user_settings (
         user_id INTEGER PRIMARY KEY,
         default_template TEXT DEFAULT 'signature_default.html',
@@ -102,6 +106,17 @@ function initDatabase($db) {
         FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     )");
     
+    // System Settings Table (Global Configuration)
+    $db->exec("CREATE TABLE IF NOT EXISTS system_settings (
+        setting_key TEXT PRIMARY KEY, 
+        setting_value TEXT
+    )");
+    
+    // Set Default Configuration: New users are INACTIVE ('0') by default
+    // INSERT OR IGNORE ensures this only runs once on fresh install
+    $db->exec("INSERT OR IGNORE INTO system_settings (setting_key, setting_value) VALUES ('default_user_active', '0')");
+    
+    // Logs Tables
     $db->exec("CREATE TABLE IF NOT EXISTS login_attempts (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         ip_address TEXT NOT NULL,
@@ -123,6 +138,7 @@ function initDatabase($db) {
     )");
 }
 
+// Initialize Database on every load to ensure tables exist
 initDatabase($db);
 
 // ---------------------------------------------------------------------
@@ -159,7 +175,7 @@ function requireLogin() {
         header('Location: index.php');
         exit;
     }
-    // Check active status
+    // Check active status in DB (Security Prio 1: Immediate Ban)
     global $db;
     $stmt = $db->prepare("SELECT is_active FROM users WHERE id = ?");
     $stmt->bindValue(1, $_SESSION['user_id'], SQLITE3_INTEGER);
@@ -198,7 +214,7 @@ function verifyCSRFToken($token) {
 // 8. SECURITY FUNCTIONS (Rate Limit & Logging)
 // ---------------------------------------------------------------------
 
-// Rate Limiting (Restored)
+// Rate Limiting
 function checkRateLimit($action, $limit = 5, $timeframe = 300) {
     if (!isset($_SESSION['rate_limits'])) {
         $_SESSION['rate_limits'] = [];
@@ -241,7 +257,7 @@ function checkRateLimit($action, $limit = 5, $timeframe = 300) {
     return true;
 }
 
-// Logging (Fixed with Constants)
+// Logging
 function logSecurityEventToDB($db, $event_type, $user_id = null, $details = '') {
     $ip = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
     $user_agent = $_SERVER['HTTP_USER_AGENT'] ?? 'Unknown';
@@ -261,13 +277,10 @@ function logSecurityEventToDB($db, $event_type, $user_id = null, $details = '') 
 }
 
 function logToFile($message, $level = 'INFO') {
-    // Using Constant LOG_DIR ensures this works in any scope
     $logFile = LOG_DIR . '/application.log';
-    
     $timestamp = date('Y-m-d H:i:s');
     $ip = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
     $logEntry = "[{$timestamp}] [{$ip}] [{$level}] {$message}\n";
-    
     file_put_contents($logFile, $logEntry, FILE_APPEND | LOCK_EX);
 }
 
@@ -287,6 +300,7 @@ function logLoginAttempt($db, $username, $successful, $ip = null, $user_agent = 
     $stmt->bindValue(4, $user_agent, SQLITE3_TEXT);
     $stmt->execute();
     
+    // Handle Failed Login (Increment Counter)
     if (!$successful && !empty($username)) {
         $stmt = $db->prepare("UPDATE users 
                              SET failed_login_attempts = failed_login_attempts + 1, 
@@ -294,10 +308,10 @@ function logLoginAttempt($db, $username, $successful, $ip = null, $user_agent = 
                              WHERE username = ?");
         $stmt->bindValue(1, $username, SQLITE3_TEXT);
         $stmt->execute();
-        
         logSecurityEventToDB($db, 'LOGIN_FAILED', null, "User: $username");
     }
     
+    // Handle Success (Reset Counter & Logs)
     if ($successful && !empty($username)) {
         $stmt = $db->prepare("UPDATE users 
                              SET failed_login_attempts = 0, 
@@ -307,8 +321,13 @@ function logLoginAttempt($db, $username, $successful, $ip = null, $user_agent = 
         $stmt->bindValue(1, $username, SQLITE3_TEXT);
         $stmt->execute();
         
-        // Log successful login to Security Log
-        $uID = $db->querySingle("SELECT id FROM users WHERE username = '$username'");
+        // Securely fetch User ID for logging (FIXED: Prepared Statement)
+        $stmtID = $db->prepare("SELECT id FROM users WHERE username = ?");
+        $stmtID->bindValue(1, $username, SQLITE3_TEXT);
+        $resID = $stmtID->execute();
+        $rowID = $resID->fetchArray(SQLITE3_ASSOC);
+        $uID = $rowID ? $rowID['id'] : null;
+
         logSecurityEventToDB($db, 'LOGIN_SUCCESS', $uID, "User: $username");
     }
 }
@@ -326,13 +345,15 @@ function isAccountLocked($db, $username) {
                 if (time() < $locked_until) {
                     return true;
                 } else {
+                    // Lock expired, reset
                     $stmt = $db->prepare("UPDATE users SET failed_login_attempts = 0, account_locked_until = NULL WHERE username = ?");
                     $stmt->bindValue(1, $username, SQLITE3_TEXT);
                     $stmt->execute();
                     return false;
                 }
             } else {
-                $lock_until = date('Y-m-d H:i:s', time() + 900); // 15 min lock
+                // Set lock for 15 minutes
+                $lock_until = date('Y-m-d H:i:s', time() + 900);
                 $stmt = $db->prepare("UPDATE users SET account_locked_until = ? WHERE username = ?");
                 $stmt->bindValue(1, $lock_until, SQLITE3_TEXT);
                 $stmt->bindValue(2, $username, SQLITE3_TEXT);
@@ -377,7 +398,7 @@ if (DEBUG_MODE) {
     ini_set('error_log', LOG_DIR . '/php_errors.log');
 }
 
-// Autoloader (Restored)
+// Class Autoloader
 spl_autoload_register(function ($class_name) {
     $file = __DIR__ . '/../classes/' . $class_name . '.php';
     if (file_exists($file)) {
