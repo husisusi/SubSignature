@@ -285,7 +285,7 @@ $template_display = ucfirst(str_replace(['signature_', '.html', '_'], ['', '', '
         <section>
             <h3 style="margin-top:2rem; margin-bottom:1rem; font-size:1.2rem;">What would you like to do next?</h3>
             <div class="action-cards">
-                <a href="generator.php" class="action-card">
+                <a href="all_signatures.php" class="action-card">
                     <i class="fas fa-list-ul action-icon"></i>
                     <strong>View Signatures</strong>
                     <span style="font-size:0.85rem; color:var(--text-muted);">See all created signatures</span>
