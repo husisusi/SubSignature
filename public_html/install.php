@@ -29,17 +29,23 @@ $mbstring_ok = extension_loaded('mbstring');
 $zip_ok      = extension_loaded('zip');
 $json_ok     = extension_loaded('json');
 
-// Directories (Outside Webroot for Security)
+// Directories
+// 1. Private Data (Database & Logs) - Outside webroot ideally, or protected via .htaccess
 $data_dir = __DIR__ . '/../private_data';
 $logs_dir = __DIR__ . '/../private_data/logs';
 
+// 2. Templates Directory (Must be writable for uploads/renaming)
+$tpl_dir  = __DIR__ . '/templates';
+
 function checkWritable($path) {
+    // If it exists, check if writable. If not, check if parent is writable (to create it).
     if (file_exists($path)) return is_writable($path);
     return is_writable(dirname($path));
 }
 
 $data_ok = checkWritable($data_dir);
 $logs_ok = checkWritable($logs_dir);
+$tpl_ok  = checkWritable($tpl_dir); // NEW CHECK
 
 $requirements = [
     'PHP Version >= 7.4' => $php_ok,
@@ -49,6 +55,7 @@ $requirements = [
     'JSON Extension' => $json_ok,
     'Data Directory Writable' => $data_ok,
     'Logs Directory Writable' => $logs_ok,
+    'Templates Directory Writable' => $tpl_ok, // NEW CHECK
 ];
 
 $allRequirementsMet = !in_array(false, $requirements);
@@ -58,13 +65,17 @@ $allRequirementsMet = !in_array(false, $requirements);
 // -----------------------------------------------------------
 if ($allRequirementsMet) {
     try {
-        require_once 'includes/config.php';
-        
-        // Check if already installed
-        if (isset($db)) {
-            $adminCount = $db->querySingle("SELECT COUNT(*) FROM users WHERE role = 'admin'");
-            if ($adminCount > 0) {
-                die('<div style="font-family:sans-serif; text-align:center; padding:50px;"><h1>System already installed</h1><p>Admin account exists. Please delete the database file in private_data if you want to reinstall.</p><p><a href="index.php">Go to Login</a></p></div>');
+        // Only include config if requirements are met to avoid fatal errors
+        if (file_exists('includes/config.php')) {
+            require_once 'includes/config.php';
+            
+            // Check if already installed
+            if (isset($db)) {
+                // Determine if Admin exists
+                $adminCount = $db->querySingle("SELECT COUNT(*) FROM users WHERE role = 'admin'");
+                if ($adminCount > 0) {
+                    die('<div style="font-family:sans-serif; text-align:center; padding:50px;"><h1>System already installed</h1><p>Admin account exists. Please delete the database file in private_data if you want to reinstall.</p><p><a href="index.php">Go to Login</a></p></div>');
+                }
             }
         }
     } catch (Exception $e) {
@@ -72,6 +83,7 @@ if ($allRequirementsMet) {
         $allRequirementsMet = false;
     }
 } else {
+    // Mock CSRF/Sanitize functions if config not loaded
     $csrf_token = ''; 
     function sanitizeInput($i){ return $i; }
 }
@@ -100,13 +112,27 @@ if ($allRequirementsMet && $_SERVER['REQUEST_METHOD'] === 'POST') {
         } elseif ($password !== $confirm) {
             $error = "Passwords do not match.";
         } else {
-            // Password Policy
-            $policyErrors = validatePasswordPolicy($password);
+            // Password Policy check (Function from config.php)
+            $policyErrors = [];
+            if (function_exists('validatePasswordPolicy')) {
+                $policyErrors = validatePasswordPolicy($password);
+            } elseif (strlen($password) < 8) {
+                // Fallback policy if config not fully loaded
+                $policyErrors[] = "Password must be at least 8 characters.";
+            }
+
             if (!empty($policyErrors)) {
                 $error = implode("<br>", $policyErrors);
             } else {
                 try {
+                    // Create Templates directory if missing
+                    if (!file_exists($tpl_dir)) {
+                        mkdir($tpl_dir, 0755, true);
+                    }
+
                     $hash = password_hash($password, PASSWORD_DEFAULT);
+                    
+                    // Insert Admin User
                     $stmt = $db->prepare("INSERT INTO users (username, password_hash, email, full_name, role, is_active) 
                                          VALUES (?, ?, ?, 'System Administrator', 'admin', 1)");
                     $stmt->bindValue(1, htmlspecialchars($username, ENT_QUOTES, 'UTF-8'), SQLITE3_TEXT);
@@ -146,7 +172,7 @@ if ($allRequirementsMet && $_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-// Generate new token
+// Generate new token for the form
 if ($allRequirementsMet && empty($_SESSION['csrf_token'])) {
     $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
 }
