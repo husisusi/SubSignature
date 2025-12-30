@@ -8,16 +8,16 @@ The primary focus of this project is privacy and security. The application runs 
 ## Screenshots
 
 **Generator Interface**
-![Generator Interface](https://raw.githubusercontent.com/husisusi/SubSignature/main/public_html/img/SubSignature_screenshot0.png)
+![Generator Interface](https://raw.githubusercontent.com/husisusi/SubSignature/main/public_html/img/screenshots/SubSignature_screenshot_generator.png)
 
 **User Management**
-![User Management](https://raw.githubusercontent.com/husisusi/SubSignature/main/public_html/img/SubSignature_screenshot1.png)
+![User Management](https://raw.githubusercontent.com/husisusi/SubSignature/main/public_html/img/screenshots/SubSignature_screenshot_user.png)
 
 **Template Editor**
-![Template Editor](https://raw.githubusercontent.com/husisusi/SubSignature/main/public_html/img/SubSignature_screenshot3.png)
+![Template Editor](https://raw.githubusercontent.com/husisusi/SubSignature/main/public_html/img/screenshots/SubSignature_screenshot_editor.png)
 
 **Import CSV**
-![Import Function](https://raw.githubusercontent.com/husisusi/SubSignature/main/public_html/img/SubSignature_screenshot2.png)
+![Import Function](https://raw.githubusercontent.com/husisusi/SubSignature/main/public_html/img/screenshots/SubSignature_screenshot_import.png)
 
 ## Features
 
@@ -49,3 +49,6 @@ This project makes use of excellent open-source libraries and resources:
 This project is a work in progress, and I am always looking for ways to improve it.
 
 If you have ideas for new features, find a security issue, or want to improve the code, your help is welcome. Please feel free to open an issue or submit a pull request.
+
+## ToDo
+LDAP integration
