@@ -10,43 +10,35 @@ if (empty($_SESSION['csrf_token'])) {
 $user_id = $_SESSION['user_id'];
 $message = '';
 
-// --- PAGINATION & SEARCH LOGIC START ---
-
-// 1. Get Search Term & Page Number securely
+// --- PAGINATION & SEARCH LOGIC ---
 $search = trim($_GET['search'] ?? '');
 $page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
 if ($page < 1) $page = 1;
-$limit = 25; // Number of signatures per page (Performance fix)
+$limit = 25; 
 $offset = ($page - 1) * $limit;
 
-// 2. Build Query Conditions
 $whereSQL = "WHERE user_id = :uid";
 $params = [':uid' => $user_id];
 
 if (!empty($search)) {
-    // Security: Search logic using named parameters
     $whereSQL .= " AND (name LIKE :search OR email LIKE :search OR role LIKE :search)";
     $params[':search'] = '%' . $search . '%';
 }
 
-// 3. Get Total Count (for Pagination)
 $countSql = "SELECT COUNT(*) as total FROM user_signatures $whereSQL";
 $stmt = $db->prepare($countSql);
 foreach ($params as $key => $val) {
     $stmt->bindValue($key, $val, is_int($val) ? SQLITE3_INTEGER : SQLITE3_TEXT);
 }
 $totalResult = $stmt->execute();
-$totalRow = $totalResult->fetchArray(SQLITE3_ASSOC);
-$totalSignatures = $totalRow['total'];
+$totalSignatures = $totalResult->fetchArray(SQLITE3_ASSOC)['total'];
 $totalPages = ceil($totalSignatures / $limit);
 
-// 4. Get Data (Limited)
 $dataSql = "SELECT * FROM user_signatures $whereSQL ORDER BY created_at DESC LIMIT :limit OFFSET :offset";
 $stmt = $db->prepare($dataSql);
 foreach ($params as $key => $val) {
     $stmt->bindValue($key, $val, is_int($val) ? SQLITE3_INTEGER : SQLITE3_TEXT);
 }
-// Bind Limit/Offset
 $stmt->bindValue(':limit', $limit, SQLITE3_INTEGER);
 $stmt->bindValue(':offset', $offset, SQLITE3_INTEGER);
 
@@ -55,10 +47,8 @@ $signatures = [];
 while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
     $signatures[] = $row;
 }
-// --- PAGINATION & SEARCH LOGIC END ---
 
-
-// Data Persistence Logic (for the Create Form)
+// Data Persistence Logic
 $formData = $_SESSION['form_data'] ?? [];
 $defaultName = $formData['name'] ?? $_SESSION['full_name'] ?? '';
 $defaultEmail = $formData['email'] ?? $_SESSION['email'] ?? '';
@@ -66,25 +56,21 @@ $defaultRole = $formData['role'] ?? '';
 $defaultPhone = $formData['phone'] ?? '';
 $defaultTemplate = $formData['template'] ?? 'signature_default.html';
 
-// Handle Actions (Delete All) via POST
+// Handle Actions (Delete All)
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'delete_all') {
     if (!isset($_POST['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $_POST['csrf_token'])) {
         die("Security Error: Invalid CSRF Token");
     }
-    
-    // Only delete signatures for this user
     $stmt = $db->prepare("DELETE FROM user_signatures WHERE user_id = ?");
     $stmt->bindValue(1, $user_id, SQLITE3_INTEGER);
     $stmt->execute();
-    
-    // Redirect to clear Search/Page params and refresh
     header("Location: generator.php?success=deleted");
     exit;
 }
 
 if (isset($_GET['success']) && $_GET['success'] == 'deleted') {
     $message = "All signatures deleted successfully!";
-    $signatures = []; // Clear current view
+    $signatures = [];
     $totalSignatures = 0;
 }
 
@@ -102,12 +88,33 @@ if ($template_files) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SubSignature Dashboard</title>
+    <title>SubSignature Generator</title>
     <link rel="stylesheet" href="css/style.css">
     <link rel="stylesheet" href="css/all.min.css">
     
     <style>
-        /* CSS copied from previous version */
+        /* --- COMPACT STYLES --- */
+        .compact-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+        }
+        .form-group { margin-bottom: 10px; }
+        .form-group label {
+            font-size: 0.85rem;
+            font-weight: 600;
+            margin-bottom: 3px;
+            color: #475569;
+        }
+        .form-group input, .form-group select {
+            padding: 8px;
+            font-size: 0.95rem;
+        }
+        
+        /* Compact Header Actions */
+        .header-actions { display: flex; gap: 8px; align-items: center; }
+
+        /* --- EXISTING STYLES --- */
         .alert { padding: 1rem; border-radius: 8px; margin-bottom: 1.5rem; display: flex; gap: 0.75rem; align-items: center; }
         .alert-success { background: #dcfce7; color: #166534; border: 1px solid #bbf7d0; }
         .empty-state { text-align: center; padding: 4rem 1rem; color: #94a3b8; }
@@ -118,41 +125,15 @@ if ($template_files) {
         .sig-preview-container { display: none; margin-top: 1rem; border: 1px dashed #e2e8f0; background: #f8fafc; padding: 10px; border-radius: 8px; width: 100%; }
         .preview-iframe { width: 100%; height: 180px; border: none; background: white; border-radius: 4px; }
         .visually-hidden { position: absolute; left: -9999px; opacity: 0; }
-
-        /* NEW STYLES FOR SEARCH & PAGINATION */
-        .search-bar-container {
-            display: flex;
-            gap: 10px;
-            margin-bottom: 1.5rem;
-            background: #f8fafc;
-            padding: 1rem;
-            border-radius: 8px;
-            border: 1px solid var(--border);
-        }
-        .search-input {
-            flex: 1;
-            padding: 0.6rem;
-            border: 1px solid #cbd5e1;
-            border-radius: 6px;
-        }
-        .pagination {
-            display: flex;
-            justify-content: center;
-            gap: 5px;
-            margin-top: 2rem;
-        }
-        .page-link {
-            padding: 0.5rem 1rem;
-            border: 1px solid var(--border);
-            background: white;
-            text-decoration: none;
-            color: var(--text-main);
-            border-radius: 6px;
-            transition: all 0.2s;
-        }
-        .page-link:hover { background: #f1f5f9; }
+        
+        .search-bar-container { display: flex; gap: 10px; margin-bottom: 1.5rem; background: #f8fafc; padding: 1rem; border-radius: 8px; border: 1px solid var(--border); }
+        .search-input { flex: 1; padding: 0.6rem; border: 1px solid #cbd5e1; border-radius: 6px; }
+        .pagination { display: flex; justify-content: center; gap: 5px; margin-top: 2rem; }
+        .page-link { padding: 0.5rem 1rem; border: 1px solid var(--border); background: white; text-decoration: none; color: var(--text-main); border-radius: 6px; }
         .page-link.active { background: var(--primary); color: white; border-color: var(--primary); }
-        .page-link.disabled { opacity: 0.5; cursor: not-allowed; pointer-events: none; }
+        .page-link.disabled { opacity: 0.5; pointer-events: none; }
+        
+        @media (max-width: 768px) { .compact-grid { grid-template-columns: 1fr; } }
     </style>
 </head>
 <body>
@@ -161,17 +142,13 @@ if ($template_files) {
         <?php if (file_exists('includes/navbar.php')) include 'includes/navbar.php'; ?>
         <div class="sidebar-footer">
             <div class="user-profile">
-                <div class="avatar">
-                    <?php echo strtoupper(substr($_SESSION['username'], 0, 1)); ?>
-                </div>
+                <div class="avatar"><?php echo strtoupper(substr($_SESSION['username'], 0, 1)); ?></div>
                 <div class="user-info">
-                    <div><?php echo htmlspecialchars($_SESSION['username'], ENT_QUOTES, 'UTF-8'); ?></div>
+                    <div><?php echo htmlspecialchars($_SESSION['username']); ?></div>
                     <span><?php echo isAdmin() ? 'Administrator' : 'User'; ?></span>
                 </div>
             </div>
-            <a href="logout.php" class="btn-logout">
-                <i class="fas fa-sign-out-alt"></i> <span>Sign Out</span>
-            </a>
+            <a href="logout.php" class="btn-logout"><i class="fas fa-sign-out-alt"></i> <span>Sign Out</span></a>
         </div>
     </aside>
 
@@ -179,13 +156,11 @@ if ($template_files) {
         
         <header class="page-header">
             <h2>Signature Generator</h2>
-            <p>Create, manage and export your email signatures.</p>
+            <p>Create and manage your email signatures.</p>
         </header>
 
         <?php if ($message): ?>
-            <div class="alert alert-success">
-                <i class="fas fa-check-circle"></i> <?php echo htmlspecialchars($message, ENT_QUOTES, 'UTF-8'); ?>
-            </div>
+            <div class="alert alert-success"><i class="fas fa-check-circle"></i> <?php echo htmlspecialchars($message); ?></div>
         <?php endif; ?>
 
         <section class="card" id="create-form">
@@ -196,52 +171,50 @@ if ($template_files) {
             <form action="generate.php" method="POST" id="signatureForm">
                 <input type="hidden" name="csrf_token" value="<?php echo $_SESSION['csrf_token']; ?>">
 
-                <div class="form-grid">
-                    <div class="form-group">
-                        <label>Name</label>
-                        <input type="text" id="inp_name" name="name" required 
-                               value="<?php echo htmlspecialchars($defaultName, ENT_QUOTES, 'UTF-8'); ?>"
-                               placeholder="e.g. Sarah Smith">
+                <div class="compact-grid">
+                    <div>
+                        <div class="form-group">
+                            <label>Name</label>
+                            <input type="text" id="inp_name" name="name" required 
+                                   value="<?php echo htmlspecialchars($defaultName); ?>" placeholder="e.g. Sarah Smith">
+                        </div>
+                        <div class="form-group">
+                            <label>Email</label>
+                            <input type="email" id="inp_email" name="email" required 
+                                   value="<?php echo htmlspecialchars($defaultEmail); ?>" placeholder="sarah@company.com">
+                        </div>
                     </div>
                     
-                    <div class="form-group">
-                        <label>Position / Role</label>
-                        <input type="text" id="inp_role" name="role" required 
-                               value="<?php echo htmlspecialchars($defaultRole, ENT_QUOTES, 'UTF-8'); ?>"
-                               placeholder="e.g. Marketing Manager">
-                    </div>
-                    
-                    <div class="form-group">
-                        <label>Email Address</label>
-                        <input type="email" id="inp_email" name="email" required 
-                               value="<?php echo htmlspecialchars($defaultEmail, ENT_QUOTES, 'UTF-8'); ?>"
-                               placeholder="sarah@company.com">
-                    </div>
-                    
-                    <div class="form-group">
-                        <label>Phone Number</label>
-                        <input type="tel" id="inp_phone" name="phone" required 
-                               value="<?php echo htmlspecialchars($defaultPhone, ENT_QUOTES, 'UTF-8'); ?>"
-                               placeholder="+49 123 456789">
-                    </div>
-                    
-                    <div class="form-group" style="grid-column: 1 / -1;">
-                        <label>Select Template</label>
-                        <select name="template" id="inp_template" required>
-                            <?php foreach ($templates as $template): ?>
-                                <?php 
-                                $cleanName = ucfirst(str_replace(['signature_', '.html', '_'], ['','',' '], $template));
-                                $selected = ($template == $defaultTemplate) ? 'selected' : '';
-                                ?>
-                                <option value="<?php echo htmlspecialchars($template, ENT_QUOTES, 'UTF-8'); ?>" <?php echo $selected; ?>>
-                                    <?php echo htmlspecialchars($cleanName, ENT_QUOTES, 'UTF-8'); ?>
-                                </option>
-                            <?php endforeach; ?>
-                        </select>
+                    <div>
+                        <div class="form-group">
+                            <label>Position / Role</label>
+                            <input type="text" id="inp_role" name="role" required 
+                                   value="<?php echo htmlspecialchars($defaultRole); ?>" placeholder="e.g. Manager">
+                        </div>
+                        <div class="form-group">
+                            <label>Phone</label>
+                            <input type="tel" id="inp_phone" name="phone" required 
+                                   value="<?php echo htmlspecialchars($defaultPhone); ?>" placeholder="+49 123 456789">
+                        </div>
                     </div>
                 </div>
+                
+                <div class="form-group" style="margin-top: 0.5rem;">
+                    <label>Select Template</label>
+                    <select name="template" id="inp_template" required style="width:100%">
+                        <?php foreach ($templates as $template): ?>
+                            <?php 
+                            $cleanName = ucfirst(str_replace(['signature_', '.html', '_'], ['','',' '], $template));
+                            $selected = ($template == $defaultTemplate) ? 'selected' : '';
+                            ?>
+                            <option value="<?php echo htmlspecialchars($template); ?>" <?php echo $selected; ?>>
+                                <?php echo htmlspecialchars($cleanName); ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
 
-                <div class="form-actions">
+                <div class="form-actions" style="margin-top: 10px;">
                     <button type="submit" name="action" value="preview" class="btn btn-preview" onclick="saveToStorage()">
                         <i class="fas fa-eye"></i> Preview
                     </button>
@@ -254,23 +227,19 @@ if ($template_files) {
 
         <?php if (isset($_SESSION['preview'])): ?>
         <section class="card">
-            <div class="card-header">
-                <h3>Preview Result</h3>
-                <button onclick="closePreview()" class="btn btn-sm btn-danger" style="border:none">Close</button>
+            <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; padding: 0.75rem 1.5rem;">
+                <h3 style="margin:0;">Preview</h3>
+                
+                <div class="header-actions">
+                    <button type="button" onclick="copyToClipboard()" class="btn btn-sm btn-primary"><i class="fas fa-copy"></i> Copy</button>
+                    <a href="download.php?type=preview" class="btn btn-sm btn-success"><i class="fas fa-download"></i> HTML</a>
+                    <button onclick="closePreview()" class="btn btn-sm btn-danger" style="background:white; color:#dc2626; border:1px solid #fecaca;"><i class="fas fa-times"></i></button>
+                </div>
             </div>
             
-            <div class="preview-box">
+            <div class="preview-box" style="padding:1.5rem; background:white;">
                 <div class="preview-html" id="signatureContainer"><?php echo $_SESSION['preview']; ?></div>
                 <textarea id="rawHtmlSource" class="visually-hidden"><?php echo htmlspecialchars($_SESSION['preview']); ?></textarea>
-            </div>
-            
-            <div class="form-actions" style="margin-top:0">
-                <a href="download.php?type=preview" class="btn btn-success">
-                    <i class="fas fa-download"></i> Download HTML
-                </a>
-                <button type="button" onclick="copyToClipboard()" class="btn btn-primary">
-                    <i class="fas fa-copy"></i> Copy Code
-                </button>
             </div>
         </section>
         <?php 
@@ -286,16 +255,11 @@ if ($template_files) {
         <section class="card">
             <div class="card-header">
                 <h3>My Signatures (<?php echo $totalSignatures; ?>)</h3>
-                
                 <div style="display:flex; gap:0.5rem">
                 <?php if ($totalSignatures > 0): ?>
-                    <button onclick="downloadAllSignatures()" class="btn btn-sm btn-success">
-                        <i class="fas fa-file-archive"></i> Download All ZIP
-                    </button>
-                    <?php if (empty($search)): // Only allow delete all when not searching to avoid confusion ?>
-                    <button onclick="confirmDeleteAll()" class="btn btn-sm btn-danger">
-                        <i class="fas fa-trash-alt"></i> Delete All
-                    </button>
+                    <button onclick="downloadAllSignatures()" class="btn btn-sm btn-success"><i class="fas fa-file-archive"></i> ZIP</button>
+                    <?php if (empty($search)): ?>
+                    <button onclick="confirmDeleteAll()" class="btn btn-sm btn-danger"><i class="fas fa-trash-alt"></i> Delete All</button>
                     <?php endif; ?>
                 <?php endif; ?>
                 </div>
@@ -303,13 +267,9 @@ if ($template_files) {
 
             <div class="search-bar-container">
                 <form method="GET" action="generator.php" style="width:100%; display:flex; gap:10px;">
-                    <input type="text" name="search" class="search-input" 
-                           placeholder="Search by name, email or role..." 
-                           value="<?php echo htmlspecialchars($search, ENT_QUOTES, 'UTF-8'); ?>">
-                    <button type="submit" class="btn btn-primary"><i class="fas fa-search"></i> Search</button>
-                    <?php if (!empty($search)): ?>
-                        <a href="generator.php" class="btn btn-secondary" style="border:1px solid #ccc; color:#333">Clear</a>
-                    <?php endif; ?>
+                    <input type="text" name="search" class="search-input" placeholder="Search..." value="<?php echo htmlspecialchars($search); ?>">
+                    <button type="submit" class="btn btn-primary"><i class="fas fa-search"></i></button>
+                    <?php if (!empty($search)): ?><a href="generator.php" class="btn btn-secondary">Clear</a><?php endif; ?>
                 </form>
             </div>
 
@@ -317,70 +277,41 @@ if ($template_files) {
                 <?php if (empty($signatures)): ?>
                     <div class="empty-state">
                         <i class="fas fa-folder-open empty-icon"></i>
-                        <p>
-                            <?php echo !empty($search) ? "No results found for '".htmlspecialchars($search)."'." : "No signatures generated yet."; ?>
-                        </p>
+                        <p><?php echo !empty($search) ? "No results found." : "No signatures generated yet."; ?></p>
                     </div>
                 <?php else: ?>
                     <?php foreach ($signatures as $sig): ?>
-                    
                     <?php 
-                        // Generate preview safely
                         $tplPath = 'templates/' . basename($sig['template']);
                         $encodedHtml = "";
-
                         if (file_exists($tplPath)) {
                             $rawTpl = file_get_contents($tplPath);
                             $previewHtml = str_replace(
                                 ['{{NAME}}', '{{ROLE}}', '{{EMAIL}}', '{{PHONE}}'],
-                                [
-                                    htmlspecialchars($sig['name'], ENT_QUOTES, 'UTF-8'), 
-                                    htmlspecialchars($sig['role'], ENT_QUOTES, 'UTF-8'), 
-                                    htmlspecialchars($sig['email'], ENT_QUOTES, 'UTF-8'), 
-                                    htmlspecialchars($sig['phone'], ENT_QUOTES, 'UTF-8')
-                                ],
+                                [htmlspecialchars($sig['name']), htmlspecialchars($sig['role']), htmlspecialchars($sig['email']), htmlspecialchars($sig['phone'])],
                                 $rawTpl
                             );
                             $encodedHtml = htmlspecialchars($previewHtml, ENT_QUOTES, 'UTF-8');
                         }
                     ?>
-
                     <div class="signature-item" style="flex-wrap: wrap;">
                         <div style="display:flex; justify-content:space-between; width:100%; align-items:center;">
                             <div class="sig-details">
-                                <h4><?php echo htmlspecialchars($sig['name'], ENT_QUOTES, 'UTF-8'); ?></h4>
-                                <p><?php echo htmlspecialchars($sig['role'], ENT_QUOTES, 'UTF-8'); ?> &bull; <?php echo htmlspecialchars($sig['email'], ENT_QUOTES, 'UTF-8'); ?></p>
-                                <p style="font-size:0.75rem; color:#94a3b8; margin-top:0.25rem">
-                                    <i class="far fa-clock"></i> <?php echo date('M d, Y', strtotime($sig['created_at'])); ?>
-                                    &bull; <span style="background:#f1f5f9; padding:2px 6px; border-radius:4px; font-family:monospace;"><?php echo htmlspecialchars($sig['template'], ENT_QUOTES, 'UTF-8'); ?></span>
-                                </p>
+                                <h4><?php echo htmlspecialchars($sig['name']); ?></h4>
+                                <p style="font-size:0.85rem; color:#64748b; margin-top:0.25rem"><?php echo htmlspecialchars($sig['role']); ?> &bull; <?php echo htmlspecialchars($sig['email']); ?></p>
                             </div>
                             
-                            <div class="sig-actions" style="display:flex; gap:0.5rem; align-items:center;">
+                            <div class="sig-actions" style="display:flex; gap:0.5rem;">
                                 <?php if($encodedHtml): ?>
-                                <button onclick="togglePreview(<?php echo $sig['id']; ?>)" class="btn btn-sm btn-secondary" title="Show Preview" style="background:white; border:1px solid #e2e8f0;">
-                                    <i class="fas fa-eye"></i>
-                                </button>
+                                <button onclick="togglePreview(<?php echo $sig['id']; ?>)" class="btn btn-sm btn-secondary" style="background:white; border:1px solid #e2e8f0;"><i class="fas fa-eye"></i></button>
                                 <?php endif; ?>
-                                
-                                <a href="download.php?id=<?php echo $sig['id']; ?>" class="btn btn-sm btn-primary" title="Download">
-                                    <i class="fas fa-download"></i>
-                                </a>
-                                <a href="generate.php?delete=<?php echo $sig['id']; ?>&csrf_token=<?php echo $_SESSION['csrf_token']; ?>" 
-                                   class="btn btn-sm btn-danger"
-                                   onclick="return confirm('Really delete?')" title="Delete">
-                                    <i class="fas fa-trash"></i>
-                                </a>
+                                <a href="download.php?id=<?php echo $sig['id']; ?>" class="btn btn-sm btn-primary"><i class="fas fa-download"></i></a>
+                                <a href="generate.php?delete=<?php echo $sig['id']; ?>&csrf_token=<?php echo $_SESSION['csrf_token']; ?>" class="btn btn-sm btn-danger" onclick="return confirm('Delete?')"><i class="fas fa-trash"></i></a>
                             </div>
                         </div>
 
                         <div id="preview-<?php echo $sig['id']; ?>" class="sig-preview-container">
-                            <div style="margin-bottom:5px; font-size:0.75rem; color:#64748b; font-weight:700; text-transform:uppercase;">HTML Preview</div>
-                            <?php if ($encodedHtml): ?>
-                                <iframe class="preview-iframe" sandbox="allow-same-origin" srcdoc="<?php echo $encodedHtml; ?>"></iframe>
-                            <?php else: ?>
-                                <div style="color:red; font-size:0.9rem;">Template file not found.</div>
-                            <?php endif; ?>
+                            <?php if ($encodedHtml): ?><iframe class="preview-iframe" sandbox="allow-same-origin" srcdoc="<?php echo $encodedHtml; ?>"></iframe><?php endif; ?>
                         </div>
                     </div>
                     <?php endforeach; ?>
@@ -391,40 +322,20 @@ if ($template_files) {
             <div class="pagination">
                 <?php 
                     $urlPattern = "generator.php?search=" . urlencode($search) . "&page=";
+                    if ($page > 1) echo '<a href="' . $urlPattern . ($page - 1) . '" class="page-link">&laquo;</a>';
+                    else echo '<span class="page-link disabled">&laquo;</span>';
                     
-                    // Previous Button
-                    if ($page > 1) {
-                        echo '<a href="' . $urlPattern . ($page - 1) . '" class="page-link">&laquo; Prev</a>';
-                    } else {
-                        echo '<span class="page-link disabled">&laquo; Prev</span>';
-                    }
-                    
-                    // Page Numbers (Show max 5 pages around current)
                     $start = max(1, $page - 2);
                     $end = min($totalPages, $page + 2);
-                    
-                    if ($start > 1) echo '<span class="page-link disabled">...</span>';
-                    
                     for ($i = $start; $i <= $end; $i++) {
                         $active = ($i == $page) ? 'active' : '';
                         echo '<a href="' . $urlPattern . $i . '" class="page-link ' . $active . '">' . $i . '</a>';
                     }
-                    
-                    if ($end < $totalPages) echo '<span class="page-link disabled">...</span>';
-
-                    // Next Button
-                    if ($page < $totalPages) {
-                        echo '<a href="' . $urlPattern . ($page + 1) . '" class="page-link">Next &raquo;</a>';
-                    } else {
-                        echo '<span class="page-link disabled">Next &raquo;</span>';
-                    }
+                    if ($page < $totalPages) echo '<a href="' . $urlPattern . ($page + 1) . '" class="page-link">&raquo;</a>';
+                    else echo '<span class="page-link disabled">&raquo;</span>';
                 ?>
             </div>
-            <div style="text-align:center; font-size:0.8rem; color:#94a3b8; margin-top:0.5rem;">
-                Page <?php echo $page; ?> of <?php echo $totalPages; ?>
-            </div>
             <?php endif; ?>
-
         </section>
 
     </main>
@@ -509,9 +420,7 @@ if ($template_files) {
         }
         function togglePreview(id) {
             const el = document.getElementById('preview-' + id);
-            const icon = el.parentElement.querySelector('.btn-secondary i');
             el.style.display = (el.style.display === 'block') ? 'none' : 'block';
-            icon.className = (el.style.display === 'block') ? 'fas fa-eye-slash' : 'fas fa-eye';
         }
     </script>
 </body>
