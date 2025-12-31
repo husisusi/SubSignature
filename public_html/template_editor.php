@@ -89,6 +89,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $safe_filename = basename($existing_file);
                 $filepath = $templates_dir . '/' . $safe_filename;
                 
+                // Security Check: Verify file really exists in templates dir
                 if (file_exists($filepath) && realpath($filepath) === realpath($templates_dir . '/' . $safe_filename)) {
                     if (file_put_contents($filepath, $template_content) !== false) {
                         $message = "Template updated: " . htmlspecialchars($safe_filename);
@@ -131,14 +132,33 @@ if ($template_files) {
         .jodit-container { border-radius: 8px !important; border: 1px solid var(--border) !important; }
         .jodit-toolbar { background: #f8fafc !important; border-bottom: 1px solid var(--border) !important; position: sticky; top: 0; z-index: 10; }
         .jodit-status-bar { border-top: 1px solid var(--border) !important; background: #f8fafc !important; }
+        
         .placeholders { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.5rem; padding: 1rem; background: #f8fafc; border-radius: 8px; border: 1px dashed var(--border); }
         .placeholder-btn { background: white; border: 1px solid var(--border); border-radius: 6px; padding: 0.3rem 0.6rem; font-size: 0.85rem; font-family: monospace; color: var(--primary); cursor: pointer; transition: all 0.2s; }
         .placeholder-btn:hover { background: var(--primary); color: white; border-color: var(--primary); }
+        
         .preview-wrapper { background: white; border: 1px solid var(--border); border-radius: 8px; padding: 2rem; margin-top: 1rem; box-shadow: inset 0 0 10px rgba(0,0,0,0.02); overflow-x: auto; }
-        .editor-header-actions { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
+        
         .alert { padding: 1rem; border-radius: 8px; margin-bottom: 1.5rem; display: flex; gap: 0.75rem; align-items: center; font-size: 0.95rem; }
         .alert-success { background: #dcfce7; color: #166534; border: 1px solid #bbf7d0; }
         .alert-error { background: #fee2e2; color: #991b1b; border: 1px solid #fecaca; }
+
+        /* --- NEW COMPACT TOOLBAR GRID --- */
+        .editor-toolbar-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr auto;
+            gap: 1rem;
+            align-items: end;
+            background: #f8fafc;
+            padding: 1.25rem;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            margin-bottom: 1.5rem;
+        }
+        
+        @media (max-width: 900px) {
+            .editor-toolbar-grid { grid-template-columns: 1fr; }
+        }
     </style>
 </head>
 <body>
@@ -178,47 +198,53 @@ if ($template_files) {
             <div style="grid-column: span 2;"> 
                 
                 <section class="card">
-                    <div class="card-header"><h3><i class="fas fa-folder-open"></i> Load Template</h3></div>
-                    <div class="form-group">
-                        <select id="template_selector" onchange="loadTemplate(this.value)" style="width: 100%; max-width: 500px;">
-                            <option value="">-- Create New Template --</option>
-                            <?php foreach ($templates as $filename => $content): ?>
-                                <?php  
-                                $display_name = ucfirst(str_replace('_', ' ', str_replace(['signature_', '.html'], '', $filename)));
-                                $selected = ($filename === $current_file) ? 'selected' : '';
-                                ?>
-                                <option value="<?php echo htmlspecialchars($filename, ENT_QUOTES, 'UTF-8'); ?>" <?php echo $selected; ?>>
-                                    <?php echo htmlspecialchars($display_name, ENT_QUOTES, 'UTF-8'); ?>
-                                </option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
-                </section>
-
-                <section class="card">
                     <form method="POST" id="editorForm">
                         <input type="hidden" name="csrf_token" value="<?php echo $_SESSION['csrf_token']; ?>">
 
-                        <div class="editor-header-actions">
-                            <div class="form-group" style="flex: 1; margin-bottom: 0; margin-right: 1rem;">
-                                <label for="template_name" style="margin-bottom: 0.25rem;">Template Name</label>
+                        <div class="editor-toolbar-grid">
+                            
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <label for="template_selector" style="font-size: 0.8rem; text-transform: uppercase; color: var(--text-muted); font-weight: 700;">
+                                    <i class="fas fa-folder-open"></i> Load Existing
+                                </label>
+                                <select id="template_selector" onchange="loadTemplate(this.value)" style="width: 100%; padding: 0.6rem; border: 1px solid #cbd5e1; border-radius: 6px;">
+                                    <option value="">-- Create New Template --</option>
+                                    <?php foreach ($templates as $filename => $content): ?>
+                                        <?php  
+                                        $display_name = ucfirst(str_replace('_', ' ', str_replace(['signature_', '.html'], '', $filename)));
+                                        $selected = ($filename === $current_file) ? 'selected' : '';
+                                        ?>
+                                        <option value="<?php echo htmlspecialchars($filename, ENT_QUOTES, 'UTF-8'); ?>" <?php echo $selected; ?>>
+                                            <?php echo htmlspecialchars($display_name, ENT_QUOTES, 'UTF-8'); ?>
+                                        </option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </div>
+
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <label for="template_name" style="font-size: 0.8rem; text-transform: uppercase; color: var(--text-muted); font-weight: 700;">
+                                    <i class="fas fa-tag"></i> Template Name
+                                </label>
                                 <input type="text" id="template_name" name="template_name"  
                                       value="<?php echo htmlspecialchars($current_name, ENT_QUOTES, 'UTF-8'); ?>"
-                                      placeholder="e.g. Modern Blue" required style="font-weight: 600;">
+                                      placeholder="e.g. Modern Blue" required 
+                                      style="width: 100%; padding: 0.6rem; font-weight: 600; border: 1px solid #cbd5e1; border-radius: 6px;">
                             </div>
-                            <div style="display: flex; gap: 0.5rem; align-items: flex-end;">
-                                <button type="submit" name="action" value="save_new" class="btn btn-primary"><i class="fas fa-save"></i> Create New</button>
-                                <button type="submit" name="action" value="save_existing" class="btn btn-success" id="saveExistingBtn" <?php echo empty($current_file) ? 'disabled' : ''; ?>><i class="fas fa-save"></i> Save</button>
+
+                            <div style="display: flex; gap: 0.5rem;">
+                                <button type="submit" name="action" value="save_new" class="btn btn-primary" title="Create as new file"><i class="fas fa-plus"></i> Create</button>
+                                <button type="submit" name="action" value="save_existing" class="btn btn-success" id="saveExistingBtn" <?php echo empty($current_file) ? 'disabled' : ''; ?> title="Overwrite existing file"><i class="fas fa-save"></i> Save</button>
                             </div>
                         </div>
                         
                         <div class="form-group">
-                            <label><i class="fas fa-tags"></i> Insert Variable:</label>
+                            <label style="font-size: 0.85rem; font-weight: 600; color: #64748b;"><i class="fas fa-magic"></i> Insert Dynamic Variable:</label>
                             <div class="placeholders">
                                 <button type="button" onclick="insertPlaceholder('{{NAME}}')" class="placeholder-btn">{{NAME}}</button>
                                 <button type="button" onclick="insertPlaceholder('{{ROLE}}')" class="placeholder-btn">{{ROLE}}</button>
                                 <button type="button" onclick="insertPlaceholder('{{EMAIL}}')" class="placeholder-btn">{{EMAIL}}</button>
                                 <button type="button" onclick="insertPlaceholder('{{PHONE}}')" class="placeholder-btn">{{PHONE}}</button>
+                                <div style="width: 1px; background: #e2e8f0; margin: 0 5px;"></div>
                                 <button type="button" onclick="insertPlaceholder('<br>')" class="placeholder-btn">&lt;br&gt;</button>
                                 <button type="button" onclick="insertPlaceholder('<hr>')" class="placeholder-btn">&lt;hr&gt;</button>
                             </div>
@@ -231,7 +257,7 @@ if ($template_files) {
 
                         <div class="form-actions" style="justify-content: space-between; margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--border);">
                             <div>
-                                <button type="button" onclick="clearEditor()" class="btn btn-sm btn-danger" style="background:transparent; color:var(--danger); border:1px solid var(--border);"><i class="fas fa-trash-alt"></i> Clear</button>
+                                <button type="button" onclick="clearEditor()" class="btn btn-sm btn-danger" style="background:transparent; color:var(--danger); border:1px solid var(--border);"><i class="fas fa-trash-alt"></i> Clear All</button>
                                 <button type="button" onclick="loadDefaultTemplate()" class="btn btn-sm btn-secondary" style="background:transparent; color:var(--text-muted); border:1px solid var(--border);"><i class="fas fa-undo"></i> Reset Default</button>
                             </div>
                             <input type="hidden" id="existing_file" name="existing_file" value="<?php echo htmlspecialchars($current_file, ENT_QUOTES, 'UTF-8'); ?>">
@@ -265,36 +291,35 @@ if ($template_files) {
         
         try {
             editorInstance = Jodit.make(textarea, {
-                height: 500,
+                height: 450,
                 width: '100%',
                 theme: 'default',
                 
-                // --- STRICT OFFLINE SETTINGS ---
-                useAceEditor: false,         // 1. Disable Ace Plugin
-                sourceEditor: 'area',        // 2. Force simple Textarea for source code (CRITICAL)
-                beautifyHTML: false,         // 3. Disable auto-formatting (often pulls deps)
-                sourceEditorCDN: null,       // 4. Kill CDN URL
-                source: false,               // 5. Disable general external sources
-                // -----------------------------------
+                // --- STRICT SECURITY SETTINGS ---
+                useAceEditor: false,
+                sourceEditor: 'area',
+                beautifyHTML: false,
+                sourceEditorCDN: null,
+                source: false,
+                // --------------------------------
 
                 toolbar: true,
                 toolbarButtonSize: 'middle',
                 buttons: [
                     'source', '|',  
-                    'bold', 'italic', 'underline', 'strikethrough', 'superscript', 'subscript', '|',
-                    'font', 'fontsize', 'brush', 'paragraph', 'lineHeight', '|',
-                    'ul', 'ol', 'outdent', 'indent', 'align', '|',
-                    'image', 'table', 'link', 'symbol', 'hr', '|',
-                    'copyformat', 'eraser', '|',
+                    'bold', 'italic', 'underline', 'strikethrough', '|',
+                    'font', 'fontsize', 'brush', 'paragraph', '|',
+                    'ul', 'ol', 'align', '|',
+                    'image', 'table', 'link', 'hr', '|',
                     'undo', 'redo', '|',
-                    'fullsize', 'preview', 'print', 'find'
+                    'fullsize', 'preview'
                 ],
                 allowResizeX: false,
                 allowResizeY: true,
-                spellcheck: false, // Disable browser spellcheck to prevent issues
+                spellcheck: false,
                 cleanHTML: {
                     fillEmptyParagraph: false,
-                    denyTags: 'script,iframe'
+                    denyTags: 'script,iframe,object,embed'
                 },
                 events: {
                     afterInit: function(editor) { updatePreview(); },
@@ -312,13 +337,14 @@ if ($template_files) {
             editorInstance.selection.insertHTML(placeholder);
         } else {
             var textarea = document.getElementById('template_content');
-            textarea.value = textarea.value + placeholder; // Fallback simple append
+            textarea.value = textarea.value + placeholder;
             updatePreview();
         }
     }
     
     function loadTemplate(filename) {
         if (!filename) {
+            // Reset to new state
             document.getElementById('template_name').value = '';
             document.getElementById('existing_file').value = '';
             document.getElementById('saveExistingBtn').disabled = true;
@@ -326,6 +352,7 @@ if ($template_files) {
             return;
         }
         
+        // Securely fetch template content via JS
         fetch('load_template.php?file=' + encodeURIComponent(filename))
             .then(response => {
                 if(!response.ok) throw new Error('Failed to load');
@@ -335,6 +362,7 @@ if ($template_files) {
                 if (editorInstance) editorInstance.value = content;
                 else document.getElementById('template_content').value = content;
                 
+                // Pretty name from filename
                 var displayName = filename.replace('signature_', '').replace('.html', '');
                 displayName = displayName.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
                 
@@ -356,6 +384,7 @@ if ($template_files) {
     
     function updatePreview() {
         var content = editorInstance ? editorInstance.value : document.getElementById('template_content').value;
+        // Simple client-side replacement for preview
         var preview = content
             .replace(/{{NAME}}/g, 'John Doe')
             .replace(/{{ROLE}}/g, 'Senior Developer')
@@ -372,6 +401,7 @@ if ($template_files) {
         }
     }
 
+    // Client-side validation
     document.getElementById('editorForm').addEventListener('submit', function(e) {
         if(!document.getElementById('template_name').value.trim()) {
             e.preventDefault();
