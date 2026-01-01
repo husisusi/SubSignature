@@ -4,7 +4,7 @@ require_once 'includes/config.php';
 requireLogin(); // Security Prio 1: Only logged-in users can see this
 
 // Application Meta Data
-$appVersion = '1.1.0';
+$appVersion = '1.2.0';
 $phpVersion = phpversion();
 $serverSoftware = $_SERVER['SERVER_SOFTWARE'] ?? 'Unknown';
 ?>
