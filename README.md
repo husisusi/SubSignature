@@ -29,7 +29,10 @@ The primary focus of this project is privacy and security. The application runs 
 ![Import Function](https://raw.githubusercontent.com/husisusi/SubSignature/main/public_html/img/screenshots/SubSignature_screenshot_import.png)
 
 ## Features
-
+* **Create professional signatures** Create consistent, professional email signatures that reflect your brand identity and stay up to date automatically.
+* **Multiple design templates** Choose from a variety of ready-made design templates that can be easily customized for different teams or use cases.
+* **Secure user management** Manage user accounts centrally with secure role-based access control and high data protection standards.
+* **Account activation system** Activate user accounts through a secure activation process.
 * **Self-Hosted & Private:** Runs on your own server. No data is sent to third parties.
 * **Database:** Uses SQLite. No MySQL or PostgreSQL configuration required.
 * **Role-Based Access:**
@@ -41,7 +44,7 @@ The primary focus of this project is privacy and security. The application runs 
 
 ## Installation
 
-1.  Upload the files to your web server.
+1.  Upload the files to your web server (tested with Apache 2).
 2.  Ensure the `private_data` folder is located one level above your public web directory (for security reasons) and is writable by the web server.
 3.  Navigate to `install.php` in your browser to initialize the SQLite database and create your admin account.
 4.  Delete `install.php` after the setup is complete.
@@ -51,6 +54,7 @@ The primary focus of this project is privacy and security. The application runs 
 This project makes use of excellent open-source libraries and resources:
 
 * **Jodit Editor:** The template creation interface is powered by the Jodit WYSIWYG editor. It provides a clean and powerful interface for editing HTML directly in the browser.
+* **Ace Editor:** Standalone code editor written in JavaScript.
 * **Free Icons:** User interface icons are provided by FontAwesome (Free tier), hosted locally to ensure privacy compliance.
 
 ## Contributing
@@ -60,4 +64,4 @@ This project is a work in progress, and I am always looking for ways to improve 
 If you have ideas for new features, find a security issue, or want to improve the code, your help is welcome. Please feel free to open an issue or submit a pull request.
 
 ## ToDo
-LDAP integration
+LDAP integration.
