@@ -14,7 +14,25 @@ while (ob_get_level()) {
     ob_end_clean();
 }
 
-$user_id = $_SESSION['user_id'];
+// -------------------------------------------------------------------------
+// 2. TARGET USER LOGIC (SECURITY PRIORITY 1)
+// -------------------------------------------------------------------------
+$current_user_id = $_SESSION['user_id'];
+$target_user_id = $current_user_id; // Default to self
+
+// Only Administrators are allowed to download data for other users
+if (isAdmin()) {
+    // Check GET request (Standard Download Link)
+    if (isset($_GET['user_id'])) {
+        $target_user_id = (int)$_GET['user_id'];
+    }
+    // Check POST request (Batch Init)
+    if (isset($_POST['user_id'])) {
+        $target_user_id = (int)$_POST['user_id'];
+    }
+}
+// -------------------------------------------------------------------------
+
 $batch_size = 50;
 
 // --- Helper Function: Secure Template Loading ---
@@ -36,12 +54,15 @@ function getSecureTemplateContent($templateName) {
     return file_exists($fallback) ? file_get_contents($fallback) : '';
 }
 
-// --- BATCH MODE INITIALIZATION ---
+// =========================================================================
+// SECTION A: BATCH MODE INITIALIZATION
+// =========================================================================
 if (isset($_POST['batch_download']) && $_POST['batch_download'] == '1') {
     header('Content-Type: application/json');
     
+    // Use $target_user_id instead of session user
     $stmt = $db->prepare("SELECT COUNT(*) as total FROM user_signatures WHERE user_id = ?");
-    $stmt->bindValue(1, $user_id, SQLITE3_INTEGER);
+    $stmt->bindValue(1, $target_user_id, SQLITE3_INTEGER);
     $result = $stmt->execute();
     $total = $result->fetchArray(SQLITE3_ASSOC)['total'];
     
@@ -52,14 +73,14 @@ if (isset($_POST['batch_download']) && $_POST['batch_download'] == '1') {
     
     $batches = ceil($total / $batch_size);
     
-    // SECURITY: Use cryptographically secure random ID instead of uniqid
+    // SECURITY: Use cryptographically secure random ID
     $batch_id = bin2hex(random_bytes(16));
     
-    // Use a specific directory for temp batches if possible, to avoid collisions
     $batch_file = sys_get_temp_dir() . '/batch_' . $batch_id . '.json';
     
     $batch_data = [
-        'user_id' => $user_id, // Store owner ID for security check later!
+        'user_id' => $target_user_id, // Store the TARGET ID (owner of data)
+        'requester_id' => $current_user_id, // Store who requested it (for audit/checks)
         'total_signatures' => $total,
         'batch_size' => $batch_size,
         'batches' => $batches,
@@ -74,8 +95,7 @@ if (isset($_POST['batch_download']) && $_POST['batch_download'] == '1') {
          exit;
     }
     
-    // Start processing (Note: In a real production app, this should be a job queue)
-    // We pass DB connection if needed, though simple recursion here is limited by PHP timeout
+    // Start processing
     processBatch($batch_id, 0);
     
     echo json_encode([
@@ -87,7 +107,9 @@ if (isset($_POST['batch_download']) && $_POST['batch_download'] == '1') {
     exit;
 }
 
-// --- CHECK BATCH STATUS ---
+// =========================================================================
+// SECTION B: CHECK BATCH STATUS
+// =========================================================================
 if (isset($_GET['check_batch']) && isset($_GET['batch_id'])) {
     header('Content-Type: application/json');
 
@@ -101,9 +123,11 @@ if (isset($_GET['check_batch']) && isset($_GET['batch_id'])) {
     
     $batch_data = json_decode(file_get_contents($batch_file), true);
     
-    // SECURITY: IDOR Protection
-    // Verify that the batch belongs to the current user
-    if (!isset($batch_data['user_id']) || $batch_data['user_id'] !== $user_id) {
+    // SECURITY: Access Control
+    // Allow if user is Admin OR if user owns the batch data
+    $is_owner = (isset($batch_data['user_id']) && $batch_data['user_id'] == $current_user_id);
+    
+    if (!isAdmin() && !$is_owner) {
         http_response_code(403);
         echo json_encode(['error' => 'Access denied']);
         exit;
@@ -113,7 +137,9 @@ if (isset($_GET['check_batch']) && isset($_GET['batch_id'])) {
     exit;
 }
 
-// --- DOWNLOAD COMPLETED BATCH ---
+// =========================================================================
+// SECTION C: DOWNLOAD COMPLETED BATCH
+// =========================================================================
 if (isset($_GET['download_batch']) && isset($_GET['batch_id'])) {
     $batch_id = basename($_GET['batch_id']); // Sanitize
     $batch_file = sys_get_temp_dir() . '/batch_' . $batch_id . '.json';
@@ -124,8 +150,10 @@ if (isset($_GET['download_batch']) && isset($_GET['batch_id'])) {
     
     $batch_data = json_decode(file_get_contents($batch_file), true);
     
-    // SECURITY: IDOR Protection
-    if (!isset($batch_data['user_id']) || $batch_data['user_id'] !== $user_id) {
+    // SECURITY: Access Control
+    $is_owner = (isset($batch_data['user_id']) && $batch_data['user_id'] == $current_user_id);
+    
+    if (!isAdmin() && !$is_owner) {
         die('Access denied');
     }
     
@@ -133,9 +161,11 @@ if (isset($_GET['download_batch']) && isset($_GET['batch_id'])) {
         die('Batch not completed yet');
     }
     
-    // Get User Info safely
+    // Get info of the data owner (not necessarily the logged-in admin)
+    $data_owner_id = $batch_data['user_id'];
+    
     $user_stmt = $db->prepare("SELECT username, full_name FROM users WHERE id = ?");
-    $user_stmt->bindValue(1, $user_id, SQLITE3_INTEGER);
+    $user_stmt->bindValue(1, $data_owner_id, SQLITE3_INTEGER);
     $user_result = $user_stmt->execute();
     $user_info = $user_result->fetchArray(SQLITE3_ASSOC);
     
@@ -151,27 +181,14 @@ if (isset($_GET['download_batch']) && isset($_GET['batch_id'])) {
         die('Cannot create ZIP file');
     }
     
-    // Merge temp files
+    // Add temp files to main zip
     foreach ($batch_data['temp_files'] as $temp_file) {
         if (file_exists($temp_file)) {
-            // Unzip the temp chunk or simply read contents if we stored HTMLs directly?
-            // The logic below assumes temp_files are HTML files or partial Zips. 
-            // Looking at processBatch logic: it creates mini-zips.
-            // Merging ZIPs is complex in PHP. 
-            // Simplified approach: Extract contents of mini-zips to main zip.
-            // NOTE: Merging Zips via ZipArchive is not directly supported natively efficiently.
-            // Better approach for stability: processBatch should create folder structures or just raw HTML files.
-            // Assuming current logic works for your setup, we add the zip file itself for now
-            // or better: add the content of the zip.
-            
-            // To allow "Merge" effectively without complex logic, we'll just add the batch-zips as files
-            // OR re-implement processBatch to save HTML files instead of Zips.
-            // For now, to keep your logic working: We add the file.
-             $zip->addFile($temp_file, 'batch_parts/' . basename($temp_file));
+             // Add partial zips to the main zip to allow merging
+             $zip->addFile($temp_file, 'parts/' . basename($temp_file));
         }
     }
     
-    // Add Metadata (Manifest, Readme) - Same as original but safe
     addMetadataToZip($zip, $display_name, $batch_data['total_signatures']);
     
     $zip->close();
@@ -195,10 +212,13 @@ if (isset($_GET['download_batch']) && isset($_GET['batch_id'])) {
     exit;
 }
 
-// --- NORMAL DOWNLOAD (Small batches) ---
+// =========================================================================
+// SECTION D: NORMAL DOWNLOAD (Standard HTML Zip)
+// =========================================================================
 
+// Use $target_user_id here!
 $stmt = $db->prepare("SELECT * FROM user_signatures WHERE user_id = ? ORDER BY created_at DESC");
-$stmt->bindValue(1, $user_id, SQLITE3_INTEGER);
+$stmt->bindValue(1, $target_user_id, SQLITE3_INTEGER);
 $result = $stmt->execute();
 
 $signatures = [];
@@ -207,13 +227,14 @@ while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
 }
 
 if (empty($signatures)) {
-    header('Location: generator.php?error=' . urlencode('No signatures to download'));
+    // Redirect back if empty
+    header('Location: export_signatures.php?error=' . urlencode('No signatures to download'));
     exit;
 }
 
-// Get User Info
+// Get User Info for Filename
 $user_stmt = $db->prepare("SELECT username, full_name FROM users WHERE id = ?");
-$user_stmt->bindValue(1, $user_id, SQLITE3_INTEGER);
+$user_stmt->bindValue(1, $target_user_id, SQLITE3_INTEGER);
 $user_info = $user_stmt->execute()->fetchArray(SQLITE3_ASSOC);
 $display_name = $user_info['full_name'] ?? $user_info['username'] ?? 'user';
 
@@ -229,7 +250,6 @@ if ($zip->open($zip_path, ZipArchive::CREATE | ZipArchive::OVERWRITE) !== TRUE) 
 
 // Process Signatures
 $readme_content = "";
-$index_html_content = ""; // Prepare index content
 
 foreach ($signatures as $index => $sig) {
     // 1. Secure Template Loading
@@ -247,16 +267,21 @@ foreach ($signatures as $index => $sig) {
         $template_content
     );
     
-    // 3. Safe Filename
+    // 3. Optional: Clean Phone Link
+    $cleanPhone = preg_replace('/[^0-9+]/', '', $sig['phone']);
+    $html = str_replace('{{PHONE_CLEAN}}', $cleanPhone, $html);
+    
+    // 4. Safe Filename
     $cleanSigName = preg_replace('/[^a-z0-9]/i', '_', strtolower($sig['name']));
     if(empty($cleanSigName)) $cleanSigName = "signature";
     
-    $filename = sprintf("%03d_%s_%s.html", $index + 1, $cleanSigName, date('Y-m-d', strtotime($sig['created_at'])));
+    // Ensure filename uniqueness with ID
+    $filename = sprintf("%s_%s_%d.html", $cleanSigName, date('Y-m-d', strtotime($sig['created_at'])), $sig['id']);
     
     $zip->addFromString('signatures/' . $filename, $html);
     
-    // Build Readme & Index string (simplified for brevity, logic remains same)
-    $readme_content .= sprintf("%03d. %s\n", $index + 1, $sig['name']);
+    // Build Readme string
+    $readme_content .= sprintf("%03d. %s (%s)\n", $index + 1, $sig['name'], $filename);
 }
 
 addMetadataToZip($zip, $display_name, count($signatures));
@@ -274,7 +299,7 @@ readfile($zip_path);
 unlink($zip_path);
 exit;
 
-// --- FUNCTIONS ---
+// --- UTILITY FUNCTIONS ---
 
 function addMetadataToZip($zip, $display_name, $count) {
     $readme = "EXPORT SUMMARY\nUser: $display_name\nCount: $count\nDate: " . date('Y-m-d');
@@ -291,7 +316,7 @@ function addMetadataToZip($zip, $display_name, $count) {
 function processBatch($batch_id, $batch_index) {
     global $db, $batch_size;
     
-    // Security: Validate batch ID format to prevent directory traversal
+    // Security: Validate batch ID format
     if (!preg_match('/^[a-f0-9]+$/', $batch_id)) return;
     
     $batch_file = sys_get_temp_dir() . '/batch_' . $batch_id . '.json';
@@ -302,7 +327,7 @@ function processBatch($batch_id, $batch_index) {
     $user_id = $batch_data['user_id'];
     $offset = $batch_index * $batch_size;
     
-    // Fetch data
+    // Fetch data for this batch
     $stmt = $db->prepare("SELECT * FROM user_signatures WHERE user_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?");
     $stmt->bindValue(1, $user_id, SQLITE3_INTEGER);
     $stmt->bindValue(2, $batch_size, SQLITE3_INTEGER);
@@ -320,8 +345,7 @@ function processBatch($batch_id, $batch_index) {
         return;
     }
     
-    // Create temp HTML files for this batch (Better than zip-in-zip)
-    // For simplicity in this script, we create a partial zip
+    // Create partial zip for this batch
     $temp_zip = sys_get_temp_dir() . '/part_' . $batch_id . '_' . $batch_index . '.zip';
     $zip = new ZipArchive();
     if ($zip->open($temp_zip, ZipArchive::CREATE) === TRUE) {
@@ -332,22 +356,19 @@ function processBatch($batch_id, $batch_index) {
                 [htmlspecialchars($sig['name']), htmlspecialchars($sig['role']), htmlspecialchars($sig['email']), htmlspecialchars($sig['phone'])],
                 $content
             );
-            $name = preg_replace('/[^a-z0-9]/i', '_', $sig['name']);
-            $zip->addFromString($name . '_' . $index . '.html', $html);
+            $cleanName = preg_replace('/[^a-z0-9]/i', '_', $sig['name']);
+            $zip->addFromString($cleanName . '_' . $sig['id'] . '.html', $html);
         }
         $zip->close();
         
         $batch_data['temp_files'][] = $temp_zip;
         $batch_data['processed_batches'] = $batch_index + 1;
         
-        // Logic for next batch or completion
+        // Next step logic
         if ($batch_data['processed_batches'] >= $batch_data['batches']) {
             $batch_data['status'] = 'completed';
         } else {
              $batch_data['status'] = 'processing';
-             // Warning: Recursion via shutdown function is not reliable in all environments
-             // Ideally this would be client-triggered. 
-             // We keep it as requested but it's brittle.
              register_shutdown_function(function() use ($batch_id, $batch_index) {
                 processBatch($batch_id, $batch_index + 1);
             });
