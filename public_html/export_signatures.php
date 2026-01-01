@@ -222,6 +222,23 @@ if ($is_admin) {
             display: inline-block;
         }
 
+        /* --- FIX: Styles für die Buttons (falls in style.css fehlend) --- */
+        .btn-warning {
+            background-color: #f59e0b;
+            color: white !important; /* Erzwinge weiße Schrift */
+            border: 1px solid #d97706;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            text-decoration: none;
+        }
+        .btn-warning:hover {
+            background-color: #d97706;
+            color: white !important;
+        }
+        /* ------------------------------------------------------------- */
+
         /* Preview Table Styles */
         .table-container {
             overflow-x: auto;
@@ -373,7 +390,7 @@ if ($is_admin) {
                 <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 1.5rem;">
                     Get all signatures as separate HTML files packed in a ZIP archive.
                 </p>
-                <a href="download_all.php?user_id=<?php echo $selected_user_id; ?>" class="btn btn-warning" style="width: 100%; justify-content: center; color: white;" onclick="startZipDownload(event)">
+                <a href="download_all.php?user_id=<?php echo $selected_user_id; ?>" class="btn btn-warning" style="width: 100%; justify-content: center;" onclick="startZipDownload(event)">
                     <i class="fas fa-file-zipper"></i> Download ZIP
                 </a>
             </div>
