@@ -18,9 +18,13 @@ $defaultName = $formData['name'] ?? $_SESSION['full_name'] ?? '';
 $defaultEmail = $formData['email'] ?? $_SESSION['email'] ?? '';
 $defaultRole = $formData['role'] ?? '';
 $defaultPhone = $formData['phone'] ?? '';
-$defaultTemplate = $formData['template'] ?? 'signature_default.html';
+// Check for custom default config
+$configFile = __DIR__ . '/templates/default_config.txt';
+$systemDefault = file_exists($configFile) ? trim(file_get_contents($configFile)) : 'signature_default.html';
 
-// Templates für JavaScript laden (Live Preview)
+$defaultTemplate = $formData['template'] ?? $systemDefault;
+
+// Templates JavaScript load (Live Preview)
 $templatesJS = [];
 $templatesDir = __DIR__ . '/templates';
 $template_files_glob = glob($templatesDir . '/*.html');
@@ -31,7 +35,7 @@ if ($template_files_glob) {
     }
 }
 
-// SUCHE & PAGINATION
+// SEARCH & PAGINATION
 $search = trim($_GET['search'] ?? '');
 $page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
 if ($page < 1) $page = 1;
