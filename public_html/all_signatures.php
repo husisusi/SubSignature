@@ -5,523 +5,534 @@ require_once 'includes/config.php';
 requireLogin();
 
 // ---------------------------------------------------------
-// 1. HELPER FUNCTION: RENDER ITEM
+// 1. HELPER: RENDER ITEM
 // ---------------------------------------------------------
 function renderSignatureItem($sig, $target_user_id, $search, $show_owner_name = false) {
-    // Template Pfad bestimmen
     $tplPath = 'templates/' . basename($sig['template']);
     $encodedHtml = "";
-    
-    // Template laden und Platzhalter ersetzen
+
     if (file_exists($tplPath)) {
         $rawTpl = file_get_contents($tplPath);
         $previewHtml = str_replace(
             ['{{NAME}}', '{{ROLE}}', '{{EMAIL}}', '{{PHONE}}'],
             [
-                htmlspecialchars($sig['name'], ENT_QUOTES, 'UTF-8'), 
-                htmlspecialchars($sig['role'], ENT_QUOTES, 'UTF-8'), 
-                htmlspecialchars($sig['email'], ENT_QUOTES, 'UTF-8'), 
+                htmlspecialchars($sig['name'], ENT_QUOTES, 'UTF-8'),
+                htmlspecialchars($sig['role'], ENT_QUOTES, 'UTF-8'),
+                htmlspecialchars($sig['email'], ENT_QUOTES, 'UTF-8'),
                 htmlspecialchars($sig['phone'], ENT_QUOTES, 'UTF-8')
             ],
             $rawTpl
         );
-        // HTML sicher encodieren für das versteckte Feld
         $encodedHtml = htmlspecialchars($previewHtml, ENT_QUOTES, 'UTF-8');
     }
-    
+
+    // CSRF Token für Links
     $csrf = $_SESSION['csrf_token'];
     ?>
-    <div class="signature-item" style="flex-wrap: wrap;">
-        <div style="display:flex; justify-content:space-between; width:100%; align-items:center;">
-            <div class="sig-details">
-                <div style="display:flex; align-items:center; gap:8px;">
-                    <h4><?php echo htmlspecialchars($sig['name'], ENT_QUOTES, 'UTF-8'); ?></h4>
-                    <?php if ($show_owner_name && !empty($sig['username'])): ?>
+    <div class="signature-item" style="flex-wrap: nowrap; gap: 15px;">
+        <div style="display:flex; align-items:center; padding-left:5px;">
+            <input type="checkbox" class="sig-checkbox" value="<?php echo $sig['id']; ?>" onchange="updateBulkButtons()">
+        </div>
+
+        <div style="flex-grow: 1;">
+            <div style="display:flex; justify-content:space-between; width:100%; align-items:center; flex-wrap:wrap;">
+                <div class="sig-details">
+                    <div style="display:flex; align-items:center; gap:8px;">
+                        <h4><?php echo htmlspecialchars($sig['name'], ENT_QUOTES, 'UTF-8'); ?></h4>
+                        <?php if ($show_owner_name && !empty($sig['username'])): ?>
                         <span style="background:#e0f2fe; color:#0369a1; font-size:0.7rem; padding:2px 6px; border-radius:4px; border:1px solid #bae6fd;">
                             <i class="fas fa-user"></i> <?php echo htmlspecialchars($sig['username'], ENT_QUOTES, 'UTF-8'); ?>
                         </span>
-                    <?php endif; ?>
+                        <?php endif; ?>
+                    </div>
+                    <p><?php echo htmlspecialchars($sig['role'], ENT_QUOTES, 'UTF-8'); ?> &bull; <?php echo htmlspecialchars($sig['email'], ENT_QUOTES, 'UTF-8'); ?></p>
+                    <p style="font-size:0.75rem; color:#94a3b8; margin-top:0.25rem">
+                        <i class="far fa-clock"></i> <?php echo date('M d, Y', strtotime($sig['created_at'])); ?>
+                        &bull; <span style="background:#f1f5f9; padding:2px 6px; border-radius:4px; font-family:monospace;"><?php echo htmlspecialchars($sig['template'], ENT_QUOTES, 'UTF-8'); ?></span>
+                    </p>
                 </div>
-                
-                <p><?php echo htmlspecialchars($sig['role'], ENT_QUOTES, 'UTF-8'); ?> &bull; <?php echo htmlspecialchars($sig['email'], ENT_QUOTES, 'UTF-8'); ?></p>
-                <p style="font-size:0.75rem; color:#94a3b8; margin-top:0.25rem">
-                    <i class="far fa-clock"></i> <?php echo date('M d, Y', strtotime($sig['created_at'])); ?>
-                    &bull; <span style="background:#f1f5f9; padding:2px 6px; border-radius:4px; font-family:monospace;"><?php echo htmlspecialchars($sig['template'], ENT_QUOTES, 'UTF-8'); ?></span>
-                </p>
-            </div>
-            
-            <div class="sig-actions" style="display:flex; gap:0.5rem; align-items:center;">
-                <?php if($encodedHtml): ?>
-                <textarea id="source-<?php echo $sig['id']; ?>" class="visually-hidden"><?php echo $encodedHtml; ?></textarea>
-                
-                <button onclick="openModal(<?php echo $sig['id']; ?>)" class="btn btn-sm btn-secondary" title="Preview Signature" style="background:white; border:1px solid #e2e8f0;">
-                    <i class="fas fa-eye"></i>
-                </button>
-                <?php endif; ?>
-                
-                <a href="download.php?id=<?php echo $sig['id']; ?>" class="btn btn-sm btn-primary" title="Download">
-                    <i class="fas fa-download"></i>
-                </a>
-                
-                <a href="all_signatures.php?delete=<?php echo $sig['id']; ?>&user_id=<?php echo $target_user_id; ?>&search=<?php echo urlencode($search); ?>&csrf_token=<?php echo $csrf; ?>" 
-                   class="btn btn-sm btn-danger"
-                   onclick="return confirm('Really delete this signature?')" title="Delete">
-                    <i class="fas fa-trash"></i>
-                </a>
+
+                <div class="sig-actions" style="display:flex; gap:0.5rem; align-items:center;">
+                    <?php if($encodedHtml): ?>
+                    <textarea id="source-<?php echo $sig['id']; ?>" class="visually-hidden"><?php echo $encodedHtml; ?></textarea>
+                    <button onclick="openModal(<?php echo $sig['id']; ?>)" class="btn btn-sm btn-secondary" style="background:white; border:1px solid #cbd5e1;" title="Preview"><i class="fas fa-eye"></i></button>
+                    <?php endif; ?>
+                    <a href="download.php?id=<?php echo $sig['id']; ?>" class="btn btn-sm btn-primary" title="Download"><i class="fas fa-download"></i></a>
+                    <a href="all_signatures.php?delete=<?php echo $sig['id']; ?>&user_id=<?php echo $target_user_id; ?>&search=<?php echo urlencode($search); ?>&csrf_token=<?php echo $csrf; ?>"
+                       class="btn btn-sm btn-danger" onclick="return confirm('Delete?')" title="Delete"><i class="fas fa-trash"></i></a>
+                </div>
             </div>
         </div>
-        </div>
+    </div>
     <?php
 }
+
 // ---------------------------------------------------------
-
-// 2. Setup & Security
-if (empty($_SESSION['csrf_token'])) {
-    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
-}
-
+// 2. LOGIC & DATA FETCHING
+// ---------------------------------------------------------
+if (empty($_SESSION['csrf_token'])) $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
 $current_user_id = $_SESSION['user_id'];
-$is_admin = isAdmin();
+$is_admin = isAdmin(); // Wichtig für die Button-Anzeige später
 $message = '';
 
-// 3. ADMIN LOGIC: User Selection
-$target_user_id = $current_user_id; 
+// User Select Logic
+$target_user_id = $current_user_id;
 $users_list = [];
-
 if ($is_admin) {
     if (isset($_GET['user_id'])) {
-        if ($_GET['user_id'] === 'all') {
-            $target_user_id = 'all';
-        } elseif (is_numeric($_GET['user_id'])) {
-            $target_user_id = (int)$_GET['user_id'];
-        }
+        if ($_GET['user_id'] === 'all') $target_user_id = 'all';
+        elseif (is_numeric($_GET['user_id'])) $target_user_id = (int)$_GET['user_id'];
     }
-    
-    // Fetch users for dropdown (only if not AJAX)
     if (!isset($_GET['ajax'])) {
-        $stmtUsers = $db->prepare("SELECT id, username, full_name FROM users ORDER BY username ASC");
-        $resUsers = $stmtUsers->execute();
-        while ($u = $resUsers->fetchArray(SQLITE3_ASSOC)) {
-            $users_list[] = $u;
-        }
+        $resUsers = $db->query("SELECT id, username, full_name FROM users ORDER BY username ASC");
+        while ($u = $resUsers->fetchArray(SQLITE3_ASSOC)) $users_list[] = $u;
     }
 } else {
     $target_user_id = $current_user_id;
 }
 
-// 4. QUERY PARAMETERS
+// Search & Query
 $search = trim($_GET['search'] ?? '');
 $page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
 if ($page < 1) $page = 1;
-$limit = 10; 
+$limit = 10;
 $offset = ($page - 1) * $limit;
 
-// Build Query Logic
 $params = [];
 $whereClauses = [];
+if ($target_user_id !== 'all') { $whereClauses[] = "s.user_id = :uid"; $params[':uid'] = $target_user_id; }
+if (!empty($search)) { $whereClauses[] = "(s.name LIKE :search OR s.email LIKE :search OR s.role LIKE :search)"; $params[':search'] = '%' . $search . '%'; }
+$whereSQL = !empty($whereClauses) ? "WHERE " . implode(' AND ', $whereClauses) : "";
 
-// A. User Filter
-if ($target_user_id !== 'all') {
-    $whereClauses[] = "s.user_id = :uid";
-    $params[':uid'] = $target_user_id;
-}
+// Count
+$stmtCount = $db->prepare("SELECT COUNT(*) as total FROM user_signatures s $whereSQL");
+foreach ($params as $k => $v) $stmtCount->bindValue($k, $v, is_int($v) ? SQLITE3_INTEGER : SQLITE3_TEXT);
+$totalSignatures = $stmtCount->execute()->fetchArray(SQLITE3_ASSOC)['total'];
 
-// B. Search Filter
-if (!empty($search)) {
-    $whereClauses[] = "(s.name LIKE :search OR s.email LIKE :search OR s.role LIKE :search)";
-    $params[':search'] = '%' . $search . '%';
-}
-
-$whereSQL = "";
-if (!empty($whereClauses)) {
-    $whereSQL = "WHERE " . implode(' AND ', $whereClauses);
-}
-
-// 4a. Count Total
-$countSql = "SELECT COUNT(*) as total FROM user_signatures s $whereSQL";
-$stmtCount = $db->prepare($countSql);
-foreach ($params as $key => $val) {
-    $stmtCount->bindValue($key, $val, is_int($val) ? SQLITE3_INTEGER : SQLITE3_TEXT);
-}
-$totalResult = $stmtCount->execute();
-$totalRow = $totalResult->fetchArray(SQLITE3_ASSOC);
-$totalSignatures = $totalRow['total'];
-
-// 4b. Fetch Data
-$dataSql = "SELECT s.*, u.username 
-            FROM user_signatures s 
-            LEFT JOIN users u ON s.user_id = u.id 
-            $whereSQL 
-            ORDER BY s.created_at DESC 
-            LIMIT :limit OFFSET :offset";
-
-$stmt = $db->prepare($dataSql);
-foreach ($params as $key => $val) {
-    $stmt->bindValue($key, $val, is_int($val) ? SQLITE3_INTEGER : SQLITE3_TEXT);
-}
+// Fetch
+$stmt = $db->prepare("SELECT s.*, u.username FROM user_signatures s LEFT JOIN users u ON s.user_id = u.id $whereSQL ORDER BY s.created_at DESC LIMIT :limit OFFSET :offset");
+foreach ($params as $k => $v) $stmt->bindValue($k, $v, is_int($v) ? SQLITE3_INTEGER : SQLITE3_TEXT);
 $stmt->bindValue(':limit', $limit, SQLITE3_INTEGER);
 $stmt->bindValue(':offset', $offset, SQLITE3_INTEGER);
-
 $result = $stmt->execute();
 $signatures = [];
-while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
-    $signatures[] = $row;
-}
+while ($row = $result->fetchArray(SQLITE3_ASSOC)) $signatures[] = $row;
 
-// 5. AJAX HANDLER
+// AJAX Handler
 if (isset($_GET['ajax'])) {
-    if (empty($signatures)) {
-        exit; 
-    }
-    foreach ($signatures as $sig) {
-        renderSignatureItem($sig, $target_user_id, $search, ($target_user_id === 'all'));
-    }
+    if (empty($signatures)) exit;
+    foreach ($signatures as $sig) renderSignatureItem($sig, $target_user_id, $search, ($target_user_id === 'all'));
     exit;
 }
 
-// 6. DELETE LOGIC
+// ---------------------------------------------------------
+// 3. ACTION HANDLERS
+// ---------------------------------------------------------
 if ($_SERVER['REQUEST_METHOD'] === 'POST' || isset($_GET['delete'])) {
     $token = $_POST['csrf_token'] ?? $_GET['csrf_token'] ?? '';
     if (!hash_equals($_SESSION['csrf_token'], $token)) die("Security Error: Invalid CSRF Token");
 
-    // Case A: Delete Single Item
+    // DELETE SINGLE
     if (isset($_GET['delete'])) {
         $del_id = (int)$_GET['delete'];
-        
         $sql = "DELETE FROM user_signatures WHERE id = :id";
-        if ($target_user_id !== 'all') {
-            $sql .= " AND user_id = :uid";
-        }
-
+        if ($target_user_id !== 'all') $sql .= " AND user_id = :uid";
         $stmtDel = $db->prepare($sql);
         $stmtDel->bindValue(':id', $del_id, SQLITE3_INTEGER);
-        if ($target_user_id !== 'all') {
-            $stmtDel->bindValue(':uid', $target_user_id, SQLITE3_INTEGER);
-        }
+        if ($target_user_id !== 'all') $stmtDel->bindValue(':uid', $target_user_id, SQLITE3_INTEGER);
         $stmtDel->execute();
-        
         header("Location: all_signatures.php?user_id=$target_user_id&search=" . urlencode($search) . "&success=deleted_one");
         exit;
     }
-    
-    // Case B: Delete ALL (Unlocked)
+
+    // DELETE ALL
     if (isset($_POST['action']) && $_POST['action'] === 'delete_all') {
-        
-        if ($target_user_id === 'all') {
-            // ADMIN MODE: DELETE EVERYTHING FROM DB
-            if (!$is_admin) die("Unauthorized"); 
-            
-            $stmtDel = $db->prepare("DELETE FROM user_signatures");
-            $stmtDel->execute();
-            
-        } else {
-            // USER MODE: DELETE ALL FOR THIS USER
-            $stmtDel = $db->prepare("DELETE FROM user_signatures WHERE user_id = ?");
-            $stmtDel->bindValue(1, $target_user_id, SQLITE3_INTEGER);
-            $stmtDel->execute();
-        }
-        
+        if ($target_user_id === 'all') { if (!$is_admin) die("Unauthorized"); $db->exec("DELETE FROM user_signatures"); }
+        else { $s=$db->prepare("DELETE FROM user_signatures WHERE user_id=?"); $s->bindValue(1, $target_user_id, SQLITE3_INTEGER); $s->execute(); }
         header("Location: all_signatures.php?user_id=$target_user_id&success=deleted_all");
+        exit;
+    }
+
+    // DELETE SELECTED (BULK)
+    if (isset($_POST['action']) && $_POST['action'] === 'delete_selected') {
+        $ids = is_array($_POST['ids']) ? $_POST['ids'] : explode(',', $_POST['ids']);
+        $count = 0;
+        foreach($ids as $id) {
+            $id = (int)$id; // Security: Force Integer
+            if($id > 0) {
+                $sql = "DELETE FROM user_signatures WHERE id = :id";
+                if (!$is_admin) $sql .= " AND user_id = :uid";
+                $stmt = $db->prepare($sql);
+                $stmt->bindValue(':id', $id, SQLITE3_INTEGER);
+                if (!$is_admin) $stmt->bindValue(':uid', $current_user_id, SQLITE3_INTEGER);
+                if($stmt->execute()) $count++;
+            }
+        }
+        header("Location: all_signatures.php?user_id=$target_user_id&success=deleted_batch&count=$count");
         exit;
     }
 }
 
 if (isset($_GET['success'])) {
-    if ($_GET['success'] == 'deleted_all') $message = "All signatures in this selection deleted!";
-    if ($_GET['success'] == 'deleted_one') $message = "Signature deleted successfully.";
+    if ($_GET['success'] == 'deleted_all') $message = "All signatures deleted!";
+    if ($_GET['success'] == 'deleted_one') $message = "Signature deleted.";
+    if ($_GET['success'] == 'deleted_batch') $message = (int)$_GET['count'] . " signatures deleted.";
 }
 ?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>All Signatures - SubSignature</title>
-    <link rel="stylesheet" href="css/style.css">
-    <link rel="stylesheet" href="css/all.min.css">
-    <style>
-        .visually-hidden { position: absolute; left: -9999px; opacity: 0; }
-        .alert { padding: 1rem; border-radius: 8px; margin-bottom: 1.5rem; display: flex; gap: 0.75rem; align-items: center; }
-        .alert-success { background: #dcfce7; color: #166534; border: 1px solid #bbf7d0; }
-        .empty-state { text-align: center; padding: 4rem 1rem; color: #94a3b8; }
-        .empty-icon { font-size: 3rem; margin-bottom: 1rem; opacity: 0.5; }
-        
-        /* Modal Styles (Genau wie im Generator Script) */
-        .modal-overlay {
-            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.5); z-index: 9999;
-            display: none; justify-content: center; align-items: center;
-            backdrop-filter: blur(3px);
-        }
-        .modal-box {
-            background: white; width: 90%; max-width: 700px;
-            border-radius: 12px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1);
-            overflow: hidden; animation: popIn 0.2s ease-out; display: flex; flex-direction: column;
-        }
-        @keyframes popIn { from {transform: scale(0.95); opacity: 0;} to {transform: scale(1); opacity: 1;} }
-        .modal-header { padding: 1rem 1.5rem; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; background: #f8fafc; }
-        .modal-body { padding: 0; height: 350px; background: white; position: relative; }
-        .modal-iframe { width: 100%; height: 100%; border: none; display: block; }
-        .modal-footer { padding: 1rem; text-align: right; border-top: 1px solid #e2e8f0; background: #f8fafc; }
-        .close-modal-btn { background: none; border: none; font-size: 1.5rem; cursor: pointer; color: #64748b; }
-        .close-modal-btn:hover { color: #ef4444; }
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>All Signatures - SubSignature</title>
+<link rel="stylesheet" href="css/style.css">
+<link rel="stylesheet" href="css/all.min.css">
+<style>
+    .visually-hidden { position: absolute; left: -9999px; opacity: 0; }
+    .alert { padding: 1rem; border-radius: 8px; margin-bottom: 1.5rem; display: flex; gap: 0.75rem; align-items: center; }
+    .alert-success { background: #dcfce7; color: #166534; border: 1px solid #bbf7d0; }
+    .empty-state { text-align: center; padding: 4rem 1rem; color: #94a3b8; }
 
-        /* Filter & Search */
-        .filter-bar { background: white; padding: 1rem; border-radius: 8px; border: 1px solid var(--border); margin-bottom: 1.5rem; display: flex; gap: 1rem; flex-wrap: wrap; align-items: center; }
-        .user-select {
-            padding: 0.6rem 2rem 0.6rem 0.8rem;
-            border: 1px solid #e2e8f0; border-radius: 6px; min-width: 200px;
-            font-weight: 500; background-color: white; color: #334155; font-size: 0.95rem; cursor: pointer;
-            appearance: none; -webkit-appearance: none;
-            background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
-            background-repeat: no-repeat; background-position: right 0.7rem center; background-size: 1em;
-            transition: all 0.2s ease; box-shadow: 0 1px 2px rgba(0,0,0,0.05);
-        }
-        .user-select:hover { border-color: #cbd5e1; }
-        .user-select:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1); }
-        .search-input { flex: 1; padding: 0.6rem; border: 1px solid #e2e8f0; border-radius: 6px; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
-        .search-input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1); }
-        .count-badge { background-color: #eff6ff; color: #2563eb; font-size: 0.9rem; padding: 0.3rem 0.8rem; border-radius: 999px; font-weight: 700; margin-left: 10px; border: 1px solid #dbeafe; vertical-align: middle; }
-        
-        .infinite-spinner { text-align: center; padding: 2rem; display: none; color: var(--text-muted); }
-        #sentinel { height: 20px; width: 100%; }
-        .end-of-results { text-align: center; padding: 2rem; display: none; color: #94a3b8; font-size: 0.9rem; font-style: italic; }
-    </style>
+    /* MODAL STYLES */
+    .modal-overlay { 
+        position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
+        background: rgba(0,0,0,0.5); z-index: 9999; 
+        display: none; justify-content: center; align-items: center; 
+        backdrop-filter: blur(3px); 
+    }
+    .modal-box { 
+        background: white; width: 90%; max-width: 700px; 
+        border-radius: 12px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1); 
+        overflow: hidden; 
+        display: flex; flex-direction: column;
+        animation: popIn 0.2s ease-out; 
+    }
+    @keyframes popIn { from {transform: scale(0.95); opacity: 0;} to {transform: scale(1); opacity: 1;} }
+
+    .modal-header { padding: 1rem 1.5rem; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; background: #f8fafc; }
+    .modal-body { padding: 0; height: 350px; background: white; }
+    .modal-iframe { width: 100%; height: 100%; border: none; display: block; }
+    .modal-footer { padding: 1rem; text-align: right; border-top: 1px solid #e2e8f0; background: #f8fafc; }
+
+    /* FIX: Style für den "X" Button */
+    .close-modal-btn { 
+        background: none; 
+        border: none; 
+        font-size: 1.5rem; 
+        cursor: pointer; 
+        color: #64748b; 
+        padding: 0 10px;
+        line-height: 1;
+    }
+    .close-modal-btn:hover { color: #333; }
+
+    .filter-bar { background: white; padding: 1rem; border-radius: 8px; border: 1px solid var(--border); margin-bottom: 1.5rem; display: flex; gap: 1rem; flex-wrap: wrap; align-items: center; }
+
+    /* MODERNES DROPDOWN */
+    .user-select {
+        appearance: none; 
+        -webkit-appearance: none;
+        -moz-appearance: none;
+        background-color: #ffffff;
+        color: #334155;
+        padding: 0.6rem 2.5rem 0.6rem 1rem;
+        border: 1px solid #cbd5e1;
+        border-radius: 6px;
+        min-width: 200px;
+        font-weight: 500;
+        font-size: 0.95rem;
+        cursor: pointer;
+        outline: none;
+        transition: all 0.2s ease-in-out;
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%23475569'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E");
+        background-repeat: no-repeat;
+        background-position: right 1rem center;
+        background-size: 1rem;
+    }
+    .user-select:focus { border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1); }
+    .user-select:hover { border-color: #94a3b8; }
+
+    .search-input { flex: 1; padding: 0.6rem; border: 1px solid #e2e8f0; border-radius: 6px; }
+    .count-badge { background-color: #eff6ff; color: #2563eb; font-size: 0.9rem; padding: 0.3rem 0.8rem; border-radius: 999px; font-weight: 700; margin-left: 10px; border: 1px solid #dbeafe; }
+
+    .infinite-spinner { text-align: center; padding: 2rem; display: none; color: var(--text-muted); }
+    .end-of-results { text-align: center; padding: 2rem; display: none; color: #94a3b8; font-size: 0.9rem; font-style: italic; }
+    .sig-checkbox { width: 18px; height: 18px; cursor: pointer; }
+
+    /* HEADER ACTION BUTTONS */
+    .header-actions { display: flex; gap: 8px; align-items: center; }
+    .btn-header { display: flex; align-items: center; gap: 6px; padding: 0.5rem 0.8rem; font-size: 0.85rem; }
+    .btn-disabled { opacity: 0.5; pointer-events: none; cursor: not-allowed; }
+</style>
 </head>
 <body>
 
-    <aside class="sidebar">
-        <?php if (file_exists('includes/navbar.php')) include 'includes/navbar.php'; ?>
-        <div class="sidebar-footer">
-            <div class="user-profile">
-                <div class="avatar">
-                    <?php echo strtoupper(substr($_SESSION['username'], 0, 1)); ?>
-                </div>
-                <div class="user-info">
-                    <div><?php echo htmlspecialchars($_SESSION['username'], ENT_QUOTES, 'UTF-8'); ?></div>
-                    <span><?php echo isAdmin() ? 'Administrator' : 'User'; ?></span>
-                </div>
-            </div>
-            <a href="logout.php" class="btn-logout">
-                <i class="fas fa-sign-out-alt"></i> <span>Sign Out</span>
-            </a>
+<aside class="sidebar">
+    <?php if (file_exists('includes/navbar.php')) include 'includes/navbar.php'; ?>
+    <div class="sidebar-footer">
+        <div class="user-profile">
+            <div class="avatar"><?php echo strtoupper(substr($_SESSION['username'], 0, 1)); ?></div>
+            <div class="user-info"><div><?php echo htmlspecialchars($_SESSION['username']); ?></div><span>Administrator</span></div>
         </div>
-    </aside>
-
-    <main class="main-content">
-        
-        <header class="page-header">
-            <h2>Signature Management</h2>
-            <p>View, search and manage existing signatures.</p>
-        </header>
-
-        <?php if ($message): ?>
-            <div class="alert alert-success">
-                <i class="fas fa-check-circle"></i> <?php echo htmlspecialchars($message, ENT_QUOTES, 'UTF-8'); ?>
-            </div>
-        <?php endif; ?>
-
-        <section class="card">
-            <div class="card-header">
-                <div style="display: flex; align-items: center;">
-                    <h3 style="margin:0;">
-                        <i class="fas fa-list"></i> 
-                        <?php echo ($target_user_id === 'all') ? 'All User Signatures' : ($is_admin ? 'User Signatures' : 'My Signatures'); ?>
-                    </h3>
-                    <span class="count-badge">
-                        <?php echo $totalSignatures; ?> found
-                    </span>
-                </div>
-                
-                <?php if (!empty($signatures) && empty($search)): ?>
-                    <button onclick="confirmDeleteAll()" class="btn btn-sm btn-danger">
-                        <i class="fas fa-trash-alt"></i> Delete All
-                    </button>
-                <?php endif; ?>
-            </div>
-
-            <div class="filter-bar">
-                <form method="GET" action="all_signatures.php" style="display:flex; gap:10px; width:100%; flex-wrap:wrap;">
-                    
-                    <?php if ($is_admin): ?>
-                    <div style="flex-shrink:0;">
-                        <select name="user_id" class="user-select" onchange="this.form.submit()">
-                            <option value="all" <?php echo ($target_user_id === 'all') ? 'selected' : ''; ?>>All Users</option>
-                            <?php foreach ($users_list as $u): ?>
-                                <option value="<?php echo $u['id']; ?>" <?php echo ($u['id'] == $target_user_id) ? 'selected' : ''; ?>>
-                                    <?php echo htmlspecialchars($u['username']); ?> 
-                                    (<?php echo htmlspecialchars($u['full_name'] ?: 'No Name'); ?>)
-                                </option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
-                    <?php endif; ?>
-
-                    <input type="text" name="search" class="search-input" 
-                           placeholder="Search by name, email or role..." 
-                           value="<?php echo htmlspecialchars($search, ENT_QUOTES, 'UTF-8'); ?>">
-                    
-                    <button type="submit" class="btn btn-primary"><i class="fas fa-search"></i> Search</button>
-                    
-                    <?php if (!empty($search)): ?>
-                        <a href="all_signatures.php?user_id=<?php echo $target_user_id; ?>" class="btn btn-secondary" style="border:1px solid #ccc; color:#333">Clear</a>
-                    <?php endif; ?>
-                </form>
-            </div>
-
-            <div class="signature-list" id="signatureListContainer">
-                <?php if (empty($signatures)): ?>
-                    <div class="empty-state">
-                        <i class="fas fa-folder-open empty-icon"></i>
-                        <p>No signatures found.</p>
-                    </div>
-                <?php else: ?>
-                    <?php foreach ($signatures as $sig): ?>
-                        <?php renderSignatureItem($sig, $target_user_id, $search, ($target_user_id === 'all')); ?>
-                    <?php endforeach; ?>
-                <?php endif; ?>
-            </div>
-
-            <div class="infinite-spinner" id="infiniteLoader">
-                <i class="fas fa-spinner fa-spin fa-2x"></i>
-                <div style="margin-top:10px">Loading more...</div>
-            </div>
-
-            <div id="sentinel"></div>
-            
-            <div class="end-of-results" id="endOfResults">
-                All signatures loaded.
-            </div>
-
-        </section>
-
-    </main>
-
-    <div id="previewModal" class="modal-overlay">
-        <div class="modal-box">
-            <div class="modal-header">
-                <h3 style="margin:0"><i class="fas fa-eye" style="color:var(--primary)"></i> Preview</h3>
-                <button class="close-modal-btn" onclick="closeModal()">&times;</button>
-            </div>
-            <div class="modal-body">
-                <iframe id="modalFrame" class="modal-iframe" sandbox="allow-same-origin"></iframe>
-            </div>
-            <div class="modal-footer">
-                <button class="btn btn-sm btn-secondary" onclick="closeModal()">Close</button>
-            </div>
-        </div>
+        <a href="logout.php" class="btn-logout"><i class="fas fa-sign-out-alt"></i> <span>Sign Out</span></a>
     </div>
+</aside>
 
-    <form id="deleteAllForm" method="POST" action="all_signatures.php?user_id=<?php echo $target_user_id; ?>" style="display:none;">
-        <input type="hidden" name="action" value="delete_all">
-        <input type="hidden" name="csrf_token" value="<?php echo $_SESSION['csrf_token']; ?>">
-    </form>
+<main class="main-content">
+    <header class="page-header">
+        <h2>Signature Management</h2>
+        <p>View, search and manage existing signatures.</p>
+    </header>
 
-    <script>
-        // --- MODAL LOGIC WITH CSS RESET ---
-        const modal = document.getElementById('previewModal');
-        const modalFrame = document.getElementById('modalFrame');
+    <?php if ($message): ?>
+    <div class="alert alert-success"><i class="fas fa-check-circle"></i> <?php echo htmlspecialchars($message); ?></div>
+    <?php endif; ?>
 
-        function openModal(id) {
-            const source = document.getElementById('source-' + id);
-            if (source) {
-                // Der wichtige CSS Reset Fix, damit es kompakt aussieht
-                const styleReset = `
-                    <style>
-                        body { margin: 0; padding: 20px; font-family: Arial, Helvetica, sans-serif; background-color: #ffffff; }
-                        p { margin: 0; padding: 0; line-height: 1.4; } 
-                        table { border-collapse: collapse; border-spacing: 0; }
-                        td { padding: 0; vertical-align: top; }
-                        a { text-decoration: none; color: inherit; }
-                    </style>
-                `;
+    <section class="card">
+        <div class="card-header">
+            <div style="display: flex; align-items: center;">
+                <h3 style="margin:0;"><i class="fas fa-list"></i> Signatures</h3>
+                <span class="count-badge"><?php echo $totalSignatures; ?></span>
+            </div>
+
+            <div class="header-actions">
+                <?php if (!empty($signatures)): ?>
                 
-                modalFrame.srcdoc = styleReset + source.value;
-                modal.style.display = 'flex';
-            }
-        }
+                <?php if ($is_admin): ?>
+                <button id="btnSendSelected" onclick="sendBulkEmail()" class="btn btn-sm btn-primary btn-header btn-disabled">
+                    <i class="fas fa-paper-plane"></i> Send Selected
+                </button>
+                <?php endif; ?>
+                
+                <button id="btnDeleteSelected" onclick="deleteSelectedItems()" class="btn btn-sm btn-danger btn-header btn-disabled">
+                    <i class="fas fa-trash"></i> Delete Selected
+                </button>
 
-        function closeModal() {
-            modal.style.display = 'none';
-            modalFrame.srcdoc = '';
-        }
+                <div style="width:1px; height:20px; background:#cbd5e1; margin:0 5px;"></div>
 
-        window.onclick = function(event) {
-            if (event.target == modal) {
-                closeModal();
-            }
-        }
-        
-        // --- DELETE LOGIC ---
-        function confirmDeleteAll() {
-            var warning = 'Are you sure you want to delete ALL signatures displayed?';
-            <?php if($target_user_id === 'all'): ?>
-                warning = 'WARNING: You are about to delete ALL signatures for ALL USERS in the entire database! This cannot be undone. Are you absolutely sure?';
+                <button onclick="confirmDeleteAll()" class="btn btn-sm btn-danger btn-header">
+                    <i class="fas fa-trash-alt"></i> Delete All
+                </button>
+                <?php endif; ?>
+            </div>
+        </div>
+
+        <div class="filter-bar">
+            <form method="GET" action="all_signatures.php" style="display:flex; gap:10px; width:100%; flex-wrap:wrap;">
+                <?php if ($is_admin): ?>
+                <div style="flex-shrink:0;">
+                    <select name="user_id" class="user-select" onchange="this.form.submit()">
+                        <option value="all" <?php echo ($target_user_id === 'all') ? 'selected' : ''; ?>>All Users</option>
+                        <?php foreach ($users_list as $u): ?>
+                        <option value="<?php echo $u['id']; ?>" <?php echo ($u['id'] == $target_user_id) ? 'selected' : ''; ?>>
+                            <?php echo htmlspecialchars($u['username']); ?>
+                        </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <?php endif; ?>
+                <input type="text" name="search" class="search-input" placeholder="Search..." value="<?php echo htmlspecialchars($search); ?>">
+                <button type="submit" class="btn btn-primary">Search</button>
+                <?php if (!empty($search)): ?><a href="all_signatures.php?user_id=<?php echo $target_user_id; ?>" class="btn btn-secondary">Clear</a><?php endif; ?>
+            </form>
+        </div>
+
+        <div style="padding: 10px 15px; background: #f8fafc; border-bottom: 1px solid #e2e8f0; display:flex; align-items:center; gap: 10px;">
+            <input type="checkbox" id="selectAll" class="sig-checkbox" onchange="toggleSelectAll(this)">
+            <label for="selectAll" style="font-weight:600; font-size:0.9rem; cursor:pointer; color:#475569;">Select All visible</label>
+        </div>
+
+        <div class="signature-list" id="signatureListContainer">
+            <?php if (empty($signatures)): ?>
+            <div class="empty-state"><i class="fas fa-folder-open empty-icon"></i><p>No signatures found.</p></div>
+            <?php else: ?>
+            <?php foreach ($signatures as $sig) renderSignatureItem($sig, $target_user_id, $search, ($target_user_id === 'all')); ?>
             <?php endif; ?>
-            
-            if(confirm(warning)) {
-                document.getElementById('deleteAllForm').submit();
-            }
+        </div>
+
+        <div class="infinite-spinner" id="infiniteLoader"><i class="fas fa-spinner fa-spin fa-2x"></i><div style="margin-top:10px">Loading more...</div></div>
+        <div id="sentinel"></div>
+        <div class="end-of-results" id="endOfResults">All signatures loaded.</div>
+    </section>
+</main>
+
+<div id="previewModal" class="modal-overlay">
+    <div class="modal-box">
+        <div class="modal-header"><h3 style="margin:0">Preview</h3><button class="close-modal-btn" onclick="closeModal()">&times;</button></div>
+        <div class="modal-body"><iframe id="modalFrame" class="modal-iframe" sandbox="allow-same-origin"></iframe></div>
+        <div class="modal-footer"><button class="btn btn-sm btn-secondary" onclick="closeModal()">Close</button></div>
+    </div>
+</div>
+
+<form id="deleteAllForm" method="POST" action="all_signatures.php?user_id=<?php echo $target_user_id; ?>" style="display:none;">
+    <input type="hidden" name="action" value="delete_all">
+    <input type="hidden" name="csrf_token" value="<?php echo $_SESSION['csrf_token']; ?>">
+</form>
+
+<form id="deleteSelectedForm" method="POST" action="all_signatures.php?user_id=<?php echo $target_user_id; ?>" style="display:none;">
+    <input type="hidden" name="action" value="delete_selected">
+    <input type="hidden" name="csrf_token" value="<?php echo $_SESSION['csrf_token']; ?>">
+</form>
+
+<script>
+const CSRF_TOKEN = "<?php echo $_SESSION['csrf_token']; ?>";
+
+// --- BUTTON ENABLE/DISABLE LOGIC ---
+function updateBulkButtons() {
+    const checkboxes = document.querySelectorAll('.sig-checkbox:not(#selectAll)');
+    const selectedCount = Array.from(checkboxes).filter(cb => cb.checked).length;
+
+    const btnSend = document.getElementById('btnSendSelected');
+    const btnDel = document.getElementById('btnDeleteSelected');
+
+    // Button Send Logic (Admin only)
+    if (btnSend) {
+        if (selectedCount > 0) {
+            btnSend.classList.remove('btn-disabled');
+            btnSend.innerHTML = `<i class="fas fa-paper-plane"></i> Send Selected (${selectedCount})`;
+        } else {
+            btnSend.classList.add('btn-disabled');
+            btnSend.innerHTML = `<i class="fas fa-paper-plane"></i> Send Selected`;
         }
+    }
 
-        // --- INFINITE SCROLL ---
-        document.addEventListener('DOMContentLoaded', function() {
-            let currentPage = 1;
-            let isLoading = false;
-            let hasMore = true;
+    // Button Delete Logic
+    if (btnDel) {
+        if (selectedCount > 0) {
+            btnDel.classList.remove('btn-disabled');
+            btnDel.innerHTML = `<i class="fas fa-trash"></i> Delete Selected (${selectedCount})`;
+        } else {
+            btnDel.classList.add('btn-disabled');
+            btnDel.innerHTML = `<i class="fas fa-trash"></i> Delete Selected`;
+        }
+    }
 
-            const userId = "<?php echo $target_user_id; ?>";
-            const searchTerm = "<?php echo urlencode($search); ?>";
-            
-            const loader = document.getElementById('infiniteLoader');
-            const endMsg = document.getElementById('endOfResults');
-            const container = document.getElementById('signatureListContainer');
-            const sentinel = document.getElementById('sentinel');
+    const selectAllCb = document.getElementById('selectAll');
+    if (selectedCount === 0) selectAllCb.checked = false;
+}
 
-            if (container.querySelector('.empty-state')) {
-                hasMore = false;
-                sentinel.style.display = 'none';
-            }
+function toggleSelectAll(source) {
+    document.querySelectorAll('.sig-checkbox:not(#selectAll)').forEach(cb => cb.checked = source.checked);
+    updateBulkButtons();
+}
 
-            const loadMore = () => {
-                if (isLoading || !hasMore) return;
-                isLoading = true;
-                loader.style.display = 'block';
-                currentPage++;
-                
-                const url = `all_signatures.php?ajax=1&page=${currentPage}&user_id=${userId}&search=${searchTerm}`;
+// --- DELETE SELECTED ---
+function deleteSelectedItems() {
+    const checkboxes = document.querySelectorAll('.sig-checkbox:not(#selectAll):checked');
+    const ids = Array.from(checkboxes).map(cb => cb.value);
+    if (ids.length === 0) return;
+    if (!confirm(`Delete ${ids.length} signatures?`)) return;
 
-                fetch(url)
-                    .then(response => response.text())
-                    .then(html => {
-                        loader.style.display = 'none';
-                        if (html.trim() === '') {
-                            hasMore = false;
-                            sentinel.style.display = 'none';
-                            endMsg.style.display = 'block';
-                        } else {
-                            container.insertAdjacentHTML('beforeend', html);
-                            isLoading = false;
-                        }
-                    })
-                    .catch(err => {
-                        console.error('Error loading items:', err);
-                        loader.style.display = 'none';
-                        isLoading = false;
-                    });
-            };
+    const form = document.getElementById('deleteSelectedForm');
+    while (form.firstChild) {
+        if(form.firstChild.name === 'ids[]') form.removeChild(form.firstChild);
+        else break;
+    }
 
-            const observerOptions = { root: null, rootMargin: '100px', threshold: 0.1 };
-            const observer = new IntersectionObserver((entries) => {
-                if (entries[0].isIntersecting && hasMore && !isLoading) {
-                    loadMore();
-                }
-            }, observerOptions);
+    ids.forEach(id => {
+        const input = document.createElement('input');
+        input.type = 'hidden';
+        input.name = 'ids[]';
+        input.value = id;
+        form.appendChild(input);
+    });
+    form.submit();
+}
 
-            if (hasMore) {
-                observer.observe(sentinel);
-            }
-        });
-    </script>
+// --- SEND MAIL (ADMIN) ---
+function sendBulkEmail() {
+    const checkboxes = document.querySelectorAll('.sig-checkbox:not(#selectAll):checked');
+    const ids = Array.from(checkboxes).map(cb => cb.value);
+    if (ids.length === 0) return;
+    if (!confirm(`Send email to ${ids.length} users?`)) return;
+
+    const btn = document.getElementById('btnSendSelected');
+    const originalText = btn.innerHTML;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sending...';
+    btn.classList.add('btn-disabled');
+
+    const formData = new FormData();
+    formData.append('csrf_token', CSRF_TOKEN);
+    ids.forEach(id => formData.append('ids[]', id));
+
+    fetch('send_signature.php', { method: 'POST', body: formData })
+    .then(r => r.json())
+    .then(data => {
+        btn.innerHTML = originalText;
+        btn.classList.remove('btn-disabled');
+        if (data.status === 'success') {
+            const s = data.data;
+            alert(`Result:\n✅ Sent: ${s.success}\n❌ Failed: ${s.failed}\n${s.details.join('\n')}`);
+            document.querySelectorAll('.sig-checkbox').forEach(cb => cb.checked = false);
+            document.getElementById('selectAll').checked = false;
+            updateBulkButtons();
+        } else {
+            alert('Error: ' + data.message);
+        }
+    })
+    .catch(e => {
+        btn.innerHTML = originalText;
+        btn.classList.remove('btn-disabled');
+        alert('System Error.');
+    });
+}
+
+// --- MODAL ---
+const modal = document.getElementById('previewModal');
+const modalFrame = document.getElementById('modalFrame');
+
+function openModal(id) {
+    const source = document.getElementById('source-' + id);
+    if(source) {
+        // Exakter CSS Reset aus generator.php
+        const styleReset = `
+            <style>
+                body { margin: 0; padding: 20px; font-family: Arial, Helvetica, sans-serif; background-color: #ffffff; }
+                p { margin: 0; padding: 0; line-height: 1.4; } 
+                table { border-collapse: collapse; border-spacing: 0; }
+                td { padding: 0; vertical-align: top; }
+                a { text-decoration: none; color: inherit; }
+            </style>
+        `;
+        
+        modalFrame.srcdoc = styleReset + source.value;
+        modal.style.display = 'flex';
+    }
+}
+function closeModal() { modal.style.display = 'none'; modalFrame.srcdoc=''; }
+window.onclick = e => { if(e.target == modal) closeModal(); }
+
+// --- DELETE ALL ---
+function confirmDeleteAll() {
+    if(confirm('Delete ALL signatures displayed in this list?')) document.getElementById('deleteAllForm').submit();
+}
+
+// --- SCROLLING ---
+document.addEventListener('DOMContentLoaded', function() {
+    let page = 1; let loading = false; let more = true;
+    const uid = "<?php echo $target_user_id; ?>";
+    const search = "<?php echo urlencode($search); ?>";
+    const loader = document.getElementById('infiniteLoader');
+    const cont = document.getElementById('signatureListContainer');
+    const sentinel = document.getElementById('sentinel');
+
+    if (cont.querySelector('.empty-state')) { more = false; sentinel.style.display = 'none'; }
+
+    const loadMore = () => {
+        if (loading || !more) return;
+        loading = true; loader.style.display = 'block'; page++;
+        fetch(`all_signatures.php?ajax=1&page=${page}&user_id=${uid}&search=${search}`)
+        .then(r => r.text())
+        .then(html => {
+            loader.style.display = 'none';
+            if (html.trim() === '') { more = false; sentinel.style.display = 'none'; document.getElementById('endOfResults').style.display = 'block'; }
+            else { cont.insertAdjacentHTML('beforeend', html); loading = false; }
+        })
+        .catch(() => { loading = false; loader.style.display = 'none'; });
+    };
+    const obs = new IntersectionObserver((e) => { if (e[0].isIntersecting && more && !loading) loadMore(); }, { rootMargin: '100px' });
+    if (more) obs.observe(sentinel);
+});
+</script>
 </body>
 </html>
