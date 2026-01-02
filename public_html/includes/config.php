@@ -94,7 +94,7 @@ try {
 // 5. DATABASE INITIALIZATION
 // ---------------------------------------------------------------------
 function initDatabase($db) {
-    // Users Table
+    // 1. Users Table
     $db->exec("CREATE TABLE IF NOT EXISTS users (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         username TEXT UNIQUE NOT NULL,
@@ -110,7 +110,7 @@ function initDatabase($db) {
         account_locked_until DATETIME
     )");
     
-    // Signatures Table
+    // 2. Signatures Table
     $db->exec("CREATE TABLE IF NOT EXISTS user_signatures (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         user_id INTEGER NOT NULL,
@@ -123,7 +123,7 @@ function initDatabase($db) {
         FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     )");
     
-    // User Settings Table
+    // 3. User Settings Table
     $db->exec("CREATE TABLE IF NOT EXISTS user_settings (
         user_id INTEGER PRIMARY KEY,
         default_template TEXT DEFAULT 'signature_default.html',
@@ -132,7 +132,7 @@ function initDatabase($db) {
         FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     )");
     
-    // System Settings Table (Global Configuration)
+    // 4. System Settings Table (Global Configuration)
     $db->exec("CREATE TABLE IF NOT EXISTS system_settings (
         setting_key TEXT PRIMARY KEY, 
         setting_value TEXT
@@ -142,7 +142,9 @@ function initDatabase($db) {
     // INSERT OR IGNORE ensures this only runs once on fresh install
     $db->exec("INSERT OR IGNORE INTO system_settings (setting_key, setting_value) VALUES ('default_user_active', '0')");
     
-    // Logs Tables
+    // 5. Logs Tables (Security & Auditing)
+    
+    // A. Login Attempts (for Brute Force Protection)
     $db->exec("CREATE TABLE IF NOT EXISTS login_attempts (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         ip_address TEXT NOT NULL,
@@ -152,6 +154,7 @@ function initDatabase($db) {
         user_agent TEXT
     )");
     
+    // B. Security Events (Admin Actions, Attacks, Rate Limits)
     $db->exec("CREATE TABLE IF NOT EXISTS security_events (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         event_type TEXT NOT NULL,
@@ -161,6 +164,16 @@ function initDatabase($db) {
         details TEXT,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+    )");
+
+    // C. Mail Logs (Proof of Sending / Audit Trail) --> NEW ADDITION
+    $db->exec("CREATE TABLE IF NOT EXISTS mail_logs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        signature_id INTEGER,
+        recipient TEXT,
+        status TEXT, -- 'success' or 'error'
+        message TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )");
 }
 
