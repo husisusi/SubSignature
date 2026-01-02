@@ -106,7 +106,7 @@ foreach ($ids as $sig_id) {
     // Assemble email body
     $subject = "Your New Email Signature";
     $body  = "<h3>Hello " . htmlspecialchars($data['name']) . ",</h3>";
-    $body .= "<p>Your new signature is attached as <strong>signature.html</strong>.</p>";
+    $body .= "<p>Your new signature is attached as <strong>" . htmlspecialchars($data['template']) . "</strong>.</p>";
     $body .= "<p>Please open the attachment in your browser, copy everything (Ctrl+A, Ctrl+C), and paste it into your email signature settings.</p>";
     $body .= "<hr><h4>Preview:</h4>";
     $body .= "<div style='border:1px dashed #ccc; padding:10px;'>" . $finalHtml . "</div>";
@@ -115,7 +115,7 @@ foreach ($ids as $sig_id) {
     $attachments = [
         [
             'content' => $finalHtml,
-            'name'    => 'signature.html'
+            'name'    => $data['template']
         ]
     ];
 
