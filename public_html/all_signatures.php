@@ -192,7 +192,7 @@ if (isset($_GET['success'])) {
     .alert-success { background: #dcfce7; color: #166534; border: 1px solid #bbf7d0; }
     .empty-state { text-align: center; padding: 4rem 1rem; color: #94a3b8; }
 
-    /* MODAL STYLES */
+    /* MODAL STYLES - UPDATED FOR LARGER PREVIEW */
     .modal-overlay { 
         position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
         background: rgba(0,0,0,0.5); z-index: 9999; 
@@ -200,7 +200,9 @@ if (isset($_GET['success'])) {
         backdrop-filter: blur(3px); 
     }
     .modal-box { 
-        background: white; width: 90%; max-width: 700px; 
+        background: white; 
+        width: 95%; /* Wider on small screens */
+        max-width: 1100px; /* Max width increased to 1100px */
         border-radius: 12px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1); 
         overflow: hidden; 
         display: flex; flex-direction: column;
@@ -209,7 +211,13 @@ if (isset($_GET['success'])) {
     @keyframes popIn { from {transform: scale(0.95); opacity: 0;} to {transform: scale(1); opacity: 1;} }
 
     .modal-header { padding: 1rem 1.5rem; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; background: #f8fafc; }
-    .modal-body { padding: 0; height: 350px; background: white; }
+    
+    .modal-body { 
+        padding: 0; 
+        height: 600px; /* Increased height to 600px */
+        background: white; 
+    }
+    
     .modal-iframe { width: 100%; height: 100%; border: none; display: block; }
     .modal-footer { padding: 1rem; text-align: right; border-top: 1px solid #e2e8f0; background: #f8fafc; }
 
