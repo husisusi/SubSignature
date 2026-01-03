@@ -160,9 +160,10 @@ foreach ($ids as $sig_id) {
 
     // Prepare Email Body
     $subject = "Your New Email Signature";
-    $body  = "<h3>Hello " . htmlspecialchars($data['name']) . ",</h3>";
+    $body  = "<p>Hello " . htmlspecialchars($data['name']) . ",</p>";
     $body .= "<p>Your new signature is attached as <strong>" . htmlspecialchars($attachmentName) . "</strong>.</p>";
     $body .= "<p>Please open the attachment in your browser, copy everything (Ctrl+A, Ctrl+C), and paste it into your email signature settings.</p>";
+    $body .= "<p>Best regards,</p>";
     $body .= "<hr><h4>Preview:</h4>";
     $body .= "<div style='border:1px dashed #ccc; padding:10px;'>" . $finalHtml . "</div>";
 
