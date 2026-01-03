@@ -26,7 +26,6 @@ function renderSignatureItem($sig, $target_user_id, $search, $show_owner_name = 
         $encodedHtml = htmlspecialchars($previewHtml, ENT_QUOTES, 'UTF-8');
     }
 
-    // CSRF Token for Links
     $csrf = $_SESSION['csrf_token'];
     ?>
     <div class="signature-item" style="flex-wrap: nowrap; gap: 15px;">
@@ -222,7 +221,7 @@ if (isset($_GET['success'])) {
 
     .filter-bar { background: white; padding: 1rem; border-radius: 8px; border: 1px solid var(--border); margin-bottom: 1.5rem; display: flex; gap: 1rem; flex-wrap: wrap; align-items: center; }
 
-    /* MODERNES DROPDOWN */
+    /* MODERN DROPDOWN */
     .user-select {
         appearance: none; 
         -webkit-appearance: none;
@@ -398,7 +397,7 @@ if (isset($_GET['success'])) {
 
 <script>
 const CSRF_TOKEN = "<?php echo $_SESSION['csrf_token']; ?>";
-let abortController = null; // Globale Variable für Abbruch
+let abortController = null; // Global variable to handle cancellation
 
 // --- BUTTON ENABLE/DISABLE LOGIC ---
 function updateBulkButtons() {
@@ -466,6 +465,9 @@ async function sendBulkEmail() {
     const ids = Array.from(checkboxes).map(cb => cb.value);
     
     if (ids.length === 0) return;
+    
+    // SECURITY: Ask only ONCE at the beginning.
+    // We do NOT ask again when cancelling.
     if (!confirm(`Start sending emails to ${ids.length} users?`)) return;
 
     // 1. UI Reset
@@ -479,15 +481,21 @@ async function sendBulkEmail() {
 
     pModal.style.display = 'flex';
     pBar.style.width = '0%';
+    pBar.style.backgroundColor = '#3b82f6'; // Blue (Reset)
     pText.innerText = `0 of ${ids.length}`;
     pPercent.innerText = '0%';
     pLog.innerHTML = '<div>> Connecting to server...</div>';
     
-    // Buttons status
+    // Button Status
     btnClose.classList.add('btn-disabled'); 
     btnCancel.classList.remove('btn-disabled');
-    btnCancel.innerHTML = '<i class="fas fa-stop-circle"></i> Cancel';
+    
+    // "Panic Button" Styling
+    btnCancel.innerHTML = '<i class="fas fa-stop-circle"></i> STOP IMMEDIATELY';
     btnCancel.disabled = false;
+    btnCancel.style.backgroundColor = '#dc2626';
+    btnCancel.style.color = '#000000';
+    btnCancel.style.fontWeight = 'bold';
 
     // 2. Prepare Data & Abort Controller
     abortController = new AbortController(); 
@@ -498,7 +506,7 @@ async function sendBulkEmail() {
     ids.forEach(id => formData.append('ids[]', id));
 
     try {
-        // 3. Start Fetch mit 'signal'
+        // 3. Start Fetch with 'signal' (Allows aborting)
         const response = await fetch('send_signature.php', {
             method: 'POST',
             body: formData,
@@ -517,7 +525,7 @@ async function sendBulkEmail() {
 
             buffer += decoder.decode(value, { stream: true });
             const lines = buffer.split('\n\n');
-            buffer = lines.pop();
+            buffer = lines.pop(); // Keep last incomplete chunk
 
             for (const line of lines) {
                 if (line.startsWith('data: ')) {
@@ -526,13 +534,13 @@ async function sendBulkEmail() {
                         const data = JSON.parse(jsonStr);
                         
                         if (data.status === 'finished') {
-                            logMessage(`<b>DONE:</b> ${data.summary}`, '#166534'); // Grün-Dunkel
+                            logMessage(`<b>DONE:</b> ${data.summary}`, '#166534'); // Dark Green
                             finishProcess(true);
                         } else if (data.status === 'fatal_error') {
-                            logMessage(`ERROR: ${data.message}`, '#dc2626'); // Rot
+                            logMessage(`ERROR: ${data.message}`, '#dc2626'); // Red
                             finishProcess(false);
                         } else {
-                            // Normaler Log Eintrag
+                            // Standard Log Entry
                             const color = (data.status === 'error') ? '#dc2626' : '#334155';
                             logMessage(data.message, color);
 
@@ -550,8 +558,10 @@ async function sendBulkEmail() {
 
     } catch (e) {
         if (e.name === 'AbortError') {
-            logMessage('🛑 Process cancelled by user.', '#dc2626');
-            pLog.innerHTML += '<div>> Server has been instructed to stop.</div>';
+            // EXECUTES ON CANCELLATION
+            logMessage('🛑 <b>ABORTED BY USER!</b> Stopping immediately...', '#dc2626');
+            pBar.style.backgroundColor = '#ef4444'; // Bar turns red
+            pLog.innerHTML += '<div>> Connection closed. Server will stop processing.</div>';
         } else {
             logMessage(`System Error: ${e.message}`, '#dc2626');
         }
@@ -559,15 +569,15 @@ async function sendBulkEmail() {
     }
 }
 
+// THE NEW "PANIC BUTTON" FUNCTION
 function cancelBulkEmail() {
     if (abortController) {
-        if(confirm("Are you sure you want to stop sending? Emails already sent cannot be recalled.")) {
-            abortController.abort(); // Triggert AbortError
-            
-            const btnCancel = document.getElementById('btnCancelProgress');
-            btnCancel.innerHTML = 'Stopping...';
-            btnCancel.classList.add('btn-disabled');
-        }
+        // NO CONFIRMATION DIALOG! ABORT INSTANTLY.
+        abortController.abort(); 
+        
+        const btnCancel = document.getElementById('btnCancelProgress');
+        btnCancel.innerHTML = 'STOPPED';
+        btnCancel.classList.add('btn-disabled');
     }
 }
 

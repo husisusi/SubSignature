@@ -7,7 +7,7 @@ require_once 'includes/MailHelper.php';
 // 1. SECURITY CHECKS
 requireAdmin();
 
-// WICHTIG: Output Buffering komplett deaktivieren für Live-Streaming
+// Disable buffering to ensure real-time streaming to the browser
 if (function_exists('apache_setenv')) {
     @apache_setenv('no-gzip', 1);
 }
@@ -17,181 +17,200 @@ while (ob_get_level() > 0) {
     ob_end_clean();
 }
 
-// Header für Server-Sent Events (SSE) setzen
+// Set Headers for Server-Sent Events (SSE) behavior
 header('Content-Type: text/event-stream');
 header('Cache-Control: no-cache');
 header('Connection: keep-alive');
-header('X-Accel-Buffering: no'); // Speziell für Nginx
 
-// WICHTIG: Erlaubt dem Skript zu erkennen, ob der User abgebrochen hat
-ignore_user_abort(false);
-
-// Helper Funktion für JSON-Datenstrom
-function sendMsg($id, $msg, $progress = null, $status = 'processing') {
-    echo "data: " . json_encode([
-        'id' => $id, 
-        'message' => $msg, 
-        'progress' => $progress,
-        'status' => $status
-    ]) . "\n\n";
-    flush(); // Zwingt PHP, die Daten sofort zu senden
-}
-
-// Nur POST erlaubt (sicherer für Aktionen)
+// 2. INPUT VALIDATION
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-    sendMsg(0, 'Invalid request method', null, 'fatal_error');
+    sendStreamResponse('fatal_error', 'Invalid request method.');
     exit;
 }
 
-// CSRF Schutz
+// CSRF Protection
 if (!isset($_POST['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $_POST['csrf_token'])) {
-    sendMsg(0, 'Invalid CSRF Token', null, 'fatal_error');
+    sendStreamResponse('fatal_error', 'Invalid CSRF Token.');
     exit;
 }
 
-// IDs validieren
+// Validate IDs
 $ids = $_POST['ids'] ?? [];
 if (empty($ids) || !is_array($ids)) {
-    sendMsg(0, 'No items selected', null, 'fatal_error');
+    sendStreamResponse('fatal_error', 'No items selected.');
     exit;
 }
 
-// 2. PERFORMANCE & DB SETUP
-set_time_limit(300); // 5 Minuten Limit
+// 3. PERFORMANCE SETUP
+// Increase time limit for bulk sending (5 minutes)
+set_time_limit(300);
 
-// Log-Tabelle sicherstellen
-$db->exec("CREATE TABLE IF NOT EXISTS mail_logs (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    signature_id INTEGER,
-    recipient TEXT,
-    status TEXT,
-    message TEXT,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-)");
+// Initialize statistics
+$total = count($ids);
+$successCount = 0;
+$failCount = 0;
+$processed = 0;
 
-// Helper: Template laden
+/**
+ * Helper: Send JSON chunk to browser
+ */
+function sendStreamResponse($status, $message, $progress = null) {
+    $data = [
+        'status' => $status,
+        'message' => $message,
+        'progress' => $progress
+    ];
+    echo "data: " . json_encode($data) . "\n\n";
+    flush(); // Force output to browser immediately
+}
+
+/**
+ * Helper: Secure Template Loading
+ */
 function getSecureTemplateContent($templateName) {
     $cleanName = basename($templateName);
-    if (pathinfo($cleanName, PATHINFO_EXTENSION) !== 'html') return '';
+    if (pathinfo($cleanName, PATHINFO_EXTENSION) !== 'html') {
+        return '';
+    }
     $path = __DIR__ . '/templates/' . $cleanName;
     return file_exists($path) ? file_get_contents($path) : '';
 }
 
-// Helper: Sicherer Dateiname für Anhang
+/**
+ * Helper: Create Safe Filename for Attachment
+ * Example: "John Doe" + "template.html" -> "John_Doe_template.html"
+ */
 function createSafeFilename($userName, $templateName) {
     $safeName = str_replace(' ', '_', $userName);
     $safeName = preg_replace('/[^a-zA-Z0-9_\-]/', '', $safeName);
     return $safeName . '_' . $templateName;
 }
 
-$total = count($ids);
-$current = 0;
-$successCount = 0;
-$failCount = 0;
-
-// Start-Signal
-sendMsg(0, 'Starting process...', ['current' => 0, 'total' => $total], 'start');
-
+// 4. PROCESSING LOOP
 foreach ($ids as $sig_id) {
-    // --- SICHERHEITS-ABBRUCH ---
-    // Prüft vor jeder Mail, ob der User die Verbindung getrennt hat (Cancel Button)
+    
+    // --- CRITICAL SECURITY: PANIC BUTTON CHECK ---
+    // If the user clicked "Stop" in the browser, the connection is dropped.
+    // We detect this and kill the script immediately.
     if (connection_aborted()) {
-        // Optional: Loggen, dass abgebrochen wurde
-        error_log("Mass mail sending aborted by admin (User ID: " . $_SESSION['user_id'] . ")");
-        exit; // Skript stirbt hier sofort
+        // Optional: Log this event if needed
+        // error_log("Bulk send aborted by user.");
+        exit; // Hard stop
     }
-    // ---------------------------
-
-    $current++;
+    
+    $processed++;
     $sig_id = (int)$sig_id;
 
-    // 3. DATEN LADEN
+    // Fetch Data
     $stmt = $db->prepare("SELECT name, role, email, phone, template FROM user_signatures WHERE id = ?");
     $stmt->bindValue(1, $sig_id, SQLITE3_INTEGER);
     $res = $stmt->execute();
     $data = $res->fetchArray(SQLITE3_ASSOC);
 
+    // Progress State
+    $progData = ['current' => $processed, 'total' => $total];
+
     if (!$data) {
         $failCount++;
-        sendMsg($sig_id, "ID $sig_id not found", ['current' => $current, 'total' => $total], 'error');
+        sendStreamResponse('error', "ID $sig_id: Signature not found.", $progData);
         continue;
     }
 
     $recipient = $data['email'];
 
-    // Validierung
+    // Validate Email
     if (empty($recipient) || !filter_var($recipient, FILTER_VALIDATE_EMAIL)) {
         $failCount++;
-        $log = $db->prepare("INSERT INTO mail_logs (signature_id, recipient, status, message) VALUES (?, ?, 'error', ?)");
-        $log->bindValue(1, $sig_id, SQLITE3_INTEGER);
-        $log->bindValue(2, $recipient, SQLITE3_TEXT);
-        $log->bindValue(3, 'Invalid Email', SQLITE3_TEXT);
-        $log->execute();
-        sendMsg($sig_id, "Invalid Email: $recipient", ['current' => $current, 'total' => $total], 'error');
+        $msg = "ID $sig_id: Invalid Email ($recipient)";
+        
+        // Log Error to DB
+        $db->exec("INSERT INTO mail_logs (signature_id, recipient, status, message) VALUES ($sig_id, '$recipient', 'error', '$msg')");
+        
+        sendStreamResponse('error', $msg, $progData);
         continue;
     }
 
-    // Template verarbeiten
+    // Load Template
     $rawHtml = getSecureTemplateContent($data['template']);
     if (empty($rawHtml)) {
         $failCount++;
-        sendMsg($sig_id, "Template missing for $recipient", ['current' => $current, 'total' => $total], 'error');
+        $msg = "ID $sig_id: Template missing ($data[template])";
+        
+        // Log Error to DB
+        $db->exec("INSERT INTO mail_logs (signature_id, recipient, status, message) VALUES ($sig_id, '$recipient', 'error', '$msg')");
+        
+        sendStreamResponse('error', $msg, $progData);
         continue;
     }
 
+    // Replace Placeholders
     $finalHtml = str_replace(
         ['{{NAME}}', '{{ROLE}}', '{{EMAIL}}', '{{PHONE}}'],
-        [htmlspecialchars($data['name']), htmlspecialchars($data['role']), htmlspecialchars($data['email']), htmlspecialchars($data['phone'])],
+        [
+            htmlspecialchars($data['name']), 
+            htmlspecialchars($data['role']), 
+            htmlspecialchars($data['email']), 
+            htmlspecialchars($data['phone'])
+        ],
         $rawHtml
     );
 
+    // Prepare Dynamic Attachment Name
     $attachmentName = createSafeFilename($data['name'], $data['template']);
-    
-    // E-Mail Body
+
+    // Prepare Email Body
     $subject = "Your New Email Signature";
     $body  = "<h3>Hello " . htmlspecialchars($data['name']) . ",</h3>";
     $body .= "<p>Your new signature is attached as <strong>" . htmlspecialchars($attachmentName) . "</strong>.</p>";
     $body .= "<p>Please open the attachment in your browser, copy everything (Ctrl+A, Ctrl+C), and paste it into your email signature settings.</p>";
-    $body .= "<hr><h4>Preview:</h4><div style='border:1px dashed #ccc; padding:10px;'>" . $finalHtml . "</div>";
+    $body .= "<hr><h4>Preview:</h4>";
+    $body .= "<div style='border:1px dashed #ccc; padding:10px;'>" . $finalHtml . "</div>";
 
-    $attachments = [[ 'content' => $finalHtml, 'name' => $attachmentName ]];
+    $attachments = [
+        [
+            'content' => $finalHtml,
+            'name'    => $attachmentName
+        ]
+    ];
 
-    // 4. SENDEN
+    // SEND MAIL
     $sendResult = MailHelper::send($recipient, $subject, $body, '', false, $attachments);
-    
-    // DB Log
+
+    // LOG TO DATABASE
     $status = $sendResult['success'] ? 'success' : 'error';
-    $log = $db->prepare("INSERT INTO mail_logs (signature_id, recipient, status, message) VALUES (?, ?, ?, ?)");
-    $log->bindValue(1, $sig_id, SQLITE3_INTEGER);
-    $log->bindValue(2, $recipient, SQLITE3_TEXT);
-    $log->bindValue(3, $status, SQLITE3_TEXT);
-    $log->bindValue(4, $sendResult['message'], SQLITE3_TEXT);
-    $log->execute();
+    $logMsg = $db->escapeString($sendResult['message']);
+    
+    $logSql = "INSERT INTO mail_logs (signature_id, recipient, status, message) VALUES ($sig_id, '$recipient', '$status', '$logMsg')";
+    $db->exec($logSql);
 
     if ($sendResult['success']) {
         $successCount++;
-        sendMsg($sig_id, "Sent to $recipient", ['current' => $current, 'total' => $total], 'success');
+        sendStreamResponse('success', "Sent to: $recipient", $progData);
     } else {
         $failCount++;
-        sendMsg($sig_id, "Failed $recipient: " . $sendResult['message'], ['current' => $current, 'total' => $total], 'error');
+        sendStreamResponse('error', "Failed: $recipient (" . $sendResult['message'] . ")", $progData);
     }
 
-    // THROTTLING (Spam-Schutz)
-    usleep(500000); // 0.5 Sekunden Pause pro Mail
-    if ($current % 10 === 0) {
-        sleep(2); // Extra Pause alle 10 Mails
+    // THROTTLING (Anti-Spam)
+    // 0.5s pause per mail
+    usleep(500000); 
+    // Every 10 mails, pause 2s
+    if ($successCount > 0 && $successCount % 10 === 0) {
+        sleep(2);
     }
 }
 
-// 5. CLEANUP
+// 5. CLEANUP & FINISH
 if (method_exists('MailHelper', 'closeConnection')) {
     MailHelper::closeConnection();
 }
 
-// Abschluss-Nachricht
-echo "data: " . json_encode([
+$summary = "Finished! Success: $successCount, Failed: $failCount";
+$finalData = [
     'status' => 'finished',
-    'summary' => "Completed. Success: $successCount, Failed: $failCount"
-]) . "\n\n";
+    'summary' => $summary,
+    'progress' => ['current' => $total, 'total' => $total]
+];
+echo "data: " . json_encode($finalData) . "\n\n";
 flush();
 ?>
