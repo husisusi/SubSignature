@@ -8,7 +8,7 @@ requireLogin();
 // 1. SECURITY & BACKEND LOGIC
 // ---------------------------------------------------------------------
 
-// Generate CSRF Token if not exists
+// Generate CSRF Token if not exists (Prevention against Cross-Site Request Forgery)
 if (empty($_SESSION['csrf_token'])) {
     $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
 }
@@ -16,13 +16,13 @@ if (empty($_SESSION['csrf_token'])) {
 $user_id = $_SESSION['user_id'];
 $message = '';
 
-// Load form data from session (if available)
+// Load form data from session (if available) to repopulate fields on reload
 $formData = $_SESSION['form_data'] ?? [];
 
 // ---------------------------------------------------------------------
-// FIX: DEFAULT TEMPLATE LOGIC
+// DEFAULT TEMPLATE LOGIC
 // ---------------------------------------------------------------------
-// 1. Determine System Default (set by Admin)
+// 1. Determine System Default (set by Admin via file)
 $configFile = __DIR__ . '/templates/default_config.txt';
 $systemDefault = file_exists($configFile) ? trim(file_get_contents($configFile)) : 'signature_default.html';
 
@@ -34,25 +34,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 } else {
     $defaultTemplate = $systemDefault;
     
-    // Optional: Reset session template to avoid confusion later
+    // Reset session template to avoid confusion later
     if (isset($_SESSION['form_data'])) {
         $_SESSION['form_data']['template'] = $systemDefault;
     }
 }
 
-// Load other default values
+// Load other default user values
 $defaultName = $formData['name'] ?? $_SESSION['full_name'] ?? '';
 $defaultEmail = $formData['email'] ?? $_SESSION['email'] ?? '';
 $defaultRole = $formData['role'] ?? '';
 $defaultPhone = $formData['phone'] ?? '';
 
-// Load Templates for JavaScript (Live Preview)
+// Load HTML Templates for JavaScript (Live Preview functionality)
 $templatesJS = [];
 $templatesDir = __DIR__ . '/templates';
 $template_files_glob = glob($templatesDir . '/*.html');
 if ($template_files_glob) {
     foreach ($template_files_glob as $file) {
         $basename = basename($file);
+        // Security Note: We trust these local files. Do not allow user upload of templates here without sanitization.
         $templatesJS[$basename] = file_get_contents($file);
     }
 }
@@ -66,16 +67,17 @@ if ($page < 1) $page = 1;
 $limit = 25; 
 $offset = ($page - 1) * $limit;
 
-// Prepare SQL Query
+// Prepare SQL Query with Secure Parameters
 $whereSQL = "WHERE user_id = :uid";
 $params = [':uid' => $user_id];
 
 if (!empty($search)) {
+    // Search logic: matches name, email, or role
     $whereSQL .= " AND (name LIKE :search OR email LIKE :search OR role LIKE :search)";
     $params[':search'] = '%' . $search . '%';
 }
 
-// Count total records
+// Count total records for pagination
 $countSql = "SELECT COUNT(*) as total FROM user_signatures $whereSQL";
 $stmt = $db->prepare($countSql);
 foreach ($params as $key => $val) {
@@ -85,7 +87,7 @@ $totalResult = $stmt->execute();
 $totalSignatures = $totalResult->fetchArray(SQLITE3_ASSOC)['total'];
 $totalPages = ceil($totalSignatures / $limit);
 
-// Fetch records
+// Fetch records securely
 $dataSql = "SELECT * FROM user_signatures $whereSQL ORDER BY created_at DESC LIMIT :limit OFFSET :offset";
 $stmt = $db->prepare($dataSql);
 foreach ($params as $key => $val) {
@@ -104,13 +106,14 @@ while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
 // HANDLE FORM ACTIONS (SAVE / DELETE)
 // ---------------------------------------------------------------------
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    // Security: Validate CSRF Token
+    // Security: Validate CSRF Token to prevent unauthorized form submissions
     if (!isset($_POST['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $_POST['csrf_token'])) {
         die("Security Error: Invalid CSRF Token");
     }
 
     // Action: Save Signature
     if (isset($_POST['action']) && $_POST['action'] === 'save') {
+        // Sanitize inputs
         $name = trim($_POST['name'] ?? '');
         $role = trim($_POST['role'] ?? '');
         $email = trim($_POST['email'] ?? '');
@@ -148,7 +151,7 @@ if (isset($_GET['success'])) {
     else $message = "Signature saved successfully!";
 }
 
-// Load Templates List (PHP Dropdown)
+// Load Templates List for PHP Dropdown
 $templates = [];
 $template_files = glob('templates/*.html');
 if ($template_files) {
@@ -186,6 +189,26 @@ if ($template_files) {
         .form-column input, .form-column select { width: 100%; padding: 0.75rem; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.95rem; background: #f8fafc; }
         .form-column input:focus { background: white; border-color: var(--primary); outline: none; }
 
+        /* --- BUTTON FIX (Flexbox for equal sizing) --- */
+        .form-actions {
+            display: flex;
+            flex-direction: column; /* Buttons vertically stacked */
+            gap: 12px; /* Consistent spacing */
+            margin-top: 1.5rem;
+        }
+        
+        .form-actions .btn {
+            width: 100%;
+            box-sizing: border-box; /* IMPORTANT: Ensures padding/borders don't affect width calculations */
+            display: inline-flex;
+            justify-content: center;
+            align-items: center;
+            gap: 8px; /* Space between icon and text */
+            height: 45px; /* Forced equal height */
+            margin: 0 !important; /* Remove any override margins */
+            cursor: pointer;
+        }
+
         /* RIGHT: Preview (Sticky) */
         .preview-column { position: sticky; top: 20px; }
         .live-preview-box {
@@ -216,14 +239,25 @@ if ($template_files) {
             display: none; justify-content: center; align-items: center;
             backdrop-filter: blur(3px);
         }
+        /* --- CHANGED: Made modal significantly larger --- */
         .modal-box {
-            background: white; width: 90%; max-width: 700px;
+            background: white; 
+            width: 95%; /* Use almost full width on small screens */
+            max-width: 1100px; /* Max width increased for desktop */
             border-radius: 12px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1);
             overflow: hidden; animation: popIn 0.2s ease-out;
         }
         @keyframes popIn { from {transform: scale(0.95); opacity: 0;} to {transform: scale(1); opacity: 1;} }
+        
         .modal-header { padding: 1rem 1.5rem; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; background: #f8fafc; }
-        .modal-body { padding: 0; height: 300px; background: white; }
+        
+        /* --- CHANGED: Increased height for better visibility --- */
+        .modal-body { 
+            padding: 0; 
+            height: 600px; /* Height increased */
+            background: white; 
+        }
+        
         .modal-iframe { width: 100%; height: 100%; border: none; }
         .modal-footer { padding: 1rem; text-align: right; border-top: 1px solid #e2e8f0; background: #f8fafc; }
         .close-modal-btn { background: none; border: none; font-size: 1.5rem; cursor: pointer; color: #64748b; }
@@ -308,11 +342,16 @@ if ($template_files) {
                                    value="<?php echo htmlspecialchars($defaultPhone); ?>" placeholder="+49 123 456789">
                         </div>
 
-                        <div class="form-actions" style="margin-top: 1.5rem;">
-                            <button type="submit" name="action" value="save" class="btn btn-primary" style="width:100%">
+                        <div class="form-actions">
+                            <button type="submit" name="action" value="save" class="btn btn-primary">
                                 <i class="fas fa-save"></i> Save Signature
                             </button>
+
+                            <button type="button" id="btn-copy" class="btn btn-secondary">
+                                <i class="fas fa-code"></i> Copy HTML Code
+                            </button>
                         </div>
+                        
                     </div>
 
                     <div class="preview-column">
@@ -443,7 +482,9 @@ if ($template_files) {
     </form>
 
     <script>
+        // ---------------------------------------------------------
         // 1. LIVE PREVIEW LOGIC
+        // ---------------------------------------------------------
         // Inject Templates from PHP
         const rawTemplates = <?php echo json_encode($templatesJS); ?>;
 
@@ -460,18 +501,20 @@ if ($template_files) {
             const selectedFile = inputs.template.value;
             let html = rawTemplates[selectedFile] || '<p style="color:#cbd5e1; text-align:center; padding:20px;">Template not found</p>';
 
-            // Replace Placeholders
+            // Replace Placeholders with current input values
             html = html.replace(/{{NAME}}/g, inputs.name.value || 'Your Name');
             html = html.replace(/{{ROLE}}/g, inputs.role.value || 'Job Title');
             html = html.replace(/{{EMAIL}}/g, inputs.email.value || 'email@example.com');
             html = html.replace(/{{PHONE}}/g, inputs.phone.value || '+1 234 567 890');
+            
+            // Clean phone for tel: links (numbers only)
             const cleanPhone = inputs.phone.value.replace(/[^0-9+]/g, '');
             html = html.replace(/{{PHONE_CLEAN}}/g, cleanPhone);
 
             renderArea.innerHTML = html;
         }
 
-        // Add Listeners
+        // Add Event Listeners for Live Updates
         Object.values(inputs).forEach(input => {
             if(input) {
                 input.addEventListener('input', renderSignature);
@@ -479,16 +522,15 @@ if ($template_files) {
             }
         });
 
-        // 2. STORAGE LOGIC
-        // Saves current input to session storage for convenience
+        // ---------------------------------------------------------
+        // 2. STORAGE LOGIC (Session Storage)
+        // ---------------------------------------------------------
         function saveToStorage() {
             const data = {
                 name: inputs.name.value,
                 role: inputs.role.value,
                 email: inputs.email.value,
                 phone: inputs.phone.value,
-                // We also save the template, but we will not load it automatically on start 
-                // to respect the admin default.
                 template: inputs.template.value
             };
             sessionStorage.setItem('sig_form_data', JSON.stringify(data));
@@ -496,7 +538,7 @@ if ($template_files) {
 
         function loadFromStorage() {
             const roleInput = document.getElementById('inp_role');
-            // Only load if the form seems empty
+            // Only load if the form seems empty (prevent overwriting admin defaults if needed)
             if (roleInput && roleInput.value === '' && sessionStorage.getItem('sig_form_data')) {
                 try {
                     const data = JSON.parse(sessionStorage.getItem('sig_form_data'));
@@ -504,9 +546,7 @@ if ($template_files) {
                     if(data.role) inputs.role.value = data.role;
                     if(data.email) inputs.email.value = data.email;
                     if(data.phone) inputs.phone.value = data.phone;
-                    
-                    // FIX: Do not load template from browser storage to ensure Admin Default applies on reload
-                    // if(data.template) inputs.template.value = data.template;
+                    // Note: We intentionally skip loading the template here to prioritize the PHP-defined default
                 } catch(e) {}
             }
             // Trigger initial render
@@ -514,17 +554,18 @@ if ($template_files) {
         }
 
         document.addEventListener('DOMContentLoaded', loadFromStorage);
-        // Save whenever inputs change
         document.getElementById('signatureForm').addEventListener('input', saveToStorage);
 
-        // 3. MODAL LOGIC (FIXED SPACING)
+        // ---------------------------------------------------------
+        // 3. MODAL LOGIC (Preview Saved)
+        // ---------------------------------------------------------
         const modal = document.getElementById('previewModal');
         const modalFrame = document.getElementById('modalFrame');
 
         function openModal(id) {
             const source = document.getElementById('source-' + id);
             if (source) {
-                // CSS Reset injected directly into iframe source to fix large spacing issues
+                // Inject CSS Reset into iframe to ensure preview looks correct
                 const styleReset = `
                     <style>
                         body { margin: 0; padding: 20px; font-family: Arial, Helvetica, sans-serif; background-color: #ffffff; }
@@ -551,9 +592,62 @@ if ($template_files) {
             }
         }
 
+        // ---------------------------------------------------------
         // 4. HELPERS
+        // ---------------------------------------------------------
         function confirmDeleteAll() { if(confirm('Delete ALL signatures?')) document.getElementById('deleteAllForm').submit(); }
         function downloadAllSignatures() { window.location.href = 'download_all.php'; }
+
+        // ---------------------------------------------------------
+        // 5. COPY HTML SOURCE CODE FUNCTIONALITY
+        // ---------------------------------------------------------
+        const btnCopy = document.getElementById('btn-copy');
+        
+        if (btnCopy) {
+            btnCopy.addEventListener('click', function() {
+                const node = document.getElementById('live-render-area');
+                
+                // Security Check: Ensure element exists
+                if (!node) return;
+
+                // Grab the raw HTML string (inner code)
+                const htmlCode = node.innerHTML.trim();
+
+                // Robust fallback method for copying text (works on HTTP and HTTPS)
+                try {
+                    // Create a temporary textarea element
+                    const tempTextArea = document.createElement("textarea");
+                    tempTextArea.value = htmlCode;
+                    
+                    // Make it invisible but part of the DOM
+                    tempTextArea.style.position = "fixed";
+                    tempTextArea.style.left = "-9999px";
+                    tempTextArea.style.top = "0";
+                    document.body.appendChild(tempTextArea);
+                    
+                    // Select and copy
+                    tempTextArea.focus();
+                    tempTextArea.select();
+                    const successful = document.execCommand('copy');
+                    
+                    // Cleanup
+                    document.body.removeChild(tempTextArea);
+
+                    // User Feedback
+                    if (successful) {
+                        const originalText = btnCopy.innerHTML;
+                        btnCopy.innerHTML = '<i class="fas fa-check"></i> HTML Copied!';
+                        setTimeout(() => btnCopy.innerHTML = originalText, 2000);
+                    } else {
+                        alert("Could not copy HTML code. Please copy manually.");
+                    }
+
+                } catch (err) {
+                    console.error('Copy failed:', err);
+                    alert("Error copying code.");
+                }
+            });
+        }
     </script>
 </body>
 </html>
