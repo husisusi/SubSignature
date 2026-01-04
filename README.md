@@ -31,6 +31,7 @@ The primary focus of this project is privacy and security. The application runs 
 ## Features
 * **Create professional signatures** Create consistent, professional email signatures that reflect your brand identity and stay up to date automatically.
 * **Multiple design templates** Choose from a variety of ready-made design templates that can be easily customized for different teams or use cases.
+* **Signature Rollout:** Admins can distribute signatures directly to users via email.
 * **Secure user management** Manage user accounts centrally with secure role-based access control and high data protection standards.
 * **Account activation system** Activate user accounts through a secure activation process.
 * **Self-Hosted & Private:** Runs on your own server. No data is sent to third parties.
