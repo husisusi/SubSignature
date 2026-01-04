@@ -1,12 +1,36 @@
-# Block direct access to templates directory
-Order Deny,Allow
-Deny from all
+# ----------------------------------------------------------------------
+# SECURITY HARDENING FOR TEMPLATES DIRECTORY
+# ----------------------------------------------------------------------
 
-# Allow access to specific files (if needed via PHP)
-<FilesMatch "\.(html|css|js)$">
-    Order Allow,Deny
-    Deny from all
-</FilesMatch>
-
-# Disable directory listing
+# 1. Disable directory listing
+# Prevents visitors from seeing a list of files if they access the folder directly.
 Options -Indexes
+
+# 2. Block all external access
+# Works for modern Apache 2.4 servers and older Apache 2.2 versions.
+# This prevents users from opening any file (e.g. .html) directly in the browser.
+<IfModule mod_authz_core.c>
+    Require all denied
+</IfModule>
+<IfModule !mod_authz_core.c>
+    Order Deny,Allow
+    Deny from all
+</IfModule>
+
+# 3. DEFENSE IN DEPTH: Disable PHP execution
+# Even if the access block above fails (e.g. due to server misconfiguration),
+# the server is instructed NOT to execute any PHP scripts in this folder.
+# This prevents Remote Code Execution (RCE) if a malicious .php file is uploaded here.
+
+<IfModule mod_php.c>
+    php_flag engine off
+</IfModule>
+<IfModule mod_php5.c>
+    php_flag engine off
+</IfModule>
+<IfModule mod_php7.c>
+    php_flag engine off
+</IfModule>
+<IfModule mod_php8.c>
+    php_flag engine off
+</IfModule>
