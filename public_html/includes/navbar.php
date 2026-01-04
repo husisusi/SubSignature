@@ -20,7 +20,7 @@ $current_page = basename($_SERVER['PHP_SELF']);
     </a>
     
     <a href="all_signatures.php" class="nav-link <?php echo ($current_page == 'all_signatures.php') ? 'active' : ''; ?>">
-        <i class="fas fa-signature"></i> <span>All Signatures</span>
+        <i class="fas fa-signature"></i> <span>My Signatures</span>
     </a>
 
     <span class="nav-label" style="font-weight: 800; color: #334155;">Data</span>
