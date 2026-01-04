@@ -39,7 +39,7 @@ The primary focus of this project is privacy and security. The application runs 
 * **Role-Based Access:**
     * **Admins:** Can create templates, manage users, view system logs, and import/export data.
     * **Users:** Can log in and generate their own signatures based on approved templates.
-* **Visual Editor:** Integrated WYSIWYG editor for designing HTML signatures.
+* **Visual Editor:** Integrated WYSIWYG and Ace editor for designing HTML signatures.
 * **Security:** Includes brute-force protection, rate limiting, and comprehensive audit logs.
 * **Data Management:** Support for CSV import and export of user signatures.
 
