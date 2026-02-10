@@ -58,11 +58,10 @@ This project makes use of excellent open-source libraries and resources:
 * **Ace Editor:** Standalone code editor written in JavaScript.
 * **Free Icons:** User interface icons are provided by FontAwesome (Free tier), hosted locally to ensure privacy compliance.
 
-## Contributing
-
-This project is a work in progress, and I am always looking for ways to improve it.
-
-If you have ideas for new features, find a security issue, or want to improve the code, your help is welcome. Please feel free to open an issue or submit a pull request.
-
 ## ToDo
 LDAP integration.
+
+## Contributing
+Contributions are welcome! If you find a bug, please open an issue.
+If you find this project useful, please give it a **star** ⭐ to help others find it.
+
