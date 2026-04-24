@@ -1,0 +1,26 @@
+Options -Indexes
+
+SetHandler default-handler
+<IfModule mod_php.c>
+    php_flag engine off
+</IfModule>
+<IfModule mod_php7.c>
+    php_flag engine off
+</IfModule>
+<IfModule mod_php8.c>
+    php_flag engine off
+</IfModule>
+
+Require all denied
+
+<FilesMatch "\.(?i:jpg|jpeg|png|gif|webp|svg)$">
+    Require all granted
+</FilesMatch>
+
+<IfModule !mod_authz_core.c>
+    Order Deny,Allow
+    Deny from all
+    <FilesMatch "\.(?i:jpg|jpeg|png|gif|webp|svg)$">
+        Allow from all
+    </FilesMatch>
+</IfModule>

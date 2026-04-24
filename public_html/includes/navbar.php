@@ -44,6 +44,14 @@ $current_page = basename($_SERVER['PHP_SELF']);
     <a href="admin_templates.php" class="nav-link <?php echo ($current_page == 'admin_templates.php') ? 'active' : ''; ?>">
         <i class="fas fa-layer-group"></i> <span>Manage Templates</span>
     </a>
+
+    <?php endif; ?>
+
+    <?php if(file_exists('admin_images.php')): ?>
+    <a href="admin_images.php" class="nav-link <?php echo ($current_page == 'admin_images.php') ? 'active' : ''; ?>">
+        <i class="fas fa-images"></i> <span>Manage Images</span>
+    </a>
+
     <?php endif; ?>
     
     <?php if(file_exists('backup_templates.php')): ?>
