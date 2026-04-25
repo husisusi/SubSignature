@@ -1,35 +1,48 @@
-<!DOCTYPE html>
-<html>
-<head>
+<p>
+
+
     <meta charset="UTF-8">
     <title>New Signature</title>
-</head>
-<body style="font-family: Arial, sans-serif; color: #333; line-height: 1.6;">
 
-    <p>Hello <strong>{{NAME}}</strong>,</p>
+
+
+    </p><p>Hello <strong>{{NAME}}</strong>,</p>
 
     <p>Your new email signature has been generated and is attached to this email as <strong>{{ATTACHMENT_NAME}}</strong>.</p>
 
     <div style="background-color: #f8f9fa; border-left: 4px solid #0369a1; padding: 15px; margin: 20px 0;">
-        <strong>Instructions:</strong>
-        <ol style="margin-top: 10px; margin-bottom: 0; padding-left: 20px;">
-            <li>Open the attached file ({{ATTACHMENT_NAME}}) in your browser.</li>
+        <strong style="font-size: 16px;">Instructions:</strong><br><br>
+        
+        <strong>Option 1 (Recommended):</strong>
+        <ol style="margin-top: 10px; margin-bottom: 20px; padding-left: 25px;">
+            <li>Scroll to <strong>"Your Signature"</strong> at the end of this email.</li>
+            <li>Select the signature, including all images.</li>
+            <li>Press <code>Ctrl + C</code> to copy.</li>
+            <li>Paste it (<code>Ctrl + V</code>) into your email client's signature settings.</li>
+        </ol>
+        
+        <strong>Option 2:</strong>
+        <ol style="margin-top: 10px; margin-bottom: 0; padding-left: 25px;">
+            <li>Open the attached file (<strong>{{ATTACHMENT_NAME}}</strong>) in your web browser.</li>
             <li>Press <code>Ctrl + A</code> to select everything.</li>
             <li>Press <code>Ctrl + C</code> to copy.</li>
-            <li>Paste it (<code>Ctrl + V</code>) into your Outlook/Email signature settings.</li>
+            <li>Paste it (<code>Ctrl + V</code>) into your email client's signature settings.</li>
         </ol>
     </div>
 
-    <p>Here is a preview of how it looks:</p>
+    <p style="font-weight: bold; font-size: 16px; margin-bottom: 10px;">Your Signature:</p>
     
-    {{PREVIEW}}
+    <hr style="border: 0; border-top: 3px solid #000000; margin: 0 0 15px 0;">
+    
+    <div style="margin-top: 15px; margin-bottom: 15px;">
+        {{PREVIEW}}
+    </div>
 
-    <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;">
+    <hr style="border: 0; border-top: 3px solid #000000; margin: 15px 0 20px 0;">
     
-    <p style="font-size: 12px; color: #999;">
+    <p style="color: #999999; font-size: 12px;">
         This is an automated message from the Signature System.<br>
         Please do not reply to this email.
     </p>
 
-</body>
-</html>
+
