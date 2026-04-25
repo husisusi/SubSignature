@@ -186,11 +186,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         .register-link { margin-top: 20px; font-size: 0.9rem; color: #4a5568; }
         .register-link a { color: #4a6cf7; text-decoration: none; font-weight: 600; }
         .register-link a:hover { text-decoration: underline; }
-        .features { margin-top: 30px; padding-top: 25px; border-top: 2px solid #f1f5f9; text-align: left; }
-        .features h4 { color: #2c3e50; font-size: 1rem; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
-        .feature-list { list-style: none; }
-        .feature-list li { color: #4a5568; font-size: 0.85rem; padding: 6px 0; padding-left: 24px; position: relative; }
-        .feature-list li:before { content: "✓"; color: #10b981; position: absolute; left: 0; font-weight: bold; }
         .failed-attempts {
             margin-top: 10px; font-size: 0.8rem; color: #f44336; background: #ffebee;
             padding: 8px 12px; border-radius: 6px; border-left: 3px solid #f44336; display: none;
@@ -270,16 +265,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             New user? <a href="register.php">Create account</a>
         </div>
         
-        <div class="features">
-            <h4><i class="fas fa-star"></i> Features</h4>
-            <ul class="feature-list">
-                <li>Create professional signatures</li>
-                <li>Multiple design templates</li>
-                <li>Import/Export via CSV</li>
-                <li>Secure user management</li>
-                <li>Account activation system</li>
-            </ul>
-        </div>
     </div>
     
     <script>
