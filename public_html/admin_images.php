@@ -25,6 +25,7 @@ if (!is_dir($upload_dir)) {
 // Allowed configurations
 $allowed_extensions = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
 $allowed_mimes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+$max_file_size = 5 * 1024 * 1024; // SECURITY: Max 5MB file size limit
 
 // ---------------------------------------------------------
 // 1. ACTION: UPLOAD IMAGES
@@ -48,30 +49,43 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['upload_images'])) {
             $filename = $uploaded_files['name'][$i];
             $tmp_name = $uploaded_files['tmp_name'][$i];
             $file_error = $uploaded_files['error'][$i];
+            $file_size = $uploaded_files['size'][$i];
 
             if ($file_error === UPLOAD_ERR_OK) {
                 
-                // 1. Security: Check File Extension
+                // 1. Security: Check if file was actually uploaded via HTTP POST
+                if (!is_uploaded_file($tmp_name)) {
+                    $error_details[] = "$filename: Security Error - invalid upload source.";
+                    continue;
+                }
+
+                // 2. Security: Check File Size
+                if ($file_size > $max_file_size) {
+                    $error_details[] = "$filename: File is too large (Max 5MB).";
+                    continue;
+                }
+
+                // 3. Security: Check File Extension
                 $ext = strtolower(pathinfo($filename, PATHINFO_EXTENSION));
                 if (!in_array($ext, $allowed_extensions)) {
                     $error_details[] = "$filename: Only JPG, PNG, GIF and WEBP are allowed.";
                     continue;
                 }
 
-                // 2. Security: Check real MIME-Type
+                // 4. Security: Check real MIME-Type
                 $mime_type = finfo_file($finfo, $tmp_name);
                 if (!in_array($mime_type, $allowed_mimes)) {
                     $error_details[] = "$filename: Invalid file type (Fake extension detected).";
                     continue;
                 }
 
-                // 3. Security: Is it actually an image? (Prevents image exploits)
+                // 5. Security: Is it actually an image? (Prevents image exploits)
                 if (@getimagesize($tmp_name) === false) {
                     $error_details[] = "$filename: File is not a valid image.";
                     continue;
                 }
 
-                // 4. Security: Sanitize filename (Only a-z, 0-9, - and _)
+                // 6. Security: Sanitize filename (Only a-z, 0-9, - and _)
                 $raw_name = pathinfo($filename, PATHINFO_FILENAME);
                 $safe_name = preg_replace('/[^a-z0-9_-]/', '', strtolower($raw_name));
                 if (empty($safe_name)) {
@@ -179,7 +193,19 @@ if (isset($_GET['error'])) $error = $_GET['error'];
     <link rel="stylesheet" href="css/all.min.css">
     
     <style>
-        .image-preview { width: 50px; height: 50px; object-fit: cover; border-radius: 6px; border: 1px solid #e2e8f0; }
+        .image-preview { 
+            width: 50px; 
+            height: 50px; 
+            object-fit: cover; 
+            border-radius: 6px; 
+            border: 1px solid #e2e8f0; 
+            cursor: zoom-in; 
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+        .image-preview:hover {
+            transform: scale(1.15);
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
         
         /* Modal Styles */
         .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.5); display: none; justify-content: center; align-items: center; z-index: 1000; backdrop-filter: blur(2px); }
@@ -187,6 +213,13 @@ if (isset($_GET['error'])) $error = $_GET['error'];
         .modal-header h3 { margin: 0; color: var(--text-main); font-size: 1.25rem; }
         .modal-close { position: absolute; top: 1rem; right: 1rem; cursor: pointer; color: var(--text-muted); font-size: 1.2rem; }
         
+        /* Lightbox Styles */
+        #lightboxOverlay { background: rgba(0, 0, 0, 0.85); z-index: 2000; flex-direction: column; }
+        #lightboxClose { position: absolute; top: 20px; right: 30px; color: white; font-size: 3rem; cursor: pointer; transition: color 0.2s; }
+        #lightboxClose:hover { color: #cbd5e1; }
+        .lightbox-img { max-width: 90%; max-height: 80vh; border-radius: 8px; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5); object-fit: contain; }
+        .lightbox-caption { color: white; margin-top: 15px; font-family: monospace; font-size: 1.1rem; background: rgba(0,0,0,0.5); padding: 5px 15px; border-radius: 20px;}
+
         /* Upload Area */
         .upload-area { border: 2px dashed #cbd5e1; border-radius: 8px; padding: 2rem; text-align: center; cursor: pointer; transition: all 0.2s; background: #f8fafc; position: relative; margin-top: 1rem; }
         .upload-area:hover { border-color: var(--primary); background: #eff6ff; }
@@ -264,9 +297,11 @@ if (isset($_GET['error'])) $error = $_GET['error'];
                         <tr style="border-bottom: 1px solid #e2e8f0;">
                             
                             <td style="padding: 0.5rem 1rem;">
-                                <a href="img/<?php echo urlencode($img['filename']); ?>" target="_blank">
-                                    <img src="img/<?php echo htmlspecialchars($img['filename']); ?>" class="image-preview" alt="Preview">
-                                </a>
+                                <!-- Enhanced Clickable Preview -->
+                                <img src="img/<?php echo htmlspecialchars($img['filename']); ?>" 
+                                     class="image-preview" 
+                                     alt="Preview"
+                                     onclick="openLightbox('img/<?php echo rawurlencode($img['filename']); ?>', '<?php echo htmlspecialchars($img['filename'], ENT_QUOTES); ?>')">
                             </td>
 
                             <td style="padding: 1rem;">
@@ -281,7 +316,7 @@ if (isset($_GET['error'])) $error = $_GET['error'];
                             
                             <td style="padding: 1rem; text-align: right;">
                                 <div style="display: inline-flex; gap: 0.5rem;">
-                                    <a href="img/<?php echo urlencode($img['filename']); ?>" target="_blank" class="btn btn-sm btn-secondary" title="Preview"><i class="fas fa-eye"></i></a>
+                                    <button onclick="openLightbox('img/<?php echo rawurlencode($img['filename']); ?>', '<?php echo htmlspecialchars($img['filename'], ENT_QUOTES); ?>')" class="btn btn-sm btn-secondary" title="View Full Image"><i class="fas fa-eye"></i></button>
                                     
                                     <a href="admin_images.php?delete=<?php echo urlencode($img['filename']); ?>&token=<?php echo $csrf_token; ?>" class="btn btn-sm btn-danger" onclick="return confirm('Really delete image?')" title="Delete"><i class="fas fa-trash"></i></a>
                                 </div>
@@ -295,13 +330,14 @@ if (isset($_GET['error'])) $error = $_GET['error'];
 
     </main>
 
+    <!-- Upload Modal -->
     <div id="importModal" class="modal-overlay">
         <div class="modal-box">
             <span class="modal-close" onclick="closeImportModal()">&times;</span>
             <div class="modal-header">
                 <h3><i class="fas fa-cloud-upload-alt" style="color:var(--primary);"></i> Upload Images</h3>
                 <p style="color:var(--text-muted); font-size:0.9rem; margin-top:0.5rem;">
-                    Allowed: <code>.jpg, .jpeg, .png, .gif, .webp</code>
+                    Allowed: <code>.jpg, .jpeg, .png, .gif, .webp</code> (Max 5MB)
                 </p>
             </div>
             
@@ -328,12 +364,40 @@ if (isset($_GET['error'])) $error = $_GET['error'];
         </div>
     </div>
 
+    <!-- Lightbox Modal for Image Previews -->
+    <div id="lightboxOverlay" class="modal-overlay" onclick="closeLightbox()">
+        <span id="lightboxClose" onclick="closeLightbox()">&times;</span>
+        <img id="lightboxImage" class="lightbox-img" src="" alt="Full Preview">
+        <div id="lightboxCaption" class="lightbox-caption"></div>
+    </div>
+
     <script>
-    // --- JS: Modal Logic ---
+    // --- JS: Upload Modal Logic ---
     const modal = document.getElementById('importModal');
     function openImportModal() { modal.style.display = 'flex'; }
     function closeImportModal() { modal.style.display = 'none'; }
-    window.onclick = function(event) { if (event.target == modal) closeImportModal(); }
+    
+    // --- JS: Lightbox Logic  ---
+    const lightbox = document.getElementById('lightboxOverlay');
+    const lightboxImg = document.getElementById('lightboxImage');
+    const lightboxCap = document.getElementById('lightboxCaption');
+    
+    function openLightbox(src, filename) {
+        lightboxImg.src = src;
+        lightboxCap.innerText = filename;
+        lightbox.style.display = 'flex';
+    }
+    
+    function closeLightbox() {
+        lightbox.style.display = 'none';
+        lightboxImg.src = ''; // Clear source so it doesn't flash old image next time
+    }
+
+    // Close modals on background click
+    window.onclick = function(event) { 
+        if (event.target == modal) closeImportModal(); 
+        if (event.target == lightbox) closeLightbox();
+    }
 
     // --- JS: File Input Visuals ---
     function showFileCount(input) {
