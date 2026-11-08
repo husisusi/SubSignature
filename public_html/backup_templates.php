@@ -1,78 +1,60 @@
 <?php
+/**
+ * backup_templates.php - ZIP download of all templates (and the default marker).
+ */
 
 require_once 'includes/config.php';
-
-// Security Check: Only Admins allowed
 requireAdmin();
 
 // ---------------------------------------------------------
-// 1. HANDLE POST REQUEST (Generate Download)
+// 1. HANDLE POST REQUEST (generate download)
 // ---------------------------------------------------------
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    requireCsrf();
 
-    // CSRF Check (Security Prio 1)
-    if (!isset($_POST['csrf_token']) || !verifyCSRFToken($_POST['csrf_token'])) {
-        die("Security Error: Invalid CSRF Token.");
-    }
-
-    // Configuration
     ignore_user_abort(true);
-    set_time_limit(300); 
+    set_time_limit(300);
 
-    // Clear Buffers
-    while (ob_get_level()) ob_end_clean();
+    if (!is_dir(TEMPLATES_DIR)) die('Error: Templates directory not found.');
 
-    // Define Paths
-    $base_dir = __DIR__; 
-    $templates_dir = $base_dir . '/templates';
-
-    if (!is_dir($templates_dir)) die("Error: Templates directory not found.");
-
-    // Temp File
-    $zip_path = tempnam(sys_get_temp_dir(), 'tpl_backup_');
-    if ($zip_path === false) die("Error: Could not create temporary file.");
+    $zip_path = tempnam(TMP_DIR, 'tpl_backup_');
+    if ($zip_path === false) die('Error: Could not create temporary file.');
 
     $download_filename = 'subsignature_backup_' . date('Y-m-d_H-i-s') . '.zip';
 
     $zip = new ZipArchive();
-    if ($zip->open($zip_path, ZipArchive::CREATE | ZipArchive::OVERWRITE) !== TRUE) {
-        unlink($zip_path); 
-        die("Error: Could not open ZIP file.");
+    if ($zip->open($zip_path, ZipArchive::CREATE | ZipArchive::OVERWRITE) !== true) {
+        unlink($zip_path);
+        die('Error: Could not open ZIP file.');
     }
 
-    // Add Files Securely
-    $template_files = glob($templates_dir . '/*.html');
-    $count = 0;
-    $real_templates_dir = realpath($templates_dir);
+    // Signature templates, the mail wrapper and the default marker file.
+    $names = listSignatureTemplates();
+    if (is_file(TEMPLATES_DIR . '/email_notification.html')) $names[] = 'email_notification.html';
+    if (is_file(TEMPLATES_DIR . '/default_config.txt')) $names[] = 'default_config.txt';
 
-    if ($template_files) {
-        foreach ($template_files as $file) {
-            $real_file_path = realpath($file);
-            // Security: Directory Traversal Check
-            if ($real_file_path && is_file($real_file_path) && is_readable($real_file_path) && strpos($real_file_path, $real_templates_dir) === 0) {
-                $zip->addFile($real_file_path, basename($real_file_path));
-                $count++;
-            }
+    $count = 0;
+    foreach ($names as $name) {
+        $file = TEMPLATES_DIR . '/' . $name;
+        if (is_file($file) && is_readable($file) && isPathInside($file, TEMPLATES_DIR)) {
+            $zip->addFile(realpath($file), $name);
+            $count++;
         }
     }
-
     $zip->close();
 
-    // Send Download
-    if (file_exists($zip_path) && $count > 0) {
+    if ($count > 0 && is_file($zip_path)) {
+        while (ob_get_level()) ob_end_clean();
+        logSecurityEventToDB($db, 'TEMPLATE_BACKUP', (int)$_SESSION['user_id'], "Files: $count");
         header('Content-Type: application/zip');
         header('Content-Disposition: attachment; filename="' . $download_filename . '"');
         header('Content-Length: ' . filesize($zip_path));
-        header('Pragma: public');
-        header('Cache-Control: must-revalidate');
-        
         readfile($zip_path);
-        unlink($zip_path); // Cleanup
+        unlink($zip_path);
         exit;
-    } else {
-        if (file_exists($zip_path)) unlink($zip_path);
-        die("Error: No templates found to backup.");
     }
+    if (is_file($zip_path)) unlink($zip_path);
+    die('Error: No templates found to backup.');
 }
 
 // ---------------------------------------------------------
@@ -82,8 +64,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $csrf_token = generateCSRFToken();
 
 // Count templates for display
-$templates_dir = __DIR__ . '/templates';
-$count = count(glob($templates_dir . '/*.html'));
+$count = count(listSignatureTemplates());
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -155,7 +136,7 @@ $count = count(glob($templates_dir . '/*.html'));
         <div class="user-profile">
             <div class="avatar"><?php echo strtoupper(substr($_SESSION['username'], 0, 1)); ?></div>
             <div class="user-info">
-                <div><?php echo htmlspecialchars($_SESSION['username']); ?></div>
+                <div><?php echo e($_SESSION['username']); ?></div>
                 <span><?php echo isAdmin() ? 'Administrator' : 'User'; ?></span>
             </div>
         </div>
@@ -211,7 +192,7 @@ $count = count(glob($templates_dir . '/*.html'));
         </p>
         
         <form method="POST" action="backup_templates.php" id="downloadForm">
-            <input type="hidden" name="csrf_token" value="<?php echo $csrf_token; ?>">
+            <?php echo csrfField(); ?>
             
             <div class="modal-actions">
                 <button type="button" class="btn btn-danger" onclick="closeModal()">

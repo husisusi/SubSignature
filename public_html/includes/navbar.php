@@ -1,4 +1,5 @@
 <?php
+// Shared sidebar navigation (admin entries only for administrators)
 $current_page = basename($_SERVER['PHP_SELF']);
 ?>
 
@@ -62,6 +63,14 @@ $current_page = basename($_SERVER['PHP_SELF']);
     
     <a href="admin_users.php" class="nav-link <?php echo ($current_page == 'admin_users.php') ? 'active' : ''; ?>">
         <i class="fas fa-users"></i> <span>Users</span>
+    </a>
+
+    <a href="admin_ldap.php" class="nav-link <?php echo ($current_page == 'admin_ldap.php') ? 'active' : ''; ?>">
+        <i class="fas fa-sitemap"></i> <span>LDAP Import</span>
+    </a>
+
+    <a href="admin_api.php" class="nav-link <?php echo ($current_page == 'admin_api.php') ? 'active' : ''; ?>">
+        <i class="fas fa-plug"></i> <span>API Tokens</span>
     </a>
 
     <a href="admin_config.php" class="nav-link <?php echo ($current_page == 'admin_config.php') ? 'active' : ''; ?>">

@@ -4,38 +4,55 @@ RewriteEngine On
 # 1. SECURITY SETTINGS
 # ======================================================================
 
-# Block access to sensitive directories inside public_html
-# We removed 'data' here because it is now safely outside the web root.
-# 'includes': Contains configuration files (must be blocked)
-# 'templates': Contains HTML templates (must be blocked)
-RewriteRule ^(includes|templates) - [F,L]
+# Internal directories are never served directly.
+#   includes:  application code and configuration
+#   templates: signature templates (read by PHP only; previews go through load_template.php)
+RewriteRule ^(includes|templates)(/|$) - [F,L]
 
-# Disable directory listing
-# Prevents visitors from seeing a list of files
+# Never serve dotfiles, databases, logs, keys or backups, wherever they are.
+<FilesMatch "(^\.|\.(db|sqlite|sqlite3|log|key|bak|old|orig|sql|lock|md)$)">
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        Order Deny,Allow
+        Deny from all
+    </IfModule>
+</FilesMatch>
+
+# Disable directory listing.
 Options -Indexes
 
-# Set Security Headers
+# Pass the Authorization header to PHP (needed by the Bearer-token API;
+# Apache/CGI/FastCGI would otherwise drop it).
+RewriteCond %{HTTP:Authorization} .
+RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
+
+# Baseline headers for static files. PHP pages send a complete set
+# (CSP, HSTS on HTTPS, ...) themselves, see includes/config.php.
 <IfModule mod_headers.c>
-    # Prevent browsers from MIME-sniffing the response
-    Header set X-Content-Type-Options "nosniff"
-    
-    # Prevent Clickjacking (page cannot be embedded in frames on other sites)
-    Header set X-Frame-Options "SAMEORIGIN"
-    
-    # Enable XSS protection for older browsers
-    Header set X-XSS-Protection "1; mode=block"
+    Header always set X-Content-Type-Options "nosniff"
+    Header always set X-Frame-Options "DENY"
+    Header always unset X-Powered-By
 </IfModule>
 
 # ======================================================================
-# 2. URL REWRITING (Pretty URLs)
+# 2. API (api/v1): no pretty-URL redirect, every sub path goes to index.php
+# ======================================================================
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteRule ^api/v1/.+$ api/v1/index.php [L,QSA]
+RewriteRule ^api/ - [L]
+
+# ======================================================================
+# 3. URL REWRITING (pretty URLs)
 # ======================================================================
 
-# External redirect from .php to extensionless URL (for aesthetics/SEO)
+# External redirect from .php to the extensionless URL (GET requests only).
 RewriteCond %{REQUEST_METHOD} !POST
 RewriteCond %{THE_REQUEST} ^[A-Z]{3,}\s([^.]+)\.php [NC]
 RewriteRule ^ %1 [R=301,L]
 
-# Internal rewrite (Server processing)
+# Internal rewrite to the .php file.
 RewriteCond %{REQUEST_FILENAME} !-d
 RewriteCond %{REQUEST_FILENAME}.php -f
 RewriteRule ^(.*?)/?$ $1.php [L]

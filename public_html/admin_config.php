@@ -1,125 +1,111 @@
 <?php
-// admin_config.php
-// PRODUCTION READY VERSION
+// admin_config.php - system settings: registration, default account status, SMTP.
 
 require_once 'includes/config.php';
 requireAdmin();
 
-// 1. Initialize Variables
-$message = '';
-$error = '';
-$debug_log = '';
-
-// Check for Session Flash Messages
-if (isset($_SESSION['flash_message'])) {
-    $message = $_SESSION['flash_message'];
-    unset($_SESSION['flash_message']);
-}
-if (isset($_SESSION['flash_error'])) {
-    $error = $_SESSION['flash_error'];
-    unset($_SESSION['flash_error']);
-}
-if (isset($_SESSION['flash_debug'])) {
-    $debug_log = $_SESSION['flash_debug'];
-    unset($_SESSION['flash_debug']);
-}
-
-// Helper function
-function getSetting($db, $key, $default = '') {
-    $stmt = $db->prepare("SELECT setting_value FROM system_settings WHERE setting_key = ?");
-    $stmt->bindValue(1, $key, SQLITE3_TEXT);
-    $result = $stmt->execute();
-    $row = $result->fetchArray(SQLITE3_ASSOC);
-    return ($row) ? $row['setting_value'] : $default;
-}
+// 1. Messages (flash data survives exactly one redirect)
+$message = popFlash('success');
+$error = popFlash('error');
+$debug_log = popFlash('debug');
 
 // ---------------------------------------------------------
 // 2. HANDLE TEST EMAIL (POST -> REDIRECT)
 // ---------------------------------------------------------
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'test_email') {
-    
-    if (!isset($_POST['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $_POST['csrf_token'])) {
-        die("Security Error: Invalid CSRF Token");
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'test_email') {
+    requireCsrf();
+    require_once 'includes/MailHelper.php';
+
+    $test_email = cleanText($_POST['test_recipient'] ?? '', 254);
+    // SMTP debug output is only collected when the checkbox is ticked.
+    $show_debug = ($_POST['show_debug_log'] ?? '') === '1';
+
+    if (filter_var($test_email, FILTER_VALIDATE_EMAIL)) {
+        $logHeader = '--- SMTP TEST STARTED AT ' . date('H:i:s') . " ---\n";
+
+        $result = MailHelper::send(
+            $test_email,
+            'SMTP Test - SubSignature',
+            '<h3>SMTP Test Successful ✅</h3><p>Your configuration works.</p>',
+            'SMTP Test Successful',
+            $show_debug
+        );
+
+        // Remove credentials from the log before it is stored in the session.
+        $cleanLog = (string)$result['debug_log'];
+        $cleanLog = preg_replace('/(PASS\s+)[^\s]+/', '$1 *****', $cleanLog);
+        $cleanLog = preg_replace('/(auth\s+login\s+)[^\s]+/i', '$1 [HIDDEN]', $cleanLog);
+        if ($cleanLog !== '') {
+            setFlash('debug', $logHeader . $cleanLog);
+        }
+
+        if ($result['success']) {
+            setFlash('success', 'Test email sent to ' . $test_email);
+        } else {
+            setFlash('error', 'Test failed. See debug log.');
+        }
+    } else {
+        setFlash('error', 'Invalid email address.');
     }
 
-    if (!file_exists('includes/MailHelper.php')) {
-        $_SESSION['flash_error'] = "MailHelper.php missing.";
-    } else {
-        require_once 'includes/MailHelper.php';
-        
-        $test_email = filter_var($_POST['test_recipient'], FILTER_SANITIZE_EMAIL);
-        // NEU: Debugging nur aktivieren, wenn Checkbox gesetzt ist
-        $show_debug = isset($_POST['show_debug_log']) && $_POST['show_debug_log'] == '1';
-        
-        if (filter_var($test_email, FILTER_VALIDATE_EMAIL)) {
-            
-            $logHeader = "--- SMTP TEST STARTED AT " . date('H:i:s') . " ---\n";
-            
-            // MailHelper aufrufen (mit Debug-Schalter)
-            $result = MailHelper::send(
-                $test_email, 
-                'SMTP Test - SubSignature', 
-                '<h3>SMTP Test Successful ✅</h3><p>Your configuration works.</p>',
-                'SMTP Test Successful',
-                $show_debug // Nur true, wenn User es will
-            );
-            
-            // NEU: SECURITY - Passwörter aus dem Log entfernen, bevor es in die Session kommt
-            $cleanLog = $result['debug_log'];
-            $cleanLog = preg_replace('/(PASS\s+)[^\s]+/', '$1 *****', $cleanLog);
-            $cleanLog = preg_replace('/(auth\s+login\s+)[^\s]+/i', '$1 [HIDDEN]', $cleanLog);
-            
-            // Log speichern (nur wenn vorhanden)
-            if (!empty($cleanLog)) {
-                $_SESSION['flash_debug'] = $logHeader . $cleanLog;
-            }
-            
-            if ($result['success']) {
-                $_SESSION['flash_message'] = "Test email sent to $test_email";
-            } else {
-                $_SESSION['flash_error'] = "Test failed. See debug log.";
-            }
-        } else {
-            $_SESSION['flash_error'] = "Invalid email address.";
-        }
-    }
-    
-    header("Location: admin_config.php");
+    header('Location: admin_config.php');
     exit;
 }
 
 // ---------------------------------------------------------
 // 3. HANDLE SAVE CONFIG (POST -> REDIRECT)
 // ---------------------------------------------------------
-elseif ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_config'])) {
-    if (!isset($_POST['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $_POST['csrf_token'])) {
-        die("Security Error");
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_config'])) {
+    requireCsrf();
+
+    $problems = [];
+
+    // General settings (booleans are normalised to '0' / '1')
+    setSetting($db, 'default_user_active', ($_POST['default_user_active'] ?? '1') === '1' ? '1' : '0');
+    setSetting($db, 'allow_registration', ($_POST['allow_registration'] ?? '1') === '1' ? '1' : '0');
+
+    // SMTP settings with validation
+    $smtp_host = cleanText($_POST['smtp_host'] ?? '', 255);
+    if ($smtp_host !== '' && !preg_match('/^[A-Za-z0-9.\-]+$|^\[[0-9A-Fa-f:.]+\]$/', $smtp_host)) {
+        $problems[] = 'Invalid SMTP host name.';
+        $smtp_host = '';
+    }
+    $smtp_port = (int)($_POST['smtp_port'] ?? 587);
+    if ($smtp_port < 1 || $smtp_port > 65535) {
+        $problems[] = 'SMTP port must be between 1 and 65535.';
+        $smtp_port = 587;
+    }
+    $smtp_secure = $_POST['smtp_secure'] ?? 'tls';
+    if (!in_array($smtp_secure, ['tls', 'ssl', 'none'], true)) {
+        $smtp_secure = 'tls';
+    }
+    $smtp_from_email = cleanText($_POST['smtp_from_email'] ?? '', 254);
+    if ($smtp_from_email !== '' && !filter_var($smtp_from_email, FILTER_VALIDATE_EMAIL)) {
+        $problems[] = 'Invalid sender email address.';
+        $smtp_from_email = '';
     }
 
-    // Save Default Active
-    $default_status = isset($_POST['default_user_active']) ? (int)$_POST['default_user_active'] : 1;
-    $stmt = $db->prepare("INSERT OR REPLACE INTO system_settings (setting_key, setting_value) VALUES ('default_user_active', ?)");
-    $stmt->bindValue(1, $default_status, SQLITE3_TEXT);
-    $stmt->execute();
+    setSetting($db, 'smtp_host', $smtp_host);
+    setSetting($db, 'smtp_port', (string)$smtp_port);
+    setSetting($db, 'smtp_auth', ($_POST['smtp_auth'] ?? '') === '1' ? '1' : '0');
+    setSetting($db, 'smtp_user', cleanText($_POST['smtp_user'] ?? '', 255));
+    setSetting($db, 'smtp_secure', $smtp_secure);
+    setSetting($db, 'smtp_from_email', $smtp_from_email);
+    setSetting($db, 'smtp_from_name', cleanText($_POST['smtp_from_name'] ?? '', 100));
 
-    // Save SMTP Settings
-    $smtp_keys = ['smtp_host', 'smtp_port', 'smtp_auth', 'smtp_user', 'smtp_secure', 'smtp_from_email', 'smtp_from_name'];
-    foreach ($smtp_keys as $key) {
-        $val = trim($_POST[$key] ?? '');
-        $stmt = $db->prepare("INSERT OR REPLACE INTO system_settings (setting_key, setting_value) VALUES (?, ?)");
-        $stmt->bindValue(1, $key, SQLITE3_TEXT);
-        $stmt->bindValue(2, $val, SQLITE3_TEXT);
-        $stmt->execute();
-    }
-    // Save Password only if set (nicht leeres Feld überschreibt bestehendes PW nicht)
-    if (!empty($_POST['smtp_pass'])) {
-        $stmt = $db->prepare("INSERT OR REPLACE INTO system_settings (setting_key, setting_value) VALUES ('smtp_pass', ?)");
-        $stmt->bindValue(1, $_POST['smtp_pass'], SQLITE3_TEXT);
-        $stmt->execute();
+    // The password is only replaced when a new one was entered, and it is stored encrypted.
+    if (is_string($_POST['smtp_pass'] ?? null) && $_POST['smtp_pass'] !== '') {
+        setSetting($db, 'smtp_pass', encryptSecret($_POST['smtp_pass']));
     }
 
-    $_SESSION['flash_message'] = "Configuration saved successfully.";
-    header("Location: admin_config.php");
+    logSecurityEventToDB($db, 'CONFIG_CHANGED', (int)$_SESSION['user_id'], 'System / SMTP settings saved');
+
+    if ($problems) {
+        setFlash('error', implode(' ', $problems) . ' Other settings were saved.');
+    } else {
+        setFlash('success', 'Configuration saved successfully.');
+    }
+    header('Location: admin_config.php');
     exit;
 }
 
@@ -133,9 +119,7 @@ $smtp_secure = getSetting($db, 'smtp_secure', 'tls');
 $smtp_from_email = getSetting($db, 'smtp_from_email', '');
 $smtp_from_name = getSetting($db, 'smtp_from_name', 'Signature Admin');
 
-if (empty($_SESSION['csrf_token'])) {
-    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
-}
+$allow_registration = getSetting($db, 'allow_registration', '1') === '1';
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -182,7 +166,7 @@ if (empty($_SESSION['csrf_token'])) {
             <div class="user-profile">
                 <div class="avatar"><?php echo strtoupper(substr($_SESSION['username'], 0, 1)); ?></div>
                 <div class="user-info">
-                    <div><?php echo htmlspecialchars($_SESSION['username']); ?></div>
+                    <div><?php echo e($_SESSION['username']); ?></div>
                     <span>Administrator</span>
                 </div>
             </div>
@@ -199,19 +183,19 @@ if (empty($_SESSION['csrf_token'])) {
         <?php if (!empty($debug_log)): ?>
             <div class="alert alert-<?php echo $error ? 'error' : 'success'; ?>">
                 <strong>SMTP Debug Log</strong>
-                <div class="debug-console"><?php echo htmlspecialchars($debug_log); ?></div>
+                <div class="debug-console"><?php echo e($debug_log); ?></div>
             </div>
         <?php endif; ?>
 
         <?php if ($message && empty($debug_log)): ?>
-            <div class="alert alert-success"><i class="fas fa-check-circle"></i> <?php echo htmlspecialchars($message); ?></div>
+            <div class="alert alert-success"><i class="fas fa-check-circle"></i> <?php echo e($message); ?></div>
         <?php endif; ?>
         <?php if ($error && empty($debug_log)): ?>
-            <div class="alert alert-error"><i class="fas fa-exclamation-circle"></i> <?php echo htmlspecialchars($error); ?></div>
+            <div class="alert alert-error"><i class="fas fa-exclamation-circle"></i> <?php echo e($error); ?></div>
         <?php endif; ?>
 
         <form method="POST" action="admin_config.php">
-            <input type="hidden" name="csrf_token" value="<?php echo $_SESSION['csrf_token']; ?>">
+            <?php echo csrfField(); ?>
             <input type="hidden" name="save_config" value="1">
             
             <div class="config-grid">
@@ -231,6 +215,17 @@ if (empty($_SESSION['csrf_token'])) {
                             <span class="slider"></span>
                         </label>
                     </div>
+                    <div class="config-item">
+                        <div>
+                            <h4 style="margin:0; font-size:0.95rem;">Allow Self-Registration</h4>
+                            <p style="margin:0; color:#64748b; font-size:0.8rem;">Show the public registration page.</p>
+                        </div>
+                        <label class="switch">
+                            <input type="hidden" name="allow_registration" value="0">
+                            <input type="checkbox" name="allow_registration" value="1" <?php echo $allow_registration ? 'checked' : ''; ?>>
+                            <span class="slider"></span>
+                        </label>
+                    </div>
                 </section>
 
                 <section class="config-card">
@@ -244,11 +239,11 @@ if (empty($_SESSION['csrf_token'])) {
                     <div class="form-group-grid">
                         <div>
                             <label class="form-label">SMTP Host</label>
-                            <input type="text" name="smtp_host" class="form-input" placeholder="smtp.example.com" value="<?php echo htmlspecialchars($smtp_host); ?>">
+                            <input type="text" name="smtp_host" class="form-input" placeholder="smtp.example.com" value="<?php echo e($smtp_host); ?>">
                         </div>
                         <div>
                             <label class="form-label">SMTP Port</label>
-                            <input type="number" name="smtp_port" class="form-input" placeholder="587" value="<?php echo htmlspecialchars($smtp_port); ?>">
+                            <input type="number" name="smtp_port" class="form-input" placeholder="587" value="<?php echo e($smtp_port); ?>">
                         </div>
                     </div>
 
@@ -268,11 +263,11 @@ if (empty($_SESSION['csrf_token'])) {
                         <div class="form-group-grid">
                             <div>
                                 <label class="form-label">Username</label>
-                                <input type="text" name="smtp_user" class="form-input" value="<?php echo htmlspecialchars($smtp_user); ?>">
+                                <input type="text" name="smtp_user" class="form-input" value="<?php echo e($smtp_user); ?>">
                             </div>
                             <div>
                                 <label class="form-label">Password</label>
-                                <input type="password" name="smtp_pass" class="form-input" placeholder="••••••••">
+                                <input type="password" name="smtp_pass" class="form-input" autocomplete="new-password" placeholder="••••••••">
                             </div>
                         </div>
                     </div>
@@ -291,11 +286,11 @@ if (empty($_SESSION['csrf_token'])) {
                     <div class="form-group-grid">
                         <div>
                             <label class="form-label">Sender Email</label>
-                            <input type="email" name="smtp_from_email" class="form-input" value="<?php echo htmlspecialchars($smtp_from_email); ?>">
+                            <input type="email" name="smtp_from_email" class="form-input" value="<?php echo e($smtp_from_email); ?>">
                         </div>
                         <div>
                             <label class="form-label">Sender Name</label>
-                            <input type="text" name="smtp_from_name" class="form-input" value="<?php echo htmlspecialchars($smtp_from_name); ?>">
+                            <input type="text" name="smtp_from_name" class="form-input" value="<?php echo e($smtp_from_name); ?>">
                         </div>
                     </div>
                 </section>
@@ -316,7 +311,7 @@ if (empty($_SESSION['csrf_token'])) {
             <p style="color:#64748b; font-size:0.9rem;">Check your configuration.</p>
             
             <form method="POST" action="admin_config.php">
-                <input type="hidden" name="csrf_token" value="<?php echo $_SESSION['csrf_token']; ?>">
+                <?php echo csrfField(); ?>
                 <input type="hidden" name="action" value="test_email">
                 
                 <div style="margin: 1.5rem 0;">

@@ -1,197 +1,181 @@
 <?php
-// admin_templates.php
+// admin_templates.php - manage signature templates (default, import, rename, delete).
 
 require_once 'includes/config.php';
 requireAdmin();
 
-$message = '';
-$error = '';
+$message = popFlash('success');
+$error = popFlash('error');
+$csrf_token = generateCSRFToken();
 
-// ---------------------------------------------------------
-// SECURITY: CSRF Token Generation
-// ---------------------------------------------------------
-if (empty($_SESSION['csrf_token'])) {
-    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
-}
-$csrf_token = $_SESSION['csrf_token'];
+const TEMPLATE_MAX_BYTES = 524288; // 512 KB per template
 
-// ---------------------------------------------------------
-// HELPER: Default Template Logic (stored in a text file)
-// ---------------------------------------------------------
-$default_config_file = __DIR__ . '/templates/default_config.txt';
+$default_config_file = TEMPLATES_DIR . '/default_config.txt';
+$current_default = getDefaultTemplateName();
 
-function getCurrentDefault($file) {
-    if (file_exists($file)) {
-        return trim(file_get_contents($file));
-    }
-    return 'signature_default.html'; // Fallback
+/**
+ * Stores the redirect message and returns to the list (Post/Redirect/Get).
+ */
+function templatesRedirect(string $type, string $text): void
+{
+    setFlash($type, $text);
+    header('Location: admin_templates.php');
+    exit;
 }
 
-$current_default = getCurrentDefault($default_config_file);
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    requireCsrf();
 
-// ---------------------------------------------------------
-// 1. ACTION: SET DEFAULT TEMPLATE
-// ---------------------------------------------------------
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['set_default'])) {
-    // Security: CSRF Check
-    if (!isset($_POST['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $_POST['csrf_token'])) {
-        $error = "Security Error: Invalid CSRF Token.";
-    } else {
-        // Security: Sanitize input (basename prevents path traversal)
-        $new_default = basename($_POST['template_name']);
-        
-        if (file_exists(__DIR__ . '/templates/' . $new_default)) {
-            if (file_put_contents($default_config_file, $new_default) !== false) {
-                $message = "Default template updated to: " . htmlspecialchars($new_default);
-                $current_default = $new_default;
-            } else {
-                $error = "Could not save setting. Check file permissions.";
-            }
-        } else {
-            $error = "Template file not found.";
+    // ---------------------------------------------------------
+    // 1. ACTION: SET DEFAULT TEMPLATE
+    // ---------------------------------------------------------
+    if (isset($_POST['set_default'])) {
+        $new_default = basename((string)($_POST['template_name'] ?? ''));
+        if (!isValidTemplateName($new_default) || !is_file(TEMPLATES_DIR . '/' . $new_default)) {
+            templatesRedirect('error', 'Template file not found.');
         }
+        if (file_put_contents($default_config_file, $new_default, LOCK_EX) === false) {
+            templatesRedirect('error', 'Could not save setting. Check file permissions.');
+        }
+        templatesRedirect('success', 'Default template updated to: ' . $new_default);
     }
-}
 
-// ---------------------------------------------------------
-// 2. ACTION: IMPORT TEMPLATES
-// ---------------------------------------------------------
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['import_templates'])) {
-    
-    // Security: CSRF Check
-    if (!isset($_POST['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $_POST['csrf_token'])) {
-        $error = "Security Error: Invalid CSRF Token.";
-    } 
-    // Check if files exist
-    elseif (isset($_FILES['html_files'])) {
-        $uploaded_files = $_FILES['html_files'];
+    // ---------------------------------------------------------
+    // 2. ACTION: IMPORT TEMPLATES
+    // ---------------------------------------------------------
+    if (isset($_POST['import_templates'])) {
         $success_count = 0;
         $error_details = [];
+        $uploaded_files = $_FILES['html_files'] ?? null;
 
-        for ($i = 0; $i < count($uploaded_files['name']); $i++) {
-            $filename = $uploaded_files['name'][$i];
-            $tmp_name = $uploaded_files['tmp_name'][$i];
-            $file_error = $uploaded_files['error'][$i];
+        if ($uploaded_files && is_array($uploaded_files['name'])) {
+            for ($i = 0; $i < min(count($uploaded_files['name']), 20); $i++) {
+                $filename = cleanText(basename((string)$uploaded_files['name'][$i]), 120);
+                $tmp_name = $uploaded_files['tmp_name'][$i];
 
-            if ($file_error === UPLOAD_ERR_OK) {
-                
-                // Security: Validate Extension (.html only)
-                $ext = strtolower(pathinfo($filename, PATHINFO_EXTENSION));
-                if ($ext !== 'html') {
+                if ($uploaded_files['error'][$i] !== UPLOAD_ERR_OK) {
+                    if ($uploaded_files['error'][$i] !== UPLOAD_ERR_NO_FILE) {
+                        $error_details[] = "$filename: Upload failed.";
+                    }
+                    continue;
+                }
+                if (!is_uploaded_file($tmp_name)) {
+                    $error_details[] = "$filename: invalid upload source.";
+                    continue;
+                }
+                if (strtolower(pathinfo($filename, PATHINFO_EXTENSION)) !== 'html') {
                     $error_details[] = "$filename: Only .html files allowed.";
                     continue;
                 }
-
-                // Security: Validate Content (No PHP tags allowed)
-                $content = file_get_contents($tmp_name);
-                if (strpos($content, '<?php') !== false || strpos($content, '<?=') !== false) {
-                    $error_details[] = "$filename: Contains PHP code (Security Violation).";
+                if (filesize($tmp_name) > TEMPLATE_MAX_BYTES) {
+                    $error_details[] = "$filename: File is too large (max 512 KB).";
                     continue;
                 }
 
-                // Security: Sanitize Filename
-                // Remove special chars, ensure lower case
-                $safe_name = preg_replace('/[^a-z0-9_]/', '', strtolower(pathinfo($filename, PATHINFO_FILENAME)));
-                
-                // Enforce prefix 'signature_'
+                $content = (string)file_get_contents($tmp_name);
+                if (strpos($content, '<?') !== false) {
+                    $error_details[] = "$filename: Contains PHP/XML processing instructions (not allowed).";
+                    continue;
+                }
+                if (!mb_check_encoding($content, 'UTF-8')) {
+                    $error_details[] = "$filename: File must be UTF-8 encoded.";
+                    continue;
+                }
+                // Active content (scripts, handlers, javascript: URLs) is removed on import.
+                $content = sanitizeTemplateHtml($content);
+
+                $safe_name = substr(preg_replace('/[^a-z0-9_\-]/', '', strtolower(pathinfo($filename, PATHINFO_FILENAME))), 0, 70);
                 if (strpos($safe_name, 'signature_') !== 0) {
                     $safe_name = 'signature_' . $safe_name;
                 }
                 $final_name = $safe_name . '.html';
-                $target_path = 'templates/' . $final_name;
-
-                // Prevent silent overwriting
-                if (file_exists($target_path)) {
-                    $final_name = $safe_name . '_' . time() . '.html';
-                    $target_path = 'templates/' . $final_name;
+                if (file_exists(TEMPLATES_DIR . '/' . $final_name)) {
+                    $final_name = $safe_name . '_' . bin2hex(random_bytes(3)) . '.html'; // never overwrite silently
+                }
+                if (!isValidTemplateName($final_name)) {
+                    $error_details[] = "$filename: Invalid template name.";
+                    continue;
                 }
 
-                if (move_uploaded_file($tmp_name, $target_path)) {
+                if (file_put_contents(TEMPLATES_DIR . '/' . $final_name, $content, LOCK_EX) !== false) {
                     $success_count++;
                 } else {
-                    $error_details[] = "$filename: Failed to move file.";
+                    $error_details[] = "$filename: Failed to save file.";
                 }
             }
         }
 
         if ($success_count > 0) {
-            $message = "Successfully imported $success_count template(s).";
+            logSecurityEventToDB($db, 'TEMPLATES_IMPORTED', (int)$_SESSION['user_id'], "Count: $success_count");
         }
-        if (!empty($error_details)) {
-            $error = implode('<br>', $error_details);
+        if ($error_details) {
+            setFlash('error', implode("\n", $error_details));
         }
+        if ($success_count > 0) {
+            setFlash('success', "Successfully imported $success_count template(s).");
+        }
+        header('Location: admin_templates.php');
+        exit;
     }
-}
 
-// ---------------------------------------------------------
-// 3. ACTION: RENAME TEMPLATE
-// ---------------------------------------------------------
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['rename_template'])) {
-    if (!isset($_POST['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $_POST['csrf_token'])) {
-        $error = "Security Error: Invalid Token.";
-    } else {
-        $old_name = basename($_POST['old_name']);
-        $new_name = trim($_POST['new_name']);
-        
-        // Validation
-        if (empty($new_name)) {
-            $error = "New name is required!";
-        } elseif (!preg_match('/^signature_[a-z0-9_]+\.html$/i', $new_name)) {
-            $error = "Format must be: signature_name.html (lowercase, alphanumeric, underscores)";
-        } else {
-            $old_path = 'templates/' . $old_name;
-            $new_path = 'templates/' . $new_name;
-            
-            if (!file_exists($old_path)) $error = "Original file not found!";
-            elseif (file_exists($new_path)) $error = "Name already exists!";
-            elseif (rename($old_path, $new_path)) {
-                
-                // Update default config if we renamed the default template
-                if ($old_name === $current_default) {
-                    file_put_contents($default_config_file, $new_name);
-                    $current_default = $new_name;
-                }
-                
-                // Update Database references
-                $stmt = $db->prepare("UPDATE user_signatures SET template = ? WHERE template = ?");
-                $stmt->bindValue(1, $new_name, SQLITE3_TEXT);
-                $stmt->bindValue(2, $old_name, SQLITE3_TEXT);
-                $stmt->execute();
-                
-                $message = "Template renamed successfully.";
-            } else {
-                $error = "Error renaming file.";
-            }
+    // ---------------------------------------------------------
+    // 3. ACTION: RENAME TEMPLATE
+    // ---------------------------------------------------------
+    if (isset($_POST['rename_template'])) {
+        $old_name = basename((string)($_POST['old_name'] ?? ''));
+        $new_name = trim((string)($_POST['new_name'] ?? ''));
+
+        if ($new_name === '') {
+            templatesRedirect('error', 'New name is required!');
         }
-    }
-}
+        if (!isValidTemplateName($new_name)) {
+            templatesRedirect('error', 'Format must be: signature_name.html (letters, digits, underscore, hyphen)');
+        }
+        $old_path = TEMPLATES_DIR . '/' . $old_name;
+        $new_path = TEMPLATES_DIR . '/' . $new_name;
 
-// ---------------------------------------------------------
-// 4. ACTION: DELETE TEMPLATE
-// ---------------------------------------------------------
-if (isset($_GET['delete'])) {
-    if (!isset($_GET['token']) || !hash_equals($_SESSION['csrf_token'], $_GET['token'])) {
-        $error = "Security Error: Invalid Token.";
-    } else {
-        $template = basename($_GET['delete']);
-        $template_path = 'templates/' . $template;
-        
-        // Prevent deleting the ACTIVE default
+        if (!isValidTemplateName($old_name) || !is_file($old_path)) {
+            templatesRedirect('error', 'Original file not found!');
+        }
+        if (file_exists($new_path)) {
+            templatesRedirect('error', 'Name already exists!');
+        }
+        if (!rename($old_path, $new_path)) {
+            templatesRedirect('error', 'Error renaming file.');
+        }
+
+        if ($old_name === $current_default) {
+            file_put_contents($default_config_file, $new_name, LOCK_EX);
+        }
+        // Keep database references consistent.
+        $stmt = $db->prepare("UPDATE user_signatures SET template = ?, updated_at = datetime('now') WHERE template = ?");
+        $stmt->bindValue(1, $new_name, SQLITE3_TEXT);
+        $stmt->bindValue(2, $old_name, SQLITE3_TEXT);
+        $stmt->execute();
+        templatesRedirect('success', 'Template renamed successfully.');
+    }
+
+    // ---------------------------------------------------------
+    // 4. ACTION: DELETE TEMPLATE
+    // ---------------------------------------------------------
+    if (($_POST['action'] ?? '') === 'delete_template') {
+        $template = basename((string)($_POST['template'] ?? ''));
+        $template_path = TEMPLATES_DIR . '/' . $template;
+
+        if (!isValidTemplateName($template) || !is_file($template_path)) {
+            templatesRedirect('error', 'Template not found!');
+        }
         if ($template === $current_default) {
-            $error = "Cannot delete the active default template! Please set another default first.";
-        } elseif (file_exists($template_path)) {
-            if (unlink($template_path)) {
-                $message = "Template deleted successfully.";
-            } else {
-                $error = "Error deleting file.";
-            }
-        } else {
-            $error = "Template not found!";
+            templatesRedirect('error', 'Cannot delete the active default template! Please set another default first.');
         }
+        if (!unlink($template_path)) {
+            templatesRedirect('error', 'Error deleting file.');
+        }
+        logSecurityEventToDB($db, 'TEMPLATE_DELETED', (int)$_SESSION['user_id'], $template);
+        templatesRedirect('success', 'Template deleted successfully.');
     }
-    // Clean Redirect to remove GET params
-    $param = $error ? 'error='.urlencode($error) : 'message='.urlencode($message);
-    header('Location: admin_templates.php?' . $param);
+
+    header('Location: admin_templates.php');
     exit;
 }
 
@@ -199,11 +183,10 @@ if (isset($_GET['delete'])) {
 // 5. DATA LOADING & SORTING
 // ---------------------------------------------------------
 $templates = [];
-$template_files = glob('templates/*.html');
+$template_files = listSignatureTemplates();
 
 if ($template_files) {
-    foreach ($template_files as $file) {
-        $filename = basename($file);
+    foreach ($template_files as $filename) {
         
         // Count usage in DB
         $stmt = $db->prepare("SELECT COUNT(*) as count FROM user_signatures WHERE template = ?");
@@ -213,7 +196,7 @@ if ($template_files) {
         
         $templates[] = [
             'filename' => $filename,
-            'display_name' => ucfirst(str_replace(['signature_', '.html', '_'], ['', '', ' '], $filename)),
+            'display_name' => templateDisplayName($filename),
             'usage' => $usage,
             'is_default' => ($filename === $current_default)
         ];
@@ -228,8 +211,6 @@ usort($templates, function($a, $b) {
     return strcmp($a['filename'], $b['filename']); 
 });
 
-if (isset($_GET['message'])) $message = $_GET['message'];
-if (isset($_GET['error'])) $error = $_GET['error'];
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -239,6 +220,7 @@ if (isset($_GET['error'])) $error = $_GET['error'];
     <title>Template Management - SubSignature</title>
     <link rel="stylesheet" href="css/style.css">
     <link rel="stylesheet" href="css/all.min.css">
+    <?php echo csrfMeta(); ?>
     
     <style>
         .rename-row { display: none; background: #f8fafc; }
@@ -275,7 +257,7 @@ if (isset($_GET['error'])) $error = $_GET['error'];
             <div class="user-profile">
                 <div class="avatar"><?php echo strtoupper(substr($_SESSION['username'], 0, 1)); ?></div>
                 <div class="user-info">
-                    <div><?php echo htmlspecialchars($_SESSION['username']); ?></div>
+                    <div><?php echo e($_SESSION['username']); ?></div>
                     <span>Administrator</span>
                 </div>
             </div>
@@ -291,10 +273,10 @@ if (isset($_GET['error'])) $error = $_GET['error'];
         </header>
 
         <?php if ($message): ?>
-            <div class="alert alert-success"><i class="fas fa-check-circle"></i> <?php echo htmlspecialchars($message); ?></div>
+            <div class="alert alert-success"><i class="fas fa-check-circle"></i> <?php echo e($message); ?></div>
         <?php endif; ?>
         <?php if ($error): ?>
-            <div class="alert alert-error"><i class="fas fa-exclamation-circle"></i> <?php echo $error; ?></div>
+            <div class="alert alert-error"><i class="fas fa-exclamation-circle"></i> <?php echo nl2br(e($error)); ?></div>
         <?php endif; ?>
 
         <div class="form-grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); margin-bottom: 2rem;">
@@ -319,9 +301,6 @@ if (isset($_GET['error'])) $error = $_GET['error'];
                     <a href="template_editor.php" class="btn btn-sm btn-primary">
                         <i class="fas fa-plus"></i> New
                     </a>
-                    <a href="templates/" target="_blank" class="btn btn-sm btn-secondary">
-                        <i class="fas fa-folder-open"></i> Folder
-                    </a>
                 </div>
             </div>
             
@@ -342,9 +321,9 @@ if (isset($_GET['error'])) $error = $_GET['error'];
                             
                             <td style="padding: 1rem; text-align: center;">
                                 <form method="POST" style="margin:0;">
-                                    <input type="hidden" name="csrf_token" value="<?php echo $csrf_token; ?>">
+                                    <?php echo csrfField(); ?>
                                     <input type="hidden" name="set_default" value="1">
-                                    <input type="hidden" name="template_name" value="<?php echo htmlspecialchars($t['filename']); ?>">
+                                    <input type="hidden" name="template_name" value="<?php echo e($t['filename']); ?>">
                                     
                                     <?php if ($t['is_default']): ?>
                                         <button type="button" class="btn-star active" title="Current Default">
@@ -359,13 +338,13 @@ if (isset($_GET['error'])) $error = $_GET['error'];
                             </td>
 
                             <td style="padding: 1rem;">
-                                <strong><?php echo htmlspecialchars($t['display_name']); ?></strong>
+                                <strong><?php echo e($t['display_name']); ?></strong>
                                 <?php if ($t['is_default']): ?>
                                     <span class="template-badge badge-default" style="margin-left:5px;">Default</span>
                                 <?php endif; ?>
                             </td>
                             
-                            <td style="padding: 1rem; color: #64748b;"><code><?php echo htmlspecialchars($t['filename']); ?></code></td>
+                            <td style="padding: 1rem; color: #64748b;"><code><?php echo e($t['filename']); ?></code></td>
                             
                             <td style="padding: 1rem;">
                                 <?php 
@@ -379,14 +358,14 @@ if (isset($_GET['error'])) $error = $_GET['error'];
                             
                             <td style="padding: 1rem; text-align: right;">
                                 <div style="display: inline-flex; gap: 0.5rem;">
-                                    <a href="template_editor.php?edit=<?php echo urlencode($t['filename']); ?>" class="btn btn-sm btn-primary" title="Edit"><i class="fas fa-pen"></i></a>
+                                    <a href="template_editor.php?edit=<?php echo rawurlencode($t['filename']); ?>" class="btn btn-sm btn-primary" title="Edit"><i class="fas fa-pen"></i></a>
                                     
-                                    <a href="preview_template.php?template=<?php echo urlencode($t['filename']); ?>" target="_blank" class="btn btn-sm btn-secondary" title="Preview"><i class="fas fa-eye"></i></a>
+                                    <a href="preview_template.php?template=<?php echo rawurlencode($t['filename']); ?>" target="_blank" class="btn btn-sm btn-secondary" title="Preview"><i class="fas fa-eye"></i></a>
                                     
                                     <button type="button" onclick="toggleRename('<?php echo md5($t['filename']); ?>')" class="btn btn-sm btn-secondary" title="Rename"><i class="fas fa-i-cursor"></i></button>
                                     
                                     <?php if (!$t['is_default']): ?>
-                                        <a href="admin_templates.php?delete=<?php echo urlencode($t['filename']); ?>&token=<?php echo $csrf_token; ?>" class="btn btn-sm btn-danger" onclick="return confirm('Really delete?')" title="Delete"><i class="fas fa-trash"></i></a>
+                                        <button type="button" data-post="admin_templates.php" data-params='{"action":"delete_template","template":"<?php echo e($t['filename']); ?>"}' data-confirm="Really delete?" class="btn btn-sm btn-danger" title="Delete"><i class="fas fa-trash"></i></button>
                                     <?php else: ?>
                                         <button class="btn btn-sm btn-secondary" disabled style="opacity:0.5; cursor:not-allowed;"><i class="fas fa-trash"></i></button>
                                     <?php endif; ?>
@@ -397,12 +376,12 @@ if (isset($_GET['error'])) $error = $_GET['error'];
                         <tr id="rename-<?php echo md5($t['filename']); ?>" class="rename-row">
                             <td colspan="5">
                                 <form method="POST" class="inline-form">
-                                    <input type="hidden" name="csrf_token" value="<?php echo $csrf_token; ?>">
+                                    <?php echo csrfField(); ?>
                                     <input type="hidden" name="rename_template" value="1">
-                                    <input type="hidden" name="old_name" value="<?php echo htmlspecialchars($t['filename']); ?>">
+                                    <input type="hidden" name="old_name" value="<?php echo e($t['filename']); ?>">
                                     
                                     <span>Rename to:</span>
-                                    <input type="text" name="new_name" value="<?php echo htmlspecialchars($t['filename']); ?>" required style="padding: 5px; border: 1px solid #e2e8f0; border-radius: 4px; width: 250px;">
+                                    <input type="text" name="new_name" value="<?php echo e($t['filename']); ?>" required style="padding: 5px; border: 1px solid #e2e8f0; border-radius: 4px; width: 250px;">
                                     
                                     <button type="submit" class="btn btn-sm btn-primary">Save</button>
                                     <button type="button" onclick="toggleRename('<?php echo md5($t['filename']); ?>')" class="btn btn-sm btn-secondary">Cancel</button>
@@ -428,7 +407,7 @@ if (isset($_GET['error'])) $error = $_GET['error'];
             </div>
             
             <form method="POST" enctype="multipart/form-data">
-                <input type="hidden" name="csrf_token" value="<?php echo $csrf_token; ?>">
+                <?php echo csrfField(); ?>
                 <input type="hidden" name="import_templates" value="1">
                 
                 <div class="upload-area" id="dropZone">
@@ -450,6 +429,7 @@ if (isset($_GET['error'])) $error = $_GET['error'];
         </div>
     </div>
 
+    <script src="js/post-action.js"></script>
     <script>
     // --- JS: Toggle Rename Row ---
     function toggleRename(id) {

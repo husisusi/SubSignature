@@ -1,4 +1,7 @@
 <?php
+/**
+ * export_signatures.php - CSV export of signatures (own signatures; admins: any user).
+ */
 require_once 'includes/config.php';
 requireLogin();
 
@@ -32,7 +35,7 @@ $export_user_id = $selected_user_id;
 
 if (isset($_GET['export'])) {
     $export_requested = true;
-    // Wenn Admin, darf er die User-ID via GET überschreiben
+    // Only admins may override the user via GET
     if ($is_admin && isset($_GET['user_id'])) {
         $export_user_id = (int)$_GET['user_id'];
     }
@@ -50,8 +53,8 @@ if (!$is_admin && $export_user_id != $_SESSION['user_id']) {
 
 // If export is requested, generate CSV
 if ($export_requested) {
-    // WICHTIG: Buffer leeren, damit keine Leerzeichen vor der CSV ausgegeben werden
-    if (ob_get_length()) ob_end_clean();
+    // Discard buffered output so nothing precedes the CSV data
+    while (ob_get_level()) ob_end_clean();
 
     // Get user info for filename
     $export_user_stmt = $db->prepare("SELECT username, full_name FROM users WHERE id = ?");
@@ -67,14 +70,13 @@ if ($export_requested) {
     
     // Generate filename
     $display_name = $export_user_info['full_name'] ?? $export_user_info['username'] ?? 'user';
-    $clean_name = preg_replace('/[^a-z0-9]/i', '_', strtolower($display_name));
+    $clean_name = safeFileNamePart($display_name, 'user');
     $filename = 'signatures_' . $clean_name . '_' . date('Y-m-d') . '.csv';
     
     // Set headers for CSV download
     header('Content-Type: text/csv; charset=utf-8');
     header('Content-Disposition: attachment; filename="' . $filename . '"');
-    header('Pragma: no-cache');
-    header('Expires: 0');
+    header('X-Content-Type-Options: nosniff');
     
     // Create output stream
     $output = fopen('php://output', 'w');
@@ -87,13 +89,14 @@ if ($export_requested) {
     
     // Data rows
     while ($sig = $export_result->fetchArray(SQLITE3_ASSOC)) {
+        // csvSafeCell() neutralises spreadsheet formula injection (=, +, -, @)
         fputcsv($output, [
-            $sig['name'],
-            $sig['role'],
-            $sig['email'],
-            $sig['phone'],
-            $sig['template'],
-            date('Y-m-d H:i:s', strtotime($sig['created_at']))
+            csvSafeCell($sig['name']),
+            csvSafeCell($sig['role']),
+            csvSafeCell($sig['email']),
+            csvSafeCell($sig['phone']),
+            csvSafeCell($sig['template']),
+            date('Y-m-d H:i:s', strtotime($sig['created_at']) ?: time())
         ]);
     }
     
@@ -222,10 +225,10 @@ if ($is_admin) {
             display: inline-block;
         }
 
-        /* --- FIX: Styles für die Buttons (falls in style.css fehlend) --- */
+        /* --- FIX: Styles for the buttons (falls in style.css fehlend) --- */
         .btn-warning {
             background-color: #f59e0b;
-            color: white !important; /* Erzwinge weiße Schrift */
+            color: white !important; /* force white text */
             border: 1px solid #d97706;
             display: flex;
             align-items: center;
@@ -297,7 +300,7 @@ if ($is_admin) {
                     <?php echo strtoupper(substr($_SESSION['username'], 0, 1)); ?>
                 </div>
                 <div class="user-info">
-                    <div><?php echo htmlspecialchars($_SESSION['username']); ?></div>
+                    <div><?php echo e($_SESSION['username']); ?></div>
                     <span><?php echo isAdmin() ? 'Administrator' : 'User'; ?></span>
                 </div>
             </div>
@@ -320,8 +323,8 @@ if ($is_admin) {
                     <i class="fas fa-user"></i>
                 </div>
                 <div class="user-details">
-                    <h3><?php echo htmlspecialchars($selected_user_info['full_name'] ?? $selected_user_info['username'] ?? 'Unknown'); ?></h3>
-                    <span><?php echo htmlspecialchars($selected_user_info['username'] ?? ''); ?></span>
+                    <h3><?php echo e($selected_user_info['full_name'] ?? $selected_user_info['username'] ?? 'Unknown'); ?></h3>
+                    <span><?php echo e($selected_user_info['username'] ?? ''); ?></span>
                 </div>
             </div>
             
@@ -357,7 +360,7 @@ if ($is_admin) {
                     <select id="view_user" name="view_user" onchange="this.form.submit()" style="width: 100%; padding: 0.75rem; border: 1px solid var(--border); border-radius: 8px;">
                         <?php foreach ($users as $user): ?>
                             <option value="<?php echo $user['id']; ?>" <?php echo $user['id'] == $selected_user_id ? 'selected' : ''; ?>>
-                                <?php echo htmlspecialchars($user['full_name'] ?: $user['username']); ?> (<?php echo htmlspecialchars($user['username']); ?>)
+                                <?php echo e($user['full_name'] ?: $user['username']); ?> (<?php echo e($user['username']); ?>)
                             </option>
                         <?php endforeach; ?>
                     </select>
@@ -417,11 +420,11 @@ if ($is_admin) {
                         <?php foreach ($signatures as $sig): ?>
                             <?php if ($limit++ >= 5) break; ?>
                             <tr>
-                                <td><?php echo htmlspecialchars($sig['name']); ?></td>
-                                <td><?php echo htmlspecialchars($sig['role']); ?></td>
-                                <td><?php echo htmlspecialchars($sig['email']); ?></td>
-                                <td><?php echo htmlspecialchars($sig['phone']); ?></td>
-                                <td><span class="template-tag"><?php echo htmlspecialchars($sig['template']); ?></span></td>
+                                <td><?php echo e($sig['name']); ?></td>
+                                <td><?php echo e($sig['role']); ?></td>
+                                <td><?php echo e($sig['email']); ?></td>
+                                <td><?php echo e($sig['phone']); ?></td>
+                                <td><span class="template-tag"><?php echo e($sig['template']); ?></span></td>
                                 <td><?php echo date('M d, Y', strtotime($sig['created_at'])); ?></td>
                             </tr>
                         <?php endforeach; ?>

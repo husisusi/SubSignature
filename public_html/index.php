@@ -1,125 +1,85 @@
 <?php
-// index.php
+/**
+ * index.php - login page and login handler.
+ */
 require_once 'includes/config.php';
 
-// ---------------------------------------------------------
-// 1. SECURITY HEADERS (Defense in Depth)
-// ---------------------------------------------------------
-header("X-Frame-Options: DENY");
-header("X-Content-Type-Options: nosniff");
-header("Referrer-Policy: strict-origin-when-cross-origin");
-header("X-XSS-Protection: 1; mode=block");
-
-// ---------------------------------------------------------
-// 2. CHECK LOGIN STATE
-// ---------------------------------------------------------
 if (isLoggedIn()) {
     header('Location: generator.php');
     exit;
 }
 
 $error = '';
+$notice = '';
+$csrf_token = generateCSRFToken();
 
-// Generate CSRF Token if missing
-if (empty($_SESSION['csrf_token'])) {
-    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+if (isset($_GET['timeout'])) {
+    $notice = 'Your session has expired. Please sign in again.';
 }
-$csrf_token = $_SESSION['csrf_token'];
 
-// ---------------------------------------------------------
-// 3. HANDLE LOGIN REQUEST
-// ---------------------------------------------------------
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $username = trim($_POST['username'] ?? '');
-    $password = $_POST['password'] ?? '';
-    
-    // Sanitize input for DB lookup (matches registration logic)
-    $username_clean = sanitizeInput($username);
-    
-    // A. CSRF Check
-    if (!isset($_POST['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $_POST['csrf_token'])) {
-        $error = "Security violation: Invalid session.";
-        // Log explicit security event for CSRF
-        logSecurityEventToDB($db, 'CSRF_FAILED', null, "Login attempt - IP: " . $_SERVER['REMOTE_ADDR']);
-    }
-    
-    // B. Rate Limiting (IP-based)
-    // Note: checkRateLimit() automatically logs 'RATE_LIMIT_EXCEEDED' to DB if limit is reached.
-    elseif (!checkRateLimit('login_attempt', 5, 300)) { // 5 attempts per 5 mins
-        $error = "Too many login attempts. Please try again in 5 minutes.";
-    }
-    
-    // C. Account Lock Check (User-based)
-    // Note: isAccountLocked() automatically logs 'ACCOUNT_LOCKED' to DB if triggered.
-    elseif (isAccountLocked($db, $username_clean)) {
-        $error = "Account temporarily locked due to too many failed attempts. Try again in 15 minutes.";
-    }
-    
-    else {
-        // D. Verify Credentials
-        $stmt = $db->prepare("SELECT id, username, password_hash, role, full_name, email, is_active 
-                             FROM users WHERE username = ?");
-        $stmt->bindValue(1, $username_clean, SQLITE3_TEXT);
-        $result = $stmt->execute();
-        $user = $result->fetchArray(SQLITE3_ASSOC);
-        
-        if ($user) {
-            // Check active status
-            if ($user['is_active'] == 0) {
-                $error = "Your account is deactivated. Please contact the administrator.";
-                // Log failed attempt (reason: inactive) -> writes to DB logs
-                logLoginAttempt($db, $username_clean, false);
+    $username = cleanText($_POST['username'] ?? '', 64);
+    $password = is_string($_POST['password'] ?? null) ? $_POST['password'] : '';
+
+    if (!verifyCSRFToken($_POST['csrf_token'] ?? '')) {
+        $error = 'Security violation: invalid session. Please reload the page.';
+        logSecurityEventToDB($db, 'CSRF_FAILED', null, 'Login form');
+    } elseif (rateLimitIsBlocked('login_ip', 10, 300)) {
+        // Per-IP throttle (counts failed attempts only).
+        $error = 'Too many login attempts. Please try again in 5 minutes.';
+        logSecurityEventToDB($db, 'RATE_LIMIT_EXCEEDED', null, 'Action: login_ip');
+    } elseif (isAccountLocked($db, $username)) {
+        // Per-username throttle; applies to unknown names too, so it does not
+        // reveal which accounts exist.
+        $error = 'Too many failed attempts for this account. Try again in 15 minutes.';
+        logSecurityEventToDB($db, 'ACCOUNT_LOCKED', null, 'User: ' . $username);
+    } else {
+        $stmt = $db->prepare('SELECT id, username, password_hash, role, full_name, email, is_active FROM users WHERE username = ?');
+        $stmt->bindValue(1, $username, SQLITE3_TEXT);
+        $user = $stmt->execute()->fetchArray(SQLITE3_ASSOC);
+
+        // Always run one password_verify() so the response time is the same
+        // for unknown and known accounts.
+        $hash = $user ? $user['password_hash'] : DUMMY_PASSWORD_HASH;
+        $passwordOk = password_verify($password, $hash) && $user;
+
+        if ($passwordOk && (int)$user['is_active'] === 1) {
+            if (password_needs_rehash($user['password_hash'], PASSWORD_DEFAULT)) {
+                $re = $db->prepare('UPDATE users SET password_hash = ? WHERE id = ?');
+                $re->bindValue(1, password_hash($password, PASSWORD_DEFAULT), SQLITE3_TEXT);
+                $re->bindValue(2, (int)$user['id'], SQLITE3_INTEGER);
+                $re->execute();
+                $user['password_hash'] = password_hash($password, PASSWORD_DEFAULT);
+                // re-read the stored hash so the session fingerprint matches
+                $rs = $db->prepare('SELECT password_hash FROM users WHERE id = ?');
+                $rs->bindValue(1, (int)$user['id'], SQLITE3_INTEGER);
+                $user['password_hash'] = $rs->execute()->fetchArray(SQLITE3_ASSOC)['password_hash'];
             }
-            // Verify Password
-            elseif (password_verify($password, $user['password_hash'])) {
-                
-                // SECURITY: Regenerate Session ID to prevent Session Fixation
-                session_regenerate_id(true);
-                
-                // Set Session Variables
-                $_SESSION['loggedin'] = true;
-                $_SESSION['user_id'] = $user['id'];
-                $_SESSION['username'] = $user['username'];
-                $_SESSION['role'] = $user['role'];
-                $_SESSION['full_name'] = $user['full_name'];
-                $_SESSION['email'] = $user['email'];
-                $_SESSION['last_activity'] = time();
-                
-                // Refresh CSRF Token
-                $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
-                
-                // Log Success -> writes to DB logs (login_attempts + security_events)
-                logLoginAttempt($db, $username_clean, true);
-                
-                header('Location: generator.php');
-                exit;
-                
-            } else {
-                // Invalid Password
-                // SECURITY: Prevent Timing Attacks
-                usleep(rand(100000, 300000)); 
-                
-                $error = 'Invalid username or password!';
-                // Log Failure -> writes to DB logs
-                logLoginAttempt($db, $username_clean, false);
+            startUserSession($user);
+            rateLimitReset('login_user', mb_strtolower($username, 'UTF-8'));
+            logLoginAttempt($db, $username, true);
+            if (random_int(1, 100) === 1) {
+                pruneOldLogs($db);
             }
+            header('Location: generator.php');
+            exit;
+        }
+
+        if ($passwordOk) {
+            // Correct password but deactivated account: only now it is safe
+            // to tell the user (the caller proved they know the password).
+            $error = 'Your account is deactivated. Please contact the administrator.';
         } else {
-            // User does not exist
-            // SECURITY: Generic error message (Prevent User Enumeration)
-            usleep(rand(100000, 300000)); 
-            
+            usleep(random_int(100000, 300000));
             $error = 'Invalid username or password!';
-            // Log Failure -> writes to DB logs
-            logLoginAttempt($db, $username_clean, false);
         }
+        rateLimitHit('login_ip', 300);
+        rateLimitHit('login_user', 900, mb_strtolower($username, 'UTF-8'));
+        logLoginAttempt($db, $username, false);
     }
-    
-    // Track failed attempts for frontend display (session only)
-    if ($error) {
-        if (!isset($_SESSION['failed_logins'])) {
-            $_SESSION['failed_logins'] = 0;
-        }
-        $_SESSION['failed_logins']++;
+
+    if ($error !== '') {
+        $_SESSION['failed_logins'] = ($_SESSION['failed_logins'] ?? 0) + 1;
     }
 }
 ?>
@@ -129,10 +89,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Login - SubSignature</title>
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self';">
     <link rel="stylesheet" href="css/all.min.css">
     <style>
-        /* Styles kept identical for consistency */
+        /* Page styles (unchanged UI) */
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -199,7 +158,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <div class="logo-text">SubSignature</div>
         <div class="tagline">Professional Email Signatures</div>
         
-        <?php if (isset($_GET['error']) && $_GET['error'] == 'Account+deactivated'): ?>
+        <?php if (isset($_GET['error']) && $_GET['error'] === 'deactivated'): ?>
             <div class="error-alert">
                 <i class="fas fa-ban"></i>
                 <div><strong>Account Deactivated</strong><br>Contact administrator.</div>
@@ -223,25 +182,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <?php if (isset($_SESSION['failed_logins']) && $_SESSION['failed_logins'] > 0): ?>
             <div class="failed-attempts" id="failedAttempts">
                 <i class="fas fa-exclamation-triangle"></i>
-                Failed attempts: <?php echo $_SESSION['failed_logins']; ?>
+                Failed attempts: <?php echo (int)$_SESSION['failed_logins']; ?>
             </div>
         <?php endif; ?>
         
+        <?php if ($notice !== ''): ?>
+            <div class="success-alert">
+                <i class="fas fa-clock"></i>
+                <div><?php echo e($notice); ?></div>
+            </div>
+        <?php endif; ?>
+
         <?php if ($error): ?>
             <div class="error-alert">
                 <i class="fas fa-exclamation-circle"></i>
-                <div><?php echo htmlspecialchars($error); ?></div>
+                <div><?php echo e($error); ?></div>
             </div>
         <?php endif; ?>
         
         <form method="POST" id="loginForm" autocomplete="off">
-            <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
+            <input type="hidden" name="csrf_token" value="<?php echo e($csrf_token); ?>">
             
             <div class="input-group">
                 <label class="input-label"><i class="fas fa-user"></i> Username</label>
                 <input type="text" name="username" class="input-field" placeholder="Enter username" 
                        required autofocus autocomplete="username"
-                       value="<?php echo isset($_POST['username']) ? htmlspecialchars($_POST['username']) : ''; ?>"
+                       value="<?php echo isset($_POST['username']) && is_string($_POST['username']) ? e($_POST['username']) : ''; ?>"
                        id="usernameInput">
             </div>
             

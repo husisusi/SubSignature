@@ -1,5 +1,4377 @@
-ace.define("ace/ext/diff/scroll_diff_decorator",["require","exports","module","ace/layer/decorators"],function(e,t,n){var r=this&&this.__extends||function(){var e=function(t,n){return e=Object.setPrototypeOf||{__proto__:[]}instanceof Array&&function(e,t){e.__proto__=t}||function(e,t){for(var n in t)Object.prototype.hasOwnProperty.call(t,n)&&(e[n]=t[n])},e(t,n)};return function(t,n){function r(){this.constructor=t}if(typeof n!="function"&&n!==null)throw new TypeError("Class extends value "+String(n)+" is not a constructor or null");e(t,n),t.prototype=n===null?Object.create(n):(r.prototype=n.prototype,new r)}}(),i=this&&this.__values||function(e){var t=typeof Symbol=="function"&&Symbol.iterator,n=t&&e[t],r=0;if(n)return n.call(e);if(e&&typeof e.length=="number")return{next:function(){return e&&r>=e.length&&(e=void 0),{value:e&&e[r++],done:!e}}};throw new TypeError(t?"Object is not iterable.":"Symbol.iterator is not defined.")},s=e("../../layer/decorators").Decorator,o=function(e){function t(t,n,r){var i=e.call(this,t,n)||this;return i.colors.dark["delete"]="rgba(255, 18, 18, 1)",i.colors.dark.insert="rgba(18, 136, 18, 1)",i.colors.light["delete"]="rgb(255,51,51)",i.colors.light.insert="rgb(32,133,72)",i.$zones=[],i.$forInlineDiff=r,i}return r(t,e),t.prototype.addZone=function(e,t,n){this.$zones.push({startRow:e,endRow:t,type:n})},t.prototype.setSessions=function(e,t){this.sessionA=e,this.sessionB=t},t.prototype.$updateDecorators=function(t){if(typeof this.canvas.getContext!="function")return;e.prototype.$updateDecorators.call(this,t);if(this.$zones.length>0){var n=this.renderer.theme.isDark===!0?this.colors.dark:this.colors.light,r=this.canvas.getContext("2d");this.$setDiffDecorators(r,n)}},t.prototype.$transformPosition=function(e,t){return t=="delete"?this.sessionA.documentToScreenRow(e,0):this.sessionB.documentToScreenRow(e,0)},t.prototype.$setDiffDecorators=function(e,t){function o(e,t){return e.from===t.from?e.to-t.to:e.from-t.from}var n,r,s=this,u=this.$zones;if(u){var a=[],f=u.filter(function(e){return e.type==="delete"}),l=u.filter(function(e){return e.type==="insert"});[f,l].forEach(function(e){e.forEach(function(e,n){var r=s.$transformPosition(e.startRow,e.type)*s.lineHeight,i=s.$transformPosition(e.endRow,e.type)*s.lineHeight+s.lineHeight,o=Math.round(s.heightRatio*r),u=Math.round(s.heightRatio*i),f=1,l=Math.round((o+u)/2),c=u-l;c<s.halfMinDecorationHeight&&(c=s.halfMinDecorationHeight);var h=a[a.length-1];n>0&&h&&h.type===e.type&&l-c<h.to+f&&(l=a[a.length-1].to+f+c),l-c<0&&(l=c),l+c>s.canvasHeight&&(l=s.canvasHeight-c),a.push({type:e.type,from:l-c,to:l+c,color:t[e.type]||null})})}),a=a.sort(o);try{for(var c=i(a),h=c.next();!h.done;h=c.next()){var p=h.value;e.fillStyle=p.color||null;var d=p.from,v=p.to,m=v-d;this.$forInlineDiff?e.fillRect(this.oneZoneWidth,d,2*this.oneZoneWidth,m):p.type=="delete"?e.fillRect(this.oneZoneWidth,d,this.oneZoneWidth,m):e.fillRect(2*this.oneZoneWidth,d,this.oneZoneWidth,m)}}catch(g){n={error:g}}finally{try{h&&!h.done&&(r=c.return)&&r.call(c)}finally{if(n)throw n.error}}}},t.prototype.setZoneWidth=function(){this.oneZoneWidth=Math.round(this.canvasWidth/3)},t}(s);t.ScrollDiffDecorator=o}),ace.define("ace/ext/diff/styles-css.js",["require","exports","module"],function(e,t,n){t.cssText='\n/*\n * Line Markers\n */\n.ace_diff {\n    position: absolute;\n    z-index: 0;\n}\n.ace_diff.inline {\n    z-index: 20;\n}\n/*\n * Light Colors \n */\n.ace_diff.insert {\n    background-color: #EFFFF1;\n}\n.ace_diff.delete {\n    background-color: #FFF1F1;\n}\n.ace_diff.aligned_diff {\n    background: rgba(206, 194, 191, 0.26);\n    background: repeating-linear-gradient(\n                45deg,\n              rgba(122, 111, 108, 0.26),\n              rgba(122, 111, 108, 0.26) 5px,\n              rgba(0, 0, 0, 0) 5px,\n              rgba(0, 0, 0, 0) 10px \n    );\n}\n\n.ace_diff.insert.inline {\n    background-color:  rgb(74 251 74 / 18%); \n}\n.ace_diff.delete.inline {\n    background-color: rgb(251 74 74 / 15%);\n}\n\n.ace_diff.delete.inline.empty {\n    background-color: rgba(255, 128, 79, 0.7);\n    width: 2px !important;\n}\n\n.ace_diff.insert.inline.empty {\n    background-color: rgba(49, 230, 96, 0.7);\n    width: 2px !important;\n}\n\n.ace_diff-active-line {\n    border-bottom: 1px solid;\n    border-top: 1px solid;\n    background: transparent;\n    position: absolute;\n    box-sizing: border-box;\n    border-color: #9191ac;\n}\n\n.ace_dark .ace_diff-active-line {\n    background: transparent;\n    border-color: #75777a;\n}\n \n\n/* gutter changes */\n.ace_mini-diff_gutter-enabled > .ace_gutter-cell,\n.ace_mini-diff_gutter-enabled > .ace_gutter-cell_svg-icons {\n    padding-right: 13px;\n}\n\n.ace_mini-diff_gutter_other > .ace_gutter-cell,\n.ace_mini-diff_gutter_other > .ace_gutter-cell_svg-icons  {\n    display: none;\n}\n\n.ace_mini-diff_gutter_other {\n    pointer-events: none;\n}\n\n\n.ace_mini-diff_gutter-enabled > .mini-diff-added {\n    background-color: #EFFFF1;\n    border-left: 3px solid #2BB534;\n    padding-left: 16px;\n    display: block;\n}\n\n.ace_mini-diff_gutter-enabled > .mini-diff-deleted {\n    background-color: #FFF1F1;\n    border-left: 3px solid #EA7158;\n    padding-left: 16px;\n    display: block;\n}\n\n\n.ace_mini-diff_gutter-enabled > .mini-diff-added:after {\n    position: absolute;\n    right: 2px;\n    content: "+";\n    background-color: inherit;\n}\n\n.ace_mini-diff_gutter-enabled > .mini-diff-deleted:after {\n    position: absolute;\n    right: 2px;\n    content: "-";\n    background-color: inherit;\n}\n.ace_fade-fold-widgets:hover > .ace_folding-enabled > .mini-diff-added:after,\n.ace_fade-fold-widgets:hover > .ace_folding-enabled > .mini-diff-deleted:after {\n    display: none;\n}\n\n.ace_diff_other .ace_selection {\n    filter: drop-shadow(1px 2px 3px darkgray);\n}\n\n.ace_hidden_marker-layer .ace_bracket,\n.ace_hidden_marker-layer .ace_error_bracket {\n    display: none;\n}\n\n\n\n/*\n * Dark Colors \n */\n\n.ace_dark .ace_diff.insert {\n    background-color: #212E25;\n}\n.ace_dark .ace_diff.delete {\n    background-color: #3F2222;\n}\n\n.ace_dark .ace_mini-diff_gutter-enabled > .mini-diff-added {\n    background-color: #212E25;\n    border-left-color:#00802F;\n}\n\n.ace_dark .ace_mini-diff_gutter-enabled > .mini-diff-deleted {\n    background-color: #3F2222;\n    border-left-color: #9C3838;\n}\n\n'}),ace.define("ace/ext/diff/gutter_decorator",["require","exports","module","ace/lib/dom"],function(e,t,n){var r=e("../../lib/dom"),i=function(){function e(e,t){this.gutterClass="ace_mini-diff_gutter-enabled",this.gutterCellsClasses={add:"mini-diff-added","delete":"mini-diff-deleted"},this.editor=e,this.type=t,this.chunks=[],this.attachToEditor()}return e.prototype.attachToEditor=function(){this.renderGutters=this.renderGutters.bind(this),r.addCssClass(this.editor.renderer.$gutterLayer.element,this.gutterClass),this.editor.renderer.$gutterLayer.on("afterRender",this.renderGutters)},e.prototype.renderGutters=function(e,t){var n=this,r=this.editor.renderer.$gutterLayer.$lines.cells;r.forEach(function(e){e.element.classList.remove(Object.values(n.gutterCellsClasses))});var i=this.type===-1?"old":"new",s=this.type===-1?this.gutterCellsClasses.delete:this.gutterCellsClasses.add;this.chunks.forEach(function(e){var t=e[i].start.row,n=e[i].end.row-1;r.forEach(function(e){e.row>=t&&e.row<=n&&e.element.classList.add(s)})})},e.prototype.setDecorations=function(e){this.chunks=e,this.renderGutters()},e.prototype.dispose=function(){r.removeCssClass(this.editor.renderer.$gutterLayer.element,this.gutterClass),this.editor.renderer.$gutterLayer.off("afterRender",this.renderGutters)},e}();t.MinimalGutterDiffDecorator=i}),ace.define("ace/ext/diff/base_diff_view",["require","exports","module","ace/lib/oop","ace/range","ace/lib/dom","ace/config","ace/line_widgets","ace/ext/diff/scroll_diff_decorator","ace/ext/diff/styles-css.js","ace/editor","ace/virtual_renderer","ace/undomanager","ace/layer/decorators","ace/theme/textmate","ace/multi_select","ace/edit_session","ace/ext/diff/gutter_decorator"],function(e,t,n){"use strict";var r=this&&this.__read||function(e,t){var n=typeof Symbol=="function"&&e[Symbol.iterator];if(!n)return e;var r=n.call(e),i,s=[],o;try{while((t===void 0||t-->0)&&!(i=r.next()).done)s.push(i.value)}catch(u){o={error:u}}finally{try{i&&!i.done&&(n=r["return"])&&n.call(r)}finally{if(o)throw o.error}}return s},i=e("../../lib/oop"),s=e("../../range").Range,o=e("../../lib/dom"),u=e("../../config"),a=e("../../line_widgets").LineWidgets,f=e("./scroll_diff_decorator").ScrollDiffDecorator,l=e("./styles-css.js").cssText,c=e("../../editor").Editor,h=e("../../virtual_renderer").VirtualRenderer,p=e("../../undomanager").UndoManager,d=e("../../layer/decorators").Decorator;e("../../theme/textmate"),e("../../multi_select");var v=e("../../edit_session").EditSession,m=e("./gutter_decorator").MinimalGutterDiffDecorator,g={compute:function(e,t,n){return[]}};o.importCssString(l,"diffview.css");var y=function(){function e(e,t){this.onChangeTheme=this.onChangeTheme.bind(this),this.onInput=this.onInput.bind(this),this.onChangeFold=this.onChangeFold.bind(this),this.realign=this.realign.bind(this),this.onSelect=this.onSelect.bind(this),this.onChangeWrapLimit=this.onChangeWrapLimit.bind(this),this.realignPending=!1,this.diffSession,this.chunks,this.inlineDiffEditor=e||!1,this.currentDiffIndex=0,this.diffProvider=g,t&&(this.container=t),this.$ignoreTrimWhitespace=!1,this.$maxDiffs=5e3,this.$maxComputationTimeMs=150,this.$syncSelections=!1,this.$foldUnchangedOnInput=!1,this.markerB=new E(this,1),this.markerA=new E(this,-1)}return e.prototype.$setupModels=function(e){e.diffProvider&&this.setProvider(e.diffProvider),this.showSideA=e.inline==undefined?!0:e.inline==="a";var t={scrollPastEnd:.5,highlightActiveLine:!1,highlightGutterLine:!1,animatedScroll:!0,customScrollbar:!0,vScrollBarAlwaysVisible:!0,fadeFoldWidgets:!0,showFoldWidgets:!0,selectionStyle:"text"};this.savedOptionsA=e.editorA&&e.editorA.getOptions(t),this.savedOptionsB=e.editorB&&e.editorB.getOptions(t);if(!this.inlineDiffEditor||e.inline==="a")this.editorA=e.editorA||this.$setupModel(e.sessionA,e.valueA),this.container&&this.container.appendChild(this.editorA.container),this.editorA.setOptions(t);if(!this.inlineDiffEditor||e.inline==="b")this.editorB=e.editorB||this.$setupModel(e.sessionB,e.valueB),this.container&&this.container.appendChild(this.editorB.container),this.editorB.setOptions(t);if(this.inlineDiffEditor){this.activeEditor=this.showSideA?this.editorA:this.editorB,this.otherSession=this.showSideA?this.sessionB:this.sessionA;var n=this.activeEditor.getOptions();n.readOnly=!0,delete n.mode,this.otherEditor=new c(new h(null),undefined,n),this.showSideA?this.editorB=this.otherEditor:this.editorA=this.otherEditor}this.setDiffSession({sessionA:e.sessionA||(e.editorA?e.editorA.session:new v(e.valueA||"")),sessionB:e.sessionB||(e.editorB?e.editorB.session:new v(e.valueB||"")),chunks:[]}),this.otherEditor&&this.activeEditor&&this.otherSession.setOption("wrap",this.activeEditor.getOption("wrap")),this.setupScrollbars()},e.prototype.addGutterDecorators=function(){this.gutterDecoratorA||(this.gutterDecoratorA=new m(this.editorA,-1)),this.gutterDecoratorB||(this.gutterDecoratorB=new m(this.editorB,1))},e.prototype.$setupModel=function(e,t){var n=new c(new h,e);return n.session.setUndoManager(new p),t!=undefined&&n.setValue(t,-1),n},e.prototype.foldUnchanged=function(){var e=this.chunks,t="-".repeat(120),n={old:new s(0,0,0,0),"new":new s(0,0,0,0)},r=!1;for(var i=0;i<e.length+1;i++){var o=e[i]||{old:new s(this.sessionA.getLength(),0,this.sessionA.getLength(),0),"new":new s(this.sessionB.getLength(),0,this.sessionB.getLength(),0)},u=o.new.start.row-n.new.end.row-5;if(u>2){var a=n.old.end.row+2,f=this.sessionA.addFold(t,new s(a,0,a+u,Number.MAX_VALUE));a=n.new.end.row+2;var l=this.sessionB.addFold(t,new s(a,0,a+u,Number.MAX_VALUE));if(f||l)r=!0;l&&f&&(f.other=l,l.other=f)}n=o}return r},e.prototype.unfoldUnchanged=function(){var e=this.sessionA.getAllFolds();for(var t=e.length-1;t>=0;t--){var n=e[t];n.placeholder.length==120&&this.sessionA.removeFold(n)}},e.prototype.toggleFoldUnchanged=function(){this.foldUnchanged()||this.unfoldUnchanged()},e.prototype.setDiffSession=function(e){this.diffSession&&(this.$detachSessionsEventHandlers(),this.clearSelectionMarkers()),this.diffSession=e,this.sessionA=this.sessionB=null,this.diffSession&&(this.chunks=this.diffSession.chunks||[],this.editorA&&this.editorA.setSession(e.sessionA),this.editorB&&this.editorB.setSession(e.sessionB),this.sessionA=this.diffSession.sessionA,this.sessionB=this.diffSession.sessionB,this.$attachSessionsEventHandlers(),this.initSelectionMarkers()),this.otherSession=this.showSideA?this.sessionB:this.sessionA},e.prototype.$attachSessionsEventHandlers=function(){},e.prototype.$detachSessionsEventHandlers=function(){},e.prototype.getDiffSession=function(){return this.diffSession},e.prototype.setTheme=function(e){this.editorA&&this.editorA.setTheme(e),this.editorB&&this.editorB.setTheme(e)},e.prototype.getTheme=function(){return(this.editorA||this.editorB).getTheme()},e.prototype.onChangeTheme=function(e){var t=e&&e.theme||this.getTheme();this.editorA&&this.editorA.getTheme()!==t&&this.editorA.setTheme(t),this.editorB&&this.editorB.getTheme()!==t&&this.editorB.setTheme(t)},e.prototype.resize=function(e){this.editorA&&this.editorA.resize(e),this.editorB&&this.editorB.resize(e)},e.prototype.scheduleOnInput=function(){var e=this;if(this.$onInputTimer)return;this.$onInputTimer=setTimeout(function(){e.$onInputTimer=null,e.onInput()})},e.prototype.onInput=function(){var e=this;this.$onInputTimer&&clearTimeout(this.$onInputTimer);var t=this.sessionA.doc.getAllLines(),n=this.sessionB.doc.getAllLines();this.selectionRangeA=null,this.selectionRangeB=null;var r=this.$diffLines(t,n);this.diffSession.chunks=this.chunks=r,this.gutterDecoratorA&&this.gutterDecoratorA.setDecorations(r),this.gutterDecoratorB&&this.gutterDecoratorB.setDecorations(r);if(this.chunks&&this.chunks.length>this.$maxDiffs)return;this.align(),this.editorA&&this.editorA.renderer.updateBackMarkers(),this.editorB&&this.editorB.renderer.updateBackMarkers(),setTimeout(function(){e.updateScrollBarDecorators()},0),this.$foldUnchangedOnInput&&this.foldUnchanged()},e.prototype.setupScrollbars=function(){var e=this,t=function(t){setTimeout(function(){e.$setScrollBarDecorators(t),e.updateScrollBarDecorators()},0)};this.inlineDiffEditor?t(this.activeEditor.renderer):(t(this.editorA.renderer),t(this.editorB.renderer))},e.prototype.$setScrollBarDecorators=function(e){e.$scrollDecorator&&e.$scrollDecorator.destroy(),e.$scrollDecorator=new f(e.scrollBarV,e,this.inlineDiffEditor),e.$scrollDecorator.setSessions(this.sessionA,this.sessionB),e.scrollBarV.setVisible(!0),e.scrollBarV.element.style.bottom=e.scrollBarH.getHeight()+"px"},e.prototype.$resetDecorators=function(e){e.$scrollDecorator&&e.$scrollDecorator.destroy(),e.$scrollDecorator=new d(e.scrollBarV,e)},e.prototype.updateScrollBarDecorators=function(){var e=this;if(this.inlineDiffEditor){if(!this.activeEditor)return;this.activeEditor.renderer.$scrollDecorator.$zones=[]}else{if(!this.editorA||!this.editorB)return;this.editorA.renderer.$scrollDecorator.$zones=[],this.editorB.renderer.$scrollDecorator.$zones=[]}var t=function(e,t){if(!e)return;if(typeof e.renderer.$scrollDecorator.addZone!="function")return;t.old.start.row!=t.old.end.row&&e.renderer.$scrollDecorator.addZone(t.old.start.row,t.old.end.row-1,"delete"),t.new.start.row!=t.new.end.row&&e.renderer.$scrollDecorator.addZone(t.new.start.row,t.new.end.row-1,"insert")};this.inlineDiffEditor?(this.chunks&&this.chunks.forEach(function(n){t(e.activeEditor,n)}),this.activeEditor.renderer.$scrollDecorator.$updateDecorators(this.activeEditor.renderer.layerConfig)):(this.chunks&&this.chunks.forEach(function(n){t(e.editorA,n),t(e.editorB,n)}),this.editorA.renderer.$scrollDecorator.$updateDecorators(this.editorA.renderer.layerConfig),this.editorB.renderer.$scrollDecorator.$updateDecorators(this.editorB.renderer.layerConfig))},e.prototype.$diffLines=function(e,t){return this.diffProvider.compute(e,t,{ignoreTrimWhitespace:this.$ignoreTrimWhitespace,maxComputationTimeMs:this.$maxComputationTimeMs})},e.prototype.setProvider=function(e){this.diffProvider=e},e.prototype.$addWidget=function(e,t){var n=e.lineWidgets[t.row];n&&(t.rowsAbove+=n.rowsAbove>t.rowsAbove?n.rowsAbove:t.rowsAbove,t.rowCount+=n.rowCount),e.lineWidgets[t.row]=t,e.widgetManager.lineWidgets[t.row]=t,e.$resetRowCache(t.row);var r=e.getFoldAt(t.row,0);r&&e.widgetManager.updateOnFold({data:r,action:"add"},e)},e.prototype.$initWidgets=function(e){var t=e.session;t.widgetManager||(t.widgetManager=new a(t),t.widgetManager.attach(e)),e.session.lineWidgets=[],e.session.widgetManager.lineWidgets=[],e.session.$resetRowCache(0)},e.prototype.$screenRow=function(e,t){var n=t.documentToScreenPosition(e).row,r=e.row-t.getLength()+1;return r>0&&(n+=r),n},e.prototype.align=function(){},e.prototype.onChangeWrapLimit=function(e,t){},e.prototype.onSelect=function(e,t){this.searchHighlight(t),this.syncSelect(t)},e.prototype.syncSelect=function(e){if(this.$updatingSelection)return;var t=e.session===this.sessionA,n=e.getRange(),r=t?this.selectionRangeA:this.selectionRangeB;if(r&&n.isEqual(r))return;t?this.selectionRangeA=n:this.selectionRangeB=n,this.$updatingSelection=!0;var i=this.transformRange(n,t);this.$syncSelections&&(t?this.editorB:this.editorA).session.selection.setSelectionRange(i),this.$updatingSelection=!1,t?(this.selectionRangeA=n,this.selectionRangeB=i):(this.selectionRangeA=i,this.selectionRangeB=n),this.updateSelectionMarker(this.syncSelectionMarkerA,this.sessionA,this.selectionRangeA),this.updateSelectionMarker(this.syncSelectionMarkerB,this.sessionB,this.selectionRangeB)},e.prototype.updateSelectionMarker=function(e,t,n){e.setRange(n),t._signal("changeFrontMarker")},e.prototype.onChangeFold=function(e,t){var n=e.data;if(this.$syncingFold||!n||!e.action)return;this.scheduleRealign();var r=t===this.sessionA,i=r?this.sessionB:this.sessionA;e.action==="remove"&&(n.other?(n.other.other=null,i.removeFold(n.other)):n.lineWidget&&(i.widgetManager.addLineWidget(n.lineWidget),n.lineWidget=null,i.$editor&&i.$editor.renderer.updateBackMarkers()));if(e.action==="add"){var s=this.transformRange(n.range,r);if(s.isEmpty()){var o=s.start.row+1;i.lineWidgets[o]&&(n.lineWidget=i.lineWidgets[o],i.widgetManager.removeLineWidget(n.lineWidget),i.$editor&&i.$editor.renderer.updateBackMarkers())}else this.$syncingFold=!0,n.other=i.addFold(n.placeholder,s),n.other&&(n.other.other=n),this.$syncingFold=!1}},e.prototype.scheduleRealign=function(){this.realignPending||(this.realignPending=!0,this.editorA.renderer.on("beforeRender",this.realign),this.editorB.renderer.on("beforeRender",this.realign))},e.prototype.realign=function(){this.realignPending=!0,this.editorA.renderer.off("beforeRender",this.realign),this.editorB.renderer.off("beforeRender",this.realign),this.align(),this.realignPending=!1},e.prototype.detach=function(){if(!this.editorA||!this.editorB)return;this.savedOptionsA&&this.editorA.setOptions(this.savedOptionsA),this.savedOptionsB&&this.editorB.setOptions(this.savedOptionsB),this.editorA.renderer.off("beforeRender",this.realign),this.editorB.renderer.off("beforeRender",this.realign),this.$detachEventHandlers(),this.$removeLineWidgets(this.sessionA),this.$removeLineWidgets(this.sessionB),this.gutterDecoratorA&&this.gutterDecoratorA.dispose(),this.gutterDecoratorB&&this.gutterDecoratorB.dispose(),this.sessionA.selection.clearSelection(),this.sessionB.selection.clearSelection(),this.savedOptionsA&&this.savedOptionsA.customScrollbar&&this.$resetDecorators(this.editorA.renderer),this.savedOptionsB&&this.savedOptionsB.customScrollbar&&this.$resetDecorators(this.editorB.renderer)},e.prototype.$removeLineWidgets=function(e){e.lineWidgets=[],e.widgetManager.lineWidgets=[],e._signal("changeFold",{data:{start:{row:0}}})},e.prototype.$detachEventHandlers=function(){},e.prototype.destroy=function(){this.detach(),this.editorA&&this.editorA.destroy(),this.editorB&&this.editorB.destroy(),this.editorA=this.editorB=null},e.prototype.gotoNext=function(e){var t=this.activeEditor||this.editorA;this.inlineDiffEditor&&(t=this.editorA);var n=t==this.editorA,r=t.selection.lead.row,i=this.findChunkIndex(this.chunks,r,n),o=this.chunks[i+e]||this.chunks[i],u=t.session.getScrollTop();if(o){var a=o[n?"old":"new"],f=Math.max(a.start.row,a.end.row-1);t.selection.setRange(new s(f,0,f,0))}t.renderer.scrollSelectionIntoView(t.selection.lead,t.selection.anchor,.5),t.renderer.animateScrolling(u)},e.prototype.firstDiffSelected=function(){return this.currentDiffIndex<=1},e.prototype.lastDiffSelected=function(){return this.currentDiffIndex>this.chunks.length-1},e.prototype.transformRange=function(e,t){return s.fromPoints(this.transformPosition(e.start,t),this.transformPosition(e.end,t))},e.prototype.transformPosition=function(e,t){var n=this.findChunkIndex(this.chunks,e.row,t),i=this.chunks[n],s=this.sessionB.doc.clonePos,o=s(e),u=r(t?["old","new"]:["new","old"],2),a=u[0],f=u[1],l=0,c=!1;if(i)if(i[a].end.row<=e.row)o.row-=i[a].end.row-i[f].end.row;else if(i.charChanges)for(var h=0;h<i.charChanges.length;h++){var p=i.charChanges[h],d=p[a],v=p[f];if(d.end.row<e.row)continue;if(d.start.row>e.row)break;if(d.isMultiLine()&&d.contains(e.row,e.column)){o.row=v.start.row+e.row-d.start.row;var m=v.end.row;v.end.column===0&&m--,o.row>m&&(o.row=m,o.column=(t?this.sessionB:this.sessionA).getLine(m).length,c=!0),o.row=Math.min(o.row,m)}else{o.row=v.start.row;if(d.start.column>e.column)break;c=!0,!d.isEmpty()&&d.contains(e.row,e.column)?(o.column=v.start.column,l=e.column-d.start.column,l=Math.min(l,v.end.column-v.start.column)):(o=s(v.end),l=e.column-d.end.column)}}else i[a].start.row<=e.row&&(o.row+=i[f].start.row-i[a].start.row,o.row>=i[f].end.row&&(o.row=i[f].end.row-1,o.column=(t?this.sessionB:this.sessionA).getLine(o.row).length));if(!c){var g=r(t?[this.sessionA,this.sessionB]:[this.sessionB,this.sessionA],2),y=g[0],b=g[1];l-=this.$getDeltaIndent(y,b,e.row,o.row)}return o.column+=l,o},e.prototype.$getDeltaIndent=function(e,t,n,r){var i=this.$getIndent(e,n),s=this.$getIndent(t,r);return i-s},e.prototype.$getIndent=function(e,t){return e.getLine(t).match(/^\s*/)[0].length},e.prototype.printDiffs=function(){this.chunks.forEach(function(e){console.log(e.toString())})},e.prototype.findChunkIndex=function(e,t,n){for(var r=0;r<e.length;r++){var i=e[r],s=n?i.old:i.new;if(s.end.row<t)continue;if(s.start.row>t)break}return this.currentDiffIndex=r,r-1},e.prototype.searchHighlight=function(e){if(this.$syncSelections||this.inlineDiffEditor)return;var t=e.session,n=t===this.sessionA?this.sessionB:this.sessionA;n.highlight(t.$searchHighlight.regExp),n._signal("changeBackMarker")},e.prototype.initSelectionMarkers=function(){this.syncSelectionMarkerA=new S,this.syncSelectionMarkerB=new S,this.sessionA.addDynamicMarker(this.syncSelectionMarkerA,!0),this.sessionB.addDynamicMarker(this.syncSelectionMarkerB,!0)},e.prototype.clearSelectionMarkers=function(){this.sessionA.removeMarker(this.syncSelectionMarkerA.id),this.sessionB.removeMarker(this.syncSelectionMarkerB.id)},e}();u.defineOptions(y.prototype,"DiffView",{showOtherLineNumbers:{set:function(e){this.gutterLayer&&(this.gutterLayer.$renderer=e?null:b,this.editorA.renderer.updateFull())},initialValue:!0},folding:{set:function(e){this.editorA.setOption("showFoldWidgets",e),this.editorB.setOption("showFoldWidgets",e);if(!e){var t=[],n=[];this.chunks&&this.chunks.forEach(function(e){t.push(e.old.start,e.old.end),n.push(e.new.start,e.new.end)}),this.sessionA.unfold(t),this.sessionB.unfold(n)}}},syncSelections:{set:function(e){}},ignoreTrimWhitespace:{set:function(e){this.scheduleOnInput()}},wrap:{set:function(e){this.sessionA.setOption("wrap",e),this.sessionB.setOption("wrap",e)}},maxDiffs:{value:5e3},theme:{set:function(e){this.setTheme(e)},get:function(){return this.editorA.getTheme()}}});var b={getText:function(t){return""},getWidth:function(){return 0}};t.BaseDiffView=y;var w=function(){function e(t,n,r){this.old=t,this.new=n,this.charChanges=r&&r.map(function(t){return new e(new s(t.originalStartLineNumber,t.originalStartColumn,t.originalEndLineNumber,t.originalEndColumn),new s(t.modifiedStartLineNumber,t.modifiedStartColumn,t.modifiedEndLineNumber,t.modifiedEndColumn))})}return e}(),E=function(){function e(e,t){this.id,this.diffView=e,this.type=t}return e.prototype.update=function(e,t,n,r){var i,o,u,a=this.diffView;this.type===-1?(i="old",o="delete",u="insert"):(i="new",o="insert",u="delete");var f=a.$ignoreTrimWhitespace,l=a.chunks;if(n.lineWidgets&&!a.inlineDiffEditor)for(var c=r.firstRow;c<=r.lastRow;c++){var h=n.lineWidgets[c];if(!h||h.hidden)continue;var p=n.documentToScreenRow(c,0);if(h.rowsAbove>0){var d=new s(p-h.rowsAbove,0,p-1,Number.MAX_VALUE);t.drawFullLineMarker(e,d,"ace_diff aligned_diff",r)}var v=p+h.rowCount-(h.rowsAbove||0),d=new s(p+1,0,v,Number.MAX_VALUE);t.drawFullLineMarker(e,d,"ace_diff aligned_diff",r)}l.forEach(function(a){var l=a[i].start.row,c=a[i].end.row;if(c<r.firstRow||l>r.lastRow)return;var h=new s(l,0,c-1,1<<30);l!==c&&(h=h.toScreenRange(n),t.drawFullLineMarker(e,h,"ace_diff "+o,r));if(a.charChanges)for(var p=0;p<a.charChanges.length;p++){var d=a.charChanges[p][i];d.end.column==0&&d.end.row>d.start.row&&d.end.row==a[i].end.row&&(d.end.row--,d.end.column=Number.MAX_VALUE);if(f)for(var v=d.start.row;v<=d.end.row;v++){var m=void 0,g=void 0,y=n.getLine(v).match(/^\s*/)[0].length,b=n.getLine(v).length;v===d.start.row?m=d.start.column:m=y,v===d.end.row?g=d.end.column:g=b;var w=new s(v,m,v,g),E=w.toScreenRange(n);if(y===m&&b===g)continue;var S="inline "+o;w.isEmpty()&&m!==0&&(S="inline "+u+" empty"),t.drawSingleLineMarker(e,E,"ace_diff "+S,r)}else{var x=new s(d.start.row,d.start.column,d.end.row,d.end.column),E=x.toScreenRange(n),S="inline "+o;x.isEmpty()&&d.start.column!==0&&(S="inline empty "+u),E.isMultiLine()?t.drawTextMarker(e,E,"ace_diff "+S,r):t.drawSingleLineMarker(e,E,"ace_diff "+S,r)}}})},e}(),S=function(){function e(){this.id,this.type="fullLine",this.clazz="ace_diff-active-line"}return e.prototype.update=function(e,t,n,r){},e.prototype.setRange=function(e){var t=e.clone();t.end.column++,this.range=t},e}();t.DiffChunk=w,t.DiffHighlight=E}),ace.define("ace/ext/diff/inline_diff_view",["require","exports","module","ace/ext/diff/base_diff_view","ace/virtual_renderer","ace/config"],function(e,t,n){"use strict";var r=this&&this.__extends||function(){var e=function(t,n){return e=Object.setPrototypeOf||{__proto__:[]}instanceof Array&&function(e,t){e.__proto__=t}||function(e,t){for(var n in t)Object.prototype.hasOwnProperty.call(t,n)&&(e[n]=t[n])},e(t,n)};return function(t,n){function r(){this.constructor=t}if(typeof n!="function"&&n!==null)throw new TypeError("Class extends value "+String(n)+" is not a constructor or null");e(t,n),t.prototype=n===null?Object.create(n):(r.prototype=n.prototype,new r)}}(),i=e("./base_diff_view").BaseDiffView,s=e("../../virtual_renderer").VirtualRenderer,o=e("../../config"),u=function(e){function t(t,n){var r=this;return t=t||{},t.inline=t.inline||"a",r=e.call(this,!0,n)||this,r.init(t),r}return r(t,e),t.prototype.init=function(e){this.onSelect=this.onSelect.bind(this),this.onAfterRender=this.onAfterRender.bind(this),this.$setupModels(e),this.onChangeTheme(),o.resetOptions(this),o._signal("diffView",this);var t=this.activeEditor.renderer.$padding;this.addGutterDecorators(),this.otherEditor.renderer.setPadding(t),this.textLayer=this.otherEditor.renderer.$textLayer,this.markerLayer=this.otherEditor.renderer.$markerBack,this.gutterLayer=this.otherEditor.renderer.$gutterLayer,this.cursorLayer=this.otherEditor.renderer.$cursorLayer,this.otherEditor.renderer.$updateCachedSize=function(){};var n=this.activeEditor.renderer.$textLayer.element;n.parentNode.insertBefore(this.textLayer.element,n);var r=this.activeEditor.renderer.$markerBack.element;r.parentNode.insertBefore(this.markerLayer.element,r.nextSibling);var i=this.activeEditor.renderer.$gutterLayer.element;i.parentNode.insertBefore(this.gutterLayer.element,i.nextSibling),i.style.position="absolute",this.gutterLayer.element.style.position="absolute",this.gutterLayer.element.style.width="100%",this.gutterLayer.element.classList.add("ace_mini-diff_gutter_other"),this.gutterLayer.$updateGutterWidth=function(){},this.initMouse(),this.initTextInput(),this.initTextLayer(),this.initRenderer(),this.$attachEventHandlers(),this.selectEditor(this.activeEditor)},t.prototype.initRenderer=function(e){var t=this;e?delete this.activeEditor.renderer.$getLongestLine:this.editorA.renderer.$getLongestLine=this.editorB.renderer.$getLongestLine=function(){var e=s.prototype.$getLongestLine;return Math.max(e.call(t.editorA.renderer),e.call(t.editorB.renderer))}},t.prototype.initTextLayer=function(){function r(e,t){var r=0,i=e.length-1,s=-1;while(r<i){var o=Math.floor((r+i)/2),u=e[o][n].start.row;if(u<t)s=o,r=o+1;else{if(!(u>t)){s=o;break}i=o-1}}e[s+1]&&e[s+1][n].start.row<=t&&s++;var a=e[s]&&e[s][n];return a&&a.end.row>t?!0:!1}var e=this.textLayer.$renderLine,t=this;this.otherEditor.renderer.$textLayer.$renderLine=function(n,i,s){r(t.chunks,i)&&e.call(this,n,i,s)};var n=this.showSideA?"new":"old"},t.prototype.initTextInput=function(e){e?(this.otherEditor.textInput=this.othertextInput,this.otherEditor.container=this.otherEditorContainer):(this.othertextInput=this.otherEditor.textInput,this.otherEditor.textInput=this.activeEditor.textInput,this.otherEditorContainer=this.otherEditor.container,this.otherEditor.container=this.activeEditor.container)},t.prototype.selectEditor=function(e){e==this.activeEditor?(this.otherEditor.selection.clearSelection(),this.activeEditor.textInput.setHost(this.activeEditor),this.activeEditor.setStyle("ace_diff_other",!1),this.cursorLayer.element.remove(),this.activeEditor.renderer.$cursorLayer.element.style.display="block",this.showSideA&&(this.sessionA.removeMarker(this.syncSelectionMarkerA.id),this.sessionA.addDynamicMarker(this.syncSelectionMarkerA,!0)),this.markerLayer.element.classList.add("ace_hidden_marker-layer"),this.activeEditor.renderer.$markerBack.element.classList.remove("ace_hidden_marker-layer"),this.removeBracketHighlight(this.otherEditor)):(this.activeEditor.selection.clearSelection(),this.activeEditor.textInput.setHost(this.otherEditor),this.activeEditor.setStyle("ace_diff_other"),this.activeEditor.renderer.$cursorLayer.element.parentNode.appendChild(this.cursorLayer.element),this.activeEditor.renderer.$cursorLayer.element.style.display="none",this.activeEditor.$isFocused&&this.otherEditor.onFocus(),this.showSideA&&this.sessionA.removeMarker(this.syncSelectionMarkerA.id),this.markerLayer.element.classList.remove("ace_hidden_marker-layer"),this.activeEditor.renderer.$markerBack.element.classList.add("ace_hidden_marker-layer"),this.removeBracketHighlight(this.activeEditor))},t.prototype.removeBracketHighlight=function(e){var t=e.session;t.$bracketHighlight&&(t.$bracketHighlight.markerIds.forEach(function(e){t.removeMarker(e)}),t.$bracketHighlight=null)},t.prototype.initMouse=function(){var e=this;this.otherEditor.renderer.$loop=this.activeEditor.renderer.$loop,this.otherEditor.renderer.scroller={getBoundingClientRect:function(){return e.activeEditor.renderer.scroller.getBoundingClientRect()},style:this.activeEditor.renderer.scroller.style};var t=function(t){if(!t.domEvent)return;var n=t.editor.renderer.pixelToScreenCoordinates(t.clientX,t.clientY),r=e.activeEditor.session,i=e.otherEditor.session,s=r.screenToDocumentPosition(n.row,n.column,n.offsetX),o=i.screenToDocumentPosition(n.row,n.column,n.offsetX),u=r.documentToScreenPosition(s),a=i.documentToScreenPosition(o);t.editor==e.activeEditor&&(a.row==n.row&&u.row!=n.row?(t.type=="mousedown"&&e.selectEditor(e.otherEditor),t.propagationStopped=!0,t.defaultPrevented=!0,e.otherEditor.$mouseHandler.onMouseEvent(t.type,t.domEvent)):t.type=="mousedown"&&e.selectEditor(e.activeEditor))},n=["mousedown","click","mouseup","dblclick","tripleclick","quadclick"];n.forEach(function(n){e.activeEditor.on(n,t,!0),e.activeEditor.on("gutter"+n,t,!0)});var r=function(t){e.activeEditor.onFocus(t)},i=function(t){e.activeEditor.onBlur(t)};this.otherEditor.on("focus",r),this.otherEditor.on("blur",i),this.onMouseDetach=function(){n.forEach(function(n){e.activeEditor.off(n,t,!0),e.activeEditor.off("gutter"+n,t,!0)}),e.otherEditor.off("focus",r),e.otherEditor.off("blur",i)}},t.prototype.align=function(){var e=this;this.$initWidgets(e.editorA),this.$initWidgets(e.editorB),e.chunks.forEach(function(t){var n=e.$screenRow(t.old.end,e.sessionA)-e.$screenRow(t.old.start,e.sessionA),r=e.$screenRow(t.new.end,e.sessionB)-e.$screenRow(t.new.start,e.sessionB);e.$addWidget(e.sessionA,{rowCount:r,rowsAbove:t.old.end.row===0?r:0,row:t.old.end.row===0?0:t.old.end.row-1}),e.$addWidget(e.sessionB,{rowCount:n,rowsAbove:n,row:t.new.start.row})}),e.sessionA._emit("changeFold",{data:{start:{row:0}}}),e.sessionB._emit("changeFold",{data:{start:{row:0}}})},t.prototype.onChangeWrapLimit=function(e,t){this.otherSession.setOption("wrap",t.getOption("wrap")),this.otherSession.adjustWrapLimit(t.$wrapLimit),this.scheduleRealign(),this.activeEditor.renderer.updateFull()},t.prototype.$attachSessionsEventHandlers=function(){this.$attachSessionEventHandlers(this.editorA,this.markerA),this.$attachSessionEventHandlers(this.editorB,this.markerB);var e=this.activeEditor.session;e.on("changeWrapLimit",this.onChangeWrapLimit),e.on("changeWrapMode",this.onChangeWrapLimit)},t.prototype.$attachSessionEventHandlers=function(e,t){e.session.on("changeFold",this.onChangeFold),e.session.addDynamicMarker(t),e.selection.on("changeCursor",this.onSelect),e.selection.on("changeSelection",this.onSelect)},t.prototype.$detachSessionsEventHandlers=function(){this.$detachSessionHandlers(this.editorA,this.markerA),this.$detachSessionHandlers(this.editorB,this.markerB),this.otherSession.bgTokenizer.lines.fill(undefined);var e=this.activeEditor.session;e.off("changeWrapLimit",this.onChangeWrapLimit),e.off("changeWrapMode",this.onChangeWrapLimit)},t.prototype.$detachSessionHandlers=function(e,t){e.session.removeMarker(t.id),e.selection.off("changeCursor",this.onSelect),e.selection.off("changeSelection",this.onSelect),e.session.off("changeFold",this.onChangeFold)},t.prototype.$attachEventHandlers=function(){this.activeEditor.on("input",this.onInput),this.activeEditor.renderer.on("afterRender",this.onAfterRender),this.otherSession.on("change",this.onInput)},t.prototype.$detachEventHandlers=function(){this.$detachSessionsEventHandlers(),this.activeEditor.off("input",this.onInput),this.activeEditor.renderer.off("afterRender",this.onAfterRender),this.otherSession.off("change",this.onInput),this.textLayer.element.textContent="",this.textLayer.element.remove(),this.gutterLayer.element.textContent="",this.gutterLayer.element.remove(),this.markerLayer.element.textContent="",this.markerLayer.element.remove(),this.onMouseDetach(),this.selectEditor(this.activeEditor),this.clearSelectionMarkers(),this.otherEditor.setSession(null),this.otherEditor.renderer.$loop=null,this.initTextInput(!0),this.initRenderer(!0),this.otherEditor.destroy()},t.prototype.onAfterRender=function(e,t){var n=t.layerConfig,r=this.otherSession,i=this.otherEditor.renderer;r.$scrollTop=t.scrollTop,r.$scrollLeft=t.scrollLeft,["characterWidth","lineHeight","scrollTop","scrollLeft","scrollMargin","$padding","$size","layerConfig","$horizScroll","$vScroll"].forEach(function(e){i[e]=t[e]}),i.$computeLayerConfig();var s=i.layerConfig;this.gutterLayer.update(s),s.firstRowScreen=n.firstRowScreen,i.$cursorLayer.config=s,i.$cursorLayer.update(s),(e&i.CHANGE_LINES||e&i.CHANGE_FULL||e&i.CHANGE_SCROLL||e&i.CHANGE_TEXT)&&this.textLayer.update(s),this.markerLayer.setMarkers(this.otherSession.getMarkers()),this.markerLayer.update(s)},t.prototype.detach=function(){e.prototype.detach.call(this),this.otherEditor&&this.otherEditor.destroy()},t}(i);t.InlineDiffView=u}),ace.define("ace/ext/diff/split_diff_view",["require","exports","module","ace/ext/diff/base_diff_view","ace/config"],function(e,t,n){"use strict";var r=this&&this.__extends||function(){var e=function(t,n){return e=Object.setPrototypeOf||{__proto__:[]}instanceof Array&&function(e,t){e.__proto__=t}||function(e,t){for(var n in t)Object.prototype.hasOwnProperty.call(t,n)&&(e[n]=t[n])},e(t,n)};return function(t,n){function r(){this.constructor=t}if(typeof n!="function"&&n!==null)throw new TypeError("Class extends value "+String(n)+" is not a constructor or null");e(t,n),t.prototype=n===null?Object.create(n):(r.prototype=n.prototype,new r)}}(),i=e("./base_diff_view").BaseDiffView,s=e("../../config"),o=function(e){function t(t){var n=this;return t=t||{},n=e.call(this)||this,n.init(t),n}return r(t,e),t.prototype.init=function(e){this.onChangeTheme=this.onChangeTheme.bind(this),this.onMouseWheel=this.onMouseWheel.bind(this),this.onScroll=this.onScroll.bind(this),this.$setupModels(e),this.addGutterDecorators(),this.onChangeTheme(),s.resetOptions(this),s._signal("diffView",this),this.$attachEventHandlers()},t.prototype.onChangeWrapLimit=function(){this.scheduleRealign()},t.prototype.align=function(){var e=this;this.$initWidgets(e.editorA),this.$initWidgets(e.editorB),e.chunks.forEach(function(t){var n=e.$screenRow(t.old.start,e.sessionA),r=e.$screenRow(t.new.start,e.sessionB);n<r?e.$addWidget(e.sessionA,{rowCount:r-n,rowsAbove:t.old.start.row===0?r-n:0,row:t.old.start.row===0?0:t.old.start.row-1}):n>r&&e.$addWidget(e.sessionB,{rowCount:n-r,rowsAbove:t.new.start.row===0?n-r:0,row:t.new.start.row===0?0:t.new.start.row-1});var n=e.$screenRow(t.old.end,e.sessionA),r=e.$screenRow(t.new.end,e.sessionB);n<r?e.$addWidget(e.sessionA,{rowCount:r-n,rowsAbove:t.old.end.row===0?r-n:0,row:t.old.end.row===0?0:t.old.end.row-1}):n>r&&e.$addWidget(e.sessionB,{rowCount:n-r,rowsAbove:t.new.end.row===0?n-r:0,row:t.new.end.row===0?0:t.new.end.row-1})}),e.sessionA._emit("changeFold",{data:{start:{row:0}}}),e.sessionB._emit("changeFold",{data:{start:{row:0}}})},t.prototype.onScroll=function(e,t){this.syncScroll(this.sessionA===t?this.editorA.renderer:this.editorB.renderer)},t.prototype.syncScroll=function(e){if(this.$syncScroll==0)return;var t=this.editorA.renderer,n=this.editorB.renderer,r=e==t;if(t.$scrollAnimation&&n.$scrollAnimation)return;var i=Date.now();if(this.scrollSetBy!=e&&i-this.scrollSetAt<500)return;var s=r?t:n;if(this.scrollSetBy!=e){if(r&&this.scrollA==s.session.getScrollTop())return;if(!r&&this.scrollB==s.session.getScrollTop())return}var o=r?n:t,u=s.session.getScrollTop();this.$syncScroll=!1,r?(this.scrollA=s.session.getScrollTop(),this.scrollB=u):(this.scrollA=u,this.scrollB=s.session.getScrollTop()),this.scrollSetBy=e,o.session.setScrollTop(u),this.$syncScroll=!0,this.scrollSetAt=i},t.prototype.onMouseWheel=function(e){if(e.getAccelKey())return;e.getShiftKey()&&e.wheelY&&!e.wheelX&&(e.wheelX=e.wheelY,e.wheelY=0);var t=e.editor,n=t.renderer.isScrollableBy(e.wheelX*e.speed,e.wheelY*e.speed);if(!n){var r=t==this.editorA?this.editorB:this.editorA;return r.renderer.isScrollableBy(e.wheelX*e.speed,e.wheelY*e.speed)&&r.renderer.scrollBy(e.wheelX*e.speed,e.wheelY*e.speed),e.stop()}},t.prototype.$attachSessionsEventHandlers=function(){this.$attachSessionEventHandlers(this.editorA,this.markerA),this.$attachSessionEventHandlers(this.editorB,this.markerB)},t.prototype.$attachSessionEventHandlers=function(e,t){e.session.on("changeScrollTop",this.onScroll),e.session.on("changeFold",this.onChangeFold),e.session.addDynamicMarker(t),e.selection.on("changeCursor",this.onSelect),e.selection.on("changeSelection",this.onSelect),e.session.on("changeWrapLimit",this.onChangeWrapLimit),e.session.on("changeWrapMode",this.onChangeWrapLimit)},t.prototype.$detachSessionsEventHandlers=function(){this.$detachSessionHandlers(this.editorA,this.markerA),this.$detachSessionHandlers(this.editorB,this.markerB)},t.prototype.$detachSessionHandlers=function(e,t){e.session.off("changeScrollTop",this.onScroll),e.session.off("changeFold",this.onChangeFold),e.session.removeMarker(t.id),e.selection.off("changeCursor",this.onSelect),e.selection.off("changeSelection",this.onSelect),e.session.off("changeWrapLimit",this.onChangeWrapLimit),e.session.off("changeWrapMode",this.onChangeWrapLimit)},t.prototype.$attachEventHandlers=function(){this.editorA.renderer.on("themeChange",this.onChangeTheme),this.editorB.renderer.on("themeChange",this.onChangeTheme),this.editorA.on("mousewheel",this.onMouseWheel),this.editorB.on("mousewheel",this.onMouseWheel),this.editorA.on("input",this.onInput),this.editorB.on("input",this.onInput)},t.prototype.$detachEventHandlers=function(){this.$detachSessionsEventHandlers(),this.clearSelectionMarkers(),this.editorA.renderer.off("themeChange",this.onChangeTheme),this.editorB.renderer.off("themeChange",this.onChangeTheme),this.$detachEditorEventHandlers(this.editorA),this.$detachEditorEventHandlers(this.editorB)},t.prototype.$detachEditorEventHandlers=function(e){e.off("mousewheel",this.onMouseWheel),e.off("input",this.onInput)},t}(i);t.SplitDiffView=o}),ace.define("ace/ext/diff/providers/default",["require","exports","module","ace/range","ace/ext/diff/base_diff_view"],function(e,t,n){"use strict";function h(e,t,n){n===void 0&&(n=function(e,t){return e===t});if(e===t)return!0;if(!e||!t)return!1;if(e.length!==t.length)return!1;for(var r=0,i=e.length;r<i;r++)if(!n(e[r],t[r]))return!1;return!0}function p(e,t){var n,r,o,u,a,f,l,c;return i(this,function(i){switch(i.label){case 0:i.trys.push([0,8,9,10]),o=s(e),u=o.next(),i.label=1;case 1:if(!!u.done)return[3,7];a=u.value;if(r===undefined||!t(r,a))return[3,2];return n.push(a),[3,5];case 2:if(!n)return[3,4];return[4,n];case 3:i.sent(),i.label=4;case 4:n=[a],i.label=5;case 5:r=a,i.label=6;case 6:return u=o.next(),[3,1];case 7:return[3,10];case 8:return f=i.sent(),l={error:f},[3,10];case 9:try{u&&!u.done&&(c=o.return)&&c.call(o)}finally{if(l)throw l.error}return[7];case 10:if(!n)return[3,12];return[4,n];case 11:i.sent(),i.label=12;case 12:return[2]}})}function d(e,t){for(var n=0;n<=e.length;n++)t(n===0?undefined:e[n-1],n===e.length?undefined:e[n])}function v(e,t){for(var n=0;n<e.length;n++)t(n===0?undefined:e[n-1],e[n],n+1===e.length?undefined:e[n+1])}function m(e,t){var n,r;try{for(var i=s(t),o=i.next();!o.done;o=i.next()){var u=o.value;e.push(u)}}catch(a){n={error:a}}finally{try{o&&!o.done&&(r=i.return)&&r.call(i)}finally{if(n)throw n.error}}}function g(e,t){return function(n,r){return t(e(n),e(r))}}function b(e){return function(t,n){return-e(t,n)}}function E(e,t){t===void 0&&(t="unexpected state");if(!e)throw new w("Assertion Failed: ".concat(t))}function S(e){e()}function x(e,t){var n=0;while(n<e.length-1){var r=e[n],i=e[n+1];if(!t(r,i))return!1;n++}return!0}function k(e,t){var n=L(e,t);return n===-1?undefined:e[n]}function L(e,t,n,r){n===void 0&&(n=0),r===void 0&&(r=e.length);var i=n,s=r;while(i<s){var o=Math.floor((i+s)/2);t(e[o])?i=o+1:s=o}return i-1}function A(e,t){var n=O(e,t);return n===e.length?undefined:e[n]}function O(e,t,n,r){n===void 0&&(n=0),r===void 0&&(r=e.length);var i=n,s=r;while(i<s){var o=Math.floor((i+s)/2);t(e[o])?s=o:i=o+1}return i}function q(e,t){if(e.lineNumber<1)return new N(1,1);if(e.lineNumber>t.length)return new N(t.length,t[t.length-1].length+1);var n=t[e.lineNumber-1];return e.column>n.length+1?new N(e.lineNumber,n.length+1):e}function R(e,t){return e>=1&&e<=t.length}function W(e,t,n,r){var i,o;r===void 0&&(r=!1);var u=[];try{for(var a=s(p(e.map(function(e){return X(e,t,n)}),function(e,t){return e.original.overlapOrTouch(t.original)||e.modified.overlapOrTouch(t.modified)})),f=a.next();!f.done;f=a.next()){var l=f.value,c=l[0],h=l[l.length-1];u.push(new U(c.original.join(h.original),c.modified.join(h.modified),l.map(function(e){return e.innerChanges[0]})))}}catch(d){i={error:d}}finally{try{f&&!f.done&&(o=a.return)&&o.call(a)}finally{if(i)throw i.error}}return S(function(){if(!r&&u.length>0){if(u[0].modified.startLineNumber!==u[0].original.startLineNumber)return!1;if(n.length.lineCount-u[u.length-1].modified.endLineNumberExclusive!==t.length.lineCount-u[u.length-1].original.endLineNumberExclusive)return!1}return x(u,function(e,t){return t.original.startLineNumber-e.original.endLineNumberExclusive===t.modified.startLineNumber-e.modified.endLineNumberExclusive&&e.original.endLineNumberExclusive<t.original.startLineNumber&&e.modified.endLineNumberExclusive<t.modified.startLineNumber})}),u}function X(e,t,n){var r=0,i=0;e.modifiedRange.endColumn===1&&e.originalRange.endColumn===1&&e.originalRange.startLineNumber+r<=e.originalRange.endLineNumber&&e.modifiedRange.startLineNumber+r<=e.modifiedRange.endLineNumber&&(i=-1),e.modifiedRange.startColumn-1>=n.getLineLength(e.modifiedRange.startLineNumber)&&e.originalRange.startColumn-1>=t.getLineLength(e.originalRange.startLineNumber)&&e.originalRange.startLineNumber<=e.originalRange.endLineNumber+i&&e.modifiedRange.startLineNumber<=e.modifiedRange.endLineNumber+i&&(r=1);var s=new _(e.originalRange.startLineNumber+r,e.originalRange.endLineNumber+1+i),o=new _(e.modifiedRange.startLineNumber+r,e.modifiedRange.endLineNumber+1+i);return new U(s,o,[e])}function Y(e){return e===32||e===9}function ut(e){return e>=97&&e<=122||e>=65&&e<=90||e>=48&&e<=57}function at(e){return e>=65&&e<=90}function lt(e){return ft[e]}function ct(e){return e===10?8:e===13?7:Y(e)?6:e>=97&&e<=122?0:e>=65&&e<=90?1:e>=48&&e<=57?2:e===-1?3:e===44||e===59?5:4}function ht(e,t,n,r,i,s){var o=dt(e,t,n,s),u=o.moves,a=o.excludedChanges;if(!s.isValid())return[];var f=e.filter(function(e){return!a.has(e)}),l=vt(f,r,i,t,n,s);return m(u,l),u=gt(u),u=u.filter(function(e){var n=e.original.toOffsetRange().slice(t).map(function(e){return e.trim()}),r=n.join("\n");return r.length>=15&&pt(n,function(e){return e.length>=2})>=2}),u=yt(e,u),u}function pt(e,t){var n,r,i=0;try{for(var o=s(e),u=o.next();!u.done;u=o.next()){var a=u.value;t(a)&&i++}}catch(f){n={error:f}}finally{try{u&&!u.done&&(r=o.return)&&r.call(o)}finally{if(n)throw n.error}}return i}function dt(e,t,n,r){var i,o,u,a,f=[],l=e.filter(function(e){return e.modified.isEmpty&&e.original.length>=3}).map(function(e){return new Z(e.original,t,e)}),c=new Set(e.filter(function(e){return e.original.isEmpty&&e.modified.length>=3}).map(function(e){return new Z(e.modified,n,e)})),h=new Set;try{for(var p=s(l),d=p.next();!d.done;d=p.next()){var v=d.value,m=-1,g=void 0;try{for(var y=(u=void 0,s(c)),b=y.next();!b.done;b=y.next()){var w=b.value,E=v.computeSimilarity(w);E>m&&(m=E,g=w)}}catch(S){u={error:S}}finally{try{b&&!b.done&&(a=y.return)&&a.call(y)}finally{if(u)throw u.error}}m>.9&&g&&(c.delete(g),f.push(new I(v.range,g.range)),h.add(v.source),h.add(g.source));if(!r.isValid())return{moves:f,excludedChanges:h}}}catch(x){i={error:x}}finally{try{d&&!d.done&&(o=p.return)&&o.call(p)}finally{if(i)throw i.error}}return{moves:f,excludedChanges:h}}function vt(e,t,n,r,i,o){var u,a,f,l,c,h,p,d,v=[],m=new st;try{for(var w=s(e),E=w.next();!E.done;E=w.next()){var S=E.value;for(var x=S.original.startLineNumber;x<S.original.endLineNumberExclusive-2;x++){var T="".concat(t[x-1],":").concat(t[x+1-1],":").concat(t[x+2-1]);m.add(T,{range:new _(x,x+3)})}}}catch(N){u={error:N}}finally{try{E&&!E.done&&(a=w.return)&&a.call(w)}finally{if(u)throw u.error}}var C=[];e.sort(g(function(e){return e.modified.startLineNumber},y));var L=function(e){var t=[],r=function(e){var r="".concat(n[e-1],":").concat(n[e+1-1],":").concat(n[e+2-1]),i=new _(e,e+3),o=[];m.forEach(r,function(e){var n,r,u=e.range;try{for(var a=(n=void 0,s(t)),f=a.next();!f.done;f=a.next()){var l=f.value;if(l.originalLineRange.endLineNumberExclusive+1===u.endLineNumberExclusive&&l.modifiedLineRange.endLineNumberExclusive+1===i.endLineNumberExclusive){l.originalLineRange=new _(l.originalLineRange.startLineNumber,u.endLineNumberExclusive),l.modifiedLineRange=new _(l.modifiedLineRange.startLineNumber,i.endLineNumberExclusive),o.push(l);return}}}catch(c){n={error:c}}finally{try{f&&!f.done&&(r=a.return)&&r.call(a)}finally{if(n)throw n.error}}var h={modifiedLineRange:i,originalLineRange:u};C.push(h),o.push(h)}),t=o};for(var i=e.modified.startLineNumber;i<e.modified.endLineNumberExclusive-2;i++)r(i);if(!o.isValid())return{value:[]}};try{for(var A=s(e),O=A.next();!O.done;O=A.next()){var S=O.value,P=L(S);if(typeof P=="object")return P.value}}catch(H){f={error:H}}finally{try{O&&!O.done&&(l=A.return)&&l.call(A)}finally{if(f)throw f.error}}C.sort(b(g(function(e){return e.modifiedLineRange.length},y)));var B=new D,j=new D;try{for(var F=s(C),q=F.next();!q.done;q=F.next()){var R=q.value,U=R.modifiedLineRange.startLineNumber-R.originalLineRange.startLineNumber,z=B.subtractFrom(R.modifiedLineRange),W=j.subtractFrom(R.originalLineRange).getWithDelta(U),X=z.getIntersection(W);try{for(var V=(p=void 0,s(X.ranges)),$=V.next();!$.done;$=V.next()){var J=$.value;if(J.length<3)continue;var K=J,Q=J.delta(-U);v.push(new I(Q,K)),B.addRange(K),j.addRange(Q)}}catch(G){p={error:G}}finally{try{$&&!$.done&&(d=V.return)&&d.call(V)}finally{if(p)throw p.error}}}}catch(Y){c={error:Y}}finally{try{q&&!q.done&&(h=F.return)&&h.call(F)}finally{if(c)throw c.error}}v.sort(g(function(e){return e.original.startLineNumber},y));var Z=new M(e),et=function(t){var n=v[t],s=Z.findLastMonotonous(function(e){return e.original.startLineNumber<=n.original.startLineNumber}),u=k(e,function(e){return e.modified.startLineNumber<=n.modified.startLineNumber}),a=Math.max(n.original.startLineNumber-s.original.startLineNumber,n.modified.startLineNumber-u.modified.startLineNumber),f=Z.findLastMonotonous(function(e){return e.original.startLineNumber<n.original.endLineNumberExclusive}),l=k(e,function(e){return e.modified.startLineNumber<n.modified.endLineNumberExclusive}),c=Math.max(f.original.endLineNumberExclusive-n.original.endLineNumberExclusive,l.modified.endLineNumberExclusive-n.modified.endLineNumberExclusive),h=void 0;for(h=0;h<a;h++){var p=n.original.startLineNumber-h-1,d=n.modified.startLineNumber-h-1;if(p>r.length||d>i.length)break;if(B.contains(d)||j.contains(p))break;if(!mt(r[p-1],i[d-1],o))break}h>0&&(j.addRange(new _(n.original.startLineNumber-h,n.original.startLineNumber)),B.addRange(new _(n.modified.startLineNumber-h,n.modified.startLineNumber)));var m=void 0;for(m=0;m<c;m++){var p=n.original.endLineNumberExclusive+m,d=n.modified.endLineNumberExclusive+m;if(p>r.length||d>i.length)break;if(B.contains(d)||j.contains(p))break;if(!mt(r[p-1],i[d-1],o))break}m>0&&(j.addRange(new _(n.original.endLineNumberExclusive,n.original.endLineNumberExclusive+m)),B.addRange(new _(n.modified.endLineNumberExclusive,n.modified.endLineNumberExclusive+m)));if(h>0||m>0)v[t]=new I(new _(n.original.startLineNumber-h,n.original.endLineNumberExclusive+m),new _(n.modified.startLineNumber-h,n.modified.endLineNumberExclusive+m))};for(var x=0;x<v.length;x++)et(x);return v}function mt(e,t,n){function d(t){var n=0;for(var r=0;r<e.length;r++)Y(t.charCodeAt(r))||n++;return n}var r,i;if(e.trim()===t.trim())return!0;if(e.length>300&&t.length>300)return!1;var o=new tt,u=o.compute(new ot([e],new C(1,1,1,e.length),!1),new ot([t],new C(1,1,1,t.length),!1),n),a=0,f=$.invert(u.diffs,e.length);try{for(var l=s(f),c=l.next();!c.done;c=l.next()){var h=c.value;h.seq1Range.forEach(function(t){Y(e.charCodeAt(t))||a++})}}catch(p){r={error:p}}finally{try{c&&!c.done&&(i=l.return)&&i.call(l)}finally{if(r)throw r.error}}var v=d(e.length>t.length?e:t),m=a/v>.6&&v>10;return m}function gt(e){if(e.length===0)return e;e.sort(g(function(e){return e.original.startLineNumber},y));var t=[e[0]];for(var n=1;n<e.length;n++){var r=t[t.length-1],i=e[n],s=i.original.startLineNumber-r.original.endLineNumberExclusive,o=i.modified.startLineNumber-r.modified.endLineNumberExclusive,u=s>=0&&o>=0;if(u&&s+o<=2){t[t.length-1]=r.join(i);continue}t.push(i)}return t}function yt(e,t){var n=new M(e);return t=t.filter(function(t){var r=n.findLastMonotonous(function(e){return e.original.startLineNumber<t.original.endLineNumberExclusive})||new I(new _(1,1),new _(1,1)),i=k(e,function(e){return e.modified.startLineNumber<t.modified.endLineNumberExclusive}),s=r!==i;return s}),t}function bt(e,t,n){var r=n;return r=wt(e,t,r),r=wt(e,t,r),r=Et(e,t,r),r}function wt(e,t,n){if(n.length===0)return n;var r=[];r.push(n[0]);for(var i=1;i<n.length;i++){var s=r[r.length-1],o=n[i];if(o.seq1Range.isEmpty||o.seq2Range.isEmpty){var u=o.seq1Range.start-s.seq1Range.endExclusive,a=void 0;for(a=1;a<=u;a++)if(e.getElement(o.seq1Range.start-a)!==e.getElement(o.seq1Range.endExclusive-a)||t.getElement(o.seq2Range.start-a)!==t.getElement(o.seq2Range.endExclusive-a))break;a--;if(a===u){r[r.length-1]=new $(new T(s.seq1Range.start,o.seq1Range.endExclusive-u),new T(s.seq2Range.start,o.seq2Range.endExclusive-u));continue}o=o.delta(-a)}r.push(o)}var f=[];for(var i=0;i<r.length-1;i++){var l=r[i+1],o=r[i];if(o.seq1Range.isEmpty||o.seq2Range.isEmpty){var u=l.seq1Range.start-o.seq1Range.endExclusive,a=void 0;for(a=0;a<u;a++)if(!e.isStronglyEqual(o.seq1Range.start+a,o.seq1Range.endExclusive+a)||!t.isStronglyEqual(o.seq2Range.start+a,o.seq2Range.endExclusive+a))break;if(a===u){r[i+1]=new $(new T(o.seq1Range.start+u,l.seq1Range.endExclusive),new T(o.seq2Range.start+u,l.seq2Range.endExclusive));continue}a>0&&(o=o.delta(a))}f.push(o)}return r.length>0&&f.push(r[r.length-1]),f}function Et(e,t,n){if(!e.getBoundaryScore||!t.getBoundaryScore)return n;for(var r=0;r<n.length;r++){var i=r>0?n[r-1]:undefined,s=n[r],o=r+1<n.length?n[r+1]:undefined,u=new T(i?i.seq1Range.endExclusive+1:0,o?o.seq1Range.start-1:e.length),a=new T(i?i.seq2Range.endExclusive+1:0,o?o.seq2Range.start-1:t.length);s.seq1Range.isEmpty?n[r]=St(s,e,t,u,a):s.seq2Range.isEmpty&&(n[r]=St(s.swap(),t,e,a,u).swap())}return n}function St(e,t,n,r,i){var s=100,o=1;while(e.seq1Range.start-o>=r.start&&e.seq2Range.start-o>=i.start&&n.isStronglyEqual(e.seq2Range.start-o,e.seq2Range.endExclusive-o)&&o<s)o++;o--;var u=0;while(e.seq1Range.start+u<r.endExclusive&&e.seq2Range.endExclusive+u<i.endExclusive&&n.isStronglyEqual(e.seq2Range.start+u,e.seq2Range.endExclusive+u)&&u<s)u++;if(o===0&&u===0)return e;var a=0,f=-1;for(var l=-o;l<=u;l++){var c=e.seq2Range.start+l,h=e.seq2Range.endExclusive+l,p=e.seq1Range.start+l,d=t.getBoundaryScore(p)+n.getBoundaryScore(c)+n.getBoundaryScore(h);d>f&&(f=d,a=l)}return e.delta(a)}function xt(e,t,n){var r,i,o=[];try{for(var u=s(n),a=u.next();!a.done;a=u.next()){var f=a.value,l=o[o.length-1];if(!l){o.push(f);continue}f.seq1Range.start-l.seq1Range.endExclusive<=2||f.seq2Range.start-l.seq2Range.endExclusive<=2?o[o.length-1]=new $(l.seq1Range.join(f.seq1Range),l.seq2Range.join(f.seq2Range)):o.push(f)}}catch(c){r={error:c}}finally{try{a&&!a.done&&(i=u.return)&&i.call(u)}finally{if(r)throw r.error}}return o}function Tt(e,t,n,r,i){function a(n,a){if(n.offset1<u.offset1||n.offset2<u.offset2)return;var f=r(e,n.offset1),l=r(t,n.offset2);if(!f||!l)return;var c=new $(f,l),h=c.intersect(a),p=h.seq1Range.length,d=h.seq2Range.length;while(s.length>0){var v=s[0],m=v.seq1Range.intersects(c.seq1Range)||v.seq2Range.intersects(c.seq2Range);if(!m)break;var g=r(e,v.seq1Range.start),y=r(t,v.seq2Range.start),b=new $(g,y),w=b.intersect(v);p+=w.seq1Range.length,d+=w.seq2Range.length,c=c.join(b);if(!(c.seq1Range.endExclusive>=v.seq1Range.endExclusive))break;s.shift()}(i&&p+d<c.seq1Range.length+c.seq2Range.length||p+d<(c.seq1Range.length+c.seq2Range.length)*2/3)&&o.push(c),u=c.getEndExclusives()}i===void 0&&(i=!1);var s=$.invert(n,e.length),o=[],u=new J(0,0);while(s.length>0){var f=s.shift();if(f.seq1Range.isEmpty)continue;a(f.getStarts(),f),a(f.getEndExclusives().delta(-1),f)}var l=Nt(n,o);return l}function Nt(e,t){var n=[];while(e.length>0||t.length>0){var r=e[0],i=t[0],s=void 0;r&&(!i||r.seq1Range.start<i.seq1Range.start)?s=e.shift():s=t.shift(),n.length>0&&n[n.length-1].seq1Range.endExclusive>=s.seq1Range.start?n[n.length-1]=n[n.length-1].join(s):n.push(s)}return n}function Ct(e,t,n){var r=n;if(r.length===0)return r;var i=0,s;do{s=!1;var o=[r[0]],u=function(t){var n=function(t,n){var r=new T(u.seq1Range.endExclusive,i.seq1Range.start),s=e.getText(r),o=s.replace(/\s/g,"");return o.length<=4&&(t.seq1Range.length+t.seq2Range.length>5||n.seq1Range.length+n.seq2Range.length>5)?!0:!1},i=r[t],u=o[o.length-1],a=n(u,i);a?(s=!0,o[o.length-1]=o[o.length-1].join(i)):o.push(i)};for(var a=1;a<r.length;a++)u(a);r=o}while(i++<10&&s);return r}function kt(e,t,n){var r=n;if(r.length===0)return r;var i=0,s;do{s=!1;var o=[r[0]],u=function(n){var i=function(n,r){function y(e){return Math.min(e,g)}var i=new T(a.seq1Range.endExclusive,u.seq1Range.start),s=e.countLinesIn(i);if(s>5||i.length>500)return!1;var o=e.getText(i).trim();if(o.length>20||o.split(/\r\n|\r|\n/).length>1)return!1;var f=e.countLinesIn(n.seq1Range),l=n.seq1Range.length,c=t.countLinesIn(n.seq2Range),h=n.seq2Range.length,p=e.countLinesIn(r.seq1Range),d=r.seq1Range.length,v=t.countLinesIn(r.seq2Range),m=r.seq2Range.length,g=130;return Math.pow(Math.pow(y(f*40+l),1.5)+Math.pow(y(c*40+h),1.5),1.5)+Math.pow(Math.pow(y(p*40+d),1.5)+Math.pow(y(v*40+m),1.5),1.5)>Math.pow(Math.pow(g,1.5),1.5)*1.3?!0:!1},u=r[n],a=o[o.length-1],f=i(a,u);f?(s=!0,o[o.length-1]=o[o.length-1].join(u)):o.push(u)};for(var a=1;a<r.length;a++)u(a);r=o}while(i++<10&&s);var f=[];return v(r,function(t,n,r){function s(e){return e.length>0&&e.trim().length<=3&&n.seq1Range.length+n.seq2Range.length>100}var i=n,o=e.extendToFullLines(n.seq1Range),u=e.getText(new T(o.start,n.seq1Range.start));s(u)&&(i=i.deltaStart(-u.length));var a=e.getText(new T(n.seq1Range.endExclusive,o.endExclusive));s(a)&&(i=i.deltaEnd(a.length));var l=$.fromOffsetPairs(t?t.getEndExclusives():J.zero,r?r.getStarts():J.max),c=i.intersect(l);f.length>0&&c.getStarts().equals(f[f.length-1].getEndExclusives())?f[f.length-1]=f[f.length-1].join(c):f.push(c)}),f}function At(e){var t=0;while(t<e.length&&(e.charCodeAt(t)===32||e.charCodeAt(t)===9))t++;return t}function Mt(e){return new I(new _(e.seq1Range.start+1,e.seq1Range.endExclusive+1),new _(e.seq2Range.start+1,e.seq2Range.endExclusive+1))}function _t(e,t,n){var r=new Ot,i=r.computeDiff(e,t,n);return i===null||i===void 0?void 0:i.changes.map(function(e){var t,n,r,i,s=e.innerChanges;return t=e.original.startLineNumber-1,n=e.original.endLineNumberExclusive-1,r=e.modified.startLineNumber-1,i=e.modified.endLineNumberExclusive-1,{origStart:t,origEnd:n,editStart:r,editEnd:i,charChanges:s===null||s===void 0?void 0:s.map(function(e){return{originalStartLineNumber:e.originalRange.startLineNumber-1,originalStartColumn:e.originalRange.startColumn-1,originalEndLineNumber:e.originalRange.endLineNumber-1,originalEndColumn:e.originalRange.endColumn-1,modifiedStartLineNumber:e.modifiedRange.startLineNumber-1,modifiedStartColumn:e.modifiedRange.startColumn-1,modifiedEndLineNumber:e.modifiedRange.endLineNumber-1,modifiedEndColumn:e.modifiedRange.endColumn-1}})}})}var r=this&&this.__extends||function(){var e=function(t,n){return e=Object.setPrototypeOf||{__proto__:[]}instanceof Array&&function(e,t){e.__proto__=t}||function(e,t){for(var n in t)Object.prototype.hasOwnProperty.call(t,n)&&(e[n]=t[n])},e(t,n)};return function(t,n){function r(){this.constructor=t}if(typeof n!="function"&&n!==null)throw new TypeError("Class extends value "+String(n)+" is not a constructor or null");e(t,n),t.prototype=n===null?Object.create(n):(r.prototype=n.prototype,new r)}}(),i=this&&this.__generator||function(e,t){function u(e){return function(t){return a([e,t])}}function a(u){if(r)throw new TypeError("Generator is already executing.");while(o&&(o=0,u[0]&&(n=0)),n)try{if(r=1,i&&(s=u[0]&2?i["return"]:u[0]?i["throw"]||((s=i["return"])&&s.call(i),0):i.next)&&!(s=s.call(i,u[1])).done)return s;if(i=0,s)u=[u[0]&2,s.value];switch(u[0]){case 0:case 1:s=u;break;case 4:return n.label++,{value:u[1],done:!1};case 5:n.label++,i=u[1],u=[0];continue;case 7:u=n.ops.pop(),n.trys.pop();continue;default:if(!(s=n.trys,s=s.length>0&&s[s.length-1])&&(u[0]===6||u[0]===2)){n=0;continue}if(u[0]===3&&(!s||u[1]>s[0]&&u[1]<s[3])){n.label=u[1];break}if(u[0]===6&&n.label<s[1]){n.label=s[1],s=u;break}if(s&&n.label<s[2]){n.label=s[2],n.ops.push(u);break}s[2]&&n.ops.pop(),n.trys.pop();continue}u=t.call(e,n)}catch(a){u=[6,a],i=0}finally{r=s=0}if(u[0]&5)throw u[1];return{value:u[0]?u[1]:void 0,done:!0}}var n={label:0,sent:function(){if(s[0]&1)throw s[1];return s[1]},trys:[],ops:[]},r,i,s,o=Object.create((typeof Iterator=="function"?Iterator:Object).prototype);return o.next=u(0),o["throw"]=u(1),o["return"]=u(2),typeof Symbol=="function"&&(o[Symbol.iterator]=function(){return this}),o},s=this&&this.__values||function(e){var t=typeof Symbol=="function"&&Symbol.iterator,n=t&&e[t],r=0;if(n)return n.call(e);if(e&&typeof e.length=="number")return{next:function(){return e&&r>=e.length&&(e=void 0),{value:e&&e[r++],done:!e}}};throw new TypeError(t?"Object is not iterable.":"Symbol.iterator is not defined.")},o,u,a,f,l,c,y=function(e,t){return e-t},w=function(e){function t(n){var r=e.call(this,n||"An unexpected bug occurred.")||this;return Object.setPrototypeOf(r,t.prototype),r}return r(t,e),t}(Error),T=function(){function e(e,t){this.start=e,this.endExclusive=t;if(e>t)throw new w("Invalid range: ".concat(this.toString()))}return e.fromTo=function(t,n){return new e(t,n)},e.addRange=function(t,n){var r=0;while(r<n.length&&n[r].endExclusive<t.start)r++;var i=r;while(i<n.length&&n[i].start<=t.endExclusive)i++;if(r===i)n.splice(r,0,t);else{var s=Math.min(t.start,n[r].start),o=Math.max(t.endExclusive,n[i-1].endExclusive);n.splice(r,i-r,new e(s,o))}},e.tryCreate=function(t,n){return t>n?undefined:new e(t,n)},e.ofLength=function(t){return new e(0,t)},e.ofStartAndLength=function(t,n){return new e(t,t+n)},e.emptyAt=function(t){return new e(t,t)},Object.defineProperty(e.prototype,"isEmpty",{get:function(){return this.start===this.endExclusive},enumerable:!1,configurable:!0}),e.prototype.delta=function(t){return new e(this.start+t,this.endExclusive+t)},e.prototype.deltaStart=function(t){return new e(this.start+t,this.endExclusive)},e.prototype.deltaEnd=function(t){return new e(this.start,this.endExclusive+t)},Object.defineProperty(e.prototype,"length",{get:function(){return this.endExclusive-this.start},enumerable:!1,configurable:!0}),e.prototype.toString=function(){return"[".concat(this.start,", ").concat(this.endExclusive,")")},e.prototype.equals=function(e){return this.start===e.start&&this.endExclusive===e.endExclusive},e.prototype.containsRange=function(e){return this.start<=e.start&&e.endExclusive<=this.endExclusive},e.prototype.contains=function(e){return this.start<=e&&e<this.endExclusive},e.prototype.join=function(t){return new e(Math.min(this.start,t.start),Math.max(this.endExclusive,t.endExclusive))},e.prototype.intersect=function(t){var n=Math.max(this.start,t.start),r=Math.min(this.endExclusive,t.endExclusive);return n<=r?new e(n,r):undefined},e.prototype.intersectionLength=function(e){var t=Math.max(this.start,e.start),n=Math.min(this.endExclusive,e.endExclusive);return Math.max(0,n-t)},e.prototype.intersects=function(e){var t=Math.max(this.start,e.start),n=Math.min(this.endExclusive,e.endExclusive);return t<n},e.prototype.intersectsOrTouches=function(e){var t=Math.max(this.start,e.start),n=Math.min(this.endExclusive,e.endExclusive);return t<=n},e.prototype.isBefore=function(e){return this.endExclusive<=e.start},e.prototype.isAfter=function(e){return this.start>=e.endExclusive},e.prototype.slice=function(e){return e.slice(this.start,this.endExclusive)},e.prototype.substring=function(e){return e.substring(this.start,this.endExclusive)},e.prototype.clip=function(e){if(this.isEmpty)throw new w("Invalid clipping range: ".concat(this.toString()));return Math.max(this.start,Math.min(this.endExclusive-1,e))},e.prototype.clipCyclic=function(e){if(this.isEmpty)throw new w("Invalid clipping range: ".concat(this.toString()));return e<this.start?this.endExclusive-(this.start-e)%this.length:e>=this.endExclusive?this.start+(e-this.start)%this.length:e},e.prototype.map=function(e){var t=[];for(var n=this.start;n<this.endExclusive;n++)t.push(e(n));return t},e.prototype.forEach=function(e){for(var t=this.start;t<this.endExclusive;t++)e(t)},e}(),N=function(){function e(e,t){this.lineNumber=e,this.column=t}return e.prototype.equals=function(t){return e.equals(this,t)},e.equals=function(e,t){return!e&&!t?!0:!!e&&!!t&&e.lineNumber===t.lineNumber&&e.column===t.column},e.prototype.isBefore=function(t){return e.isBefore(this,t)},e.isBefore=function(e,t){return e.lineNumber<t.lineNumber?!0:t.lineNumber<e.lineNumber?!1:e.column<t.column},e.prototype.isBeforeOrEqual=function(t){return e.isBeforeOrEqual(this,t)},e.isBeforeOrEqual=function(e,t){return e.lineNumber<t.lineNumber?!0:t.lineNumber<e.lineNumber?!1:e.column<=t.column},e}(),C=function(){function e(e,t,n,r){e>n||e===n&&t>r?(this.startLineNumber=n,this.startColumn=r,this.endLineNumber=e,this.endColumn=t):(this.startLineNumber=e,this.startColumn=t,this.endLineNumber=n,this.endColumn=r)}return e.prototype.isEmpty=function(){return e.isEmpty(this)},e.isEmpty=function(e){return e.startLineNumber===e.endLineNumber&&e.startColumn===e.endColumn},e.prototype.containsPosition=function(t){return e.containsPosition(this,t)},e.containsPosition=function(e,t){return t.lineNumber<e.startLineNumber||t.lineNumber>e.endLineNumber?!1:t.lineNumber===e.startLineNumber&&t.column<e.startColumn?!1:t.lineNumber===e.endLineNumber&&t.column>e.endColumn?!1:!0},e.prototype.containsRange=function(t){return e.containsRange(this,t)},e.containsRange=function(e,t){return t.startLineNumber<e.startLineNumber||t.endLineNumber<e.startLineNumber?!1:t.startLineNumber>e.endLineNumber||t.endLineNumber>e.endLineNumber?!1:t.startLineNumber===e.startLineNumber&&t.startColumn<e.startColumn?!1:t.endLineNumber===e.endLineNumber&&t.endColumn>e.endColumn?!1:!0},e.prototype.strictContainsRange=function(t){return e.strictContainsRange(this,t)},e.strictContainsRange=function(e,t){return t.startLineNumber<e.startLineNumber||t.endLineNumber<e.startLineNumber?!1:t.startLineNumber>e.endLineNumber||t.endLineNumber>e.endLineNumber?!1:t.startLineNumber===e.startLineNumber&&t.startColumn<=e.startColumn?!1:t.endLineNumber===e.endLineNumber&&t.endColumn>=e.endColumn?!1:!0},e.prototype.plusRange=function(t){return e.plusRange(this,t)},e.plusRange=function(t,n){var r,i,s,o;return n.startLineNumber<t.startLineNumber?(r=n.startLineNumber,i=n.startColumn):n.startLineNumber===t.startLineNumber?(r=n.startLineNumber,i=Math.min(n.startColumn,t.startColumn)):(r=t.startLineNumber,i=t.startColumn),n.endLineNumber>t.endLineNumber?(s=n.endLineNumber,o=n.endColumn):n.endLineNumber===t.endLineNumber?(s=n.endLineNumber,o=Math.max(n.endColumn,t.endColumn)):(s=t.endLineNumber,o=t.endColumn),new e(r,i,s,o)},e.prototype.intersectRanges=function(t){return e.intersectRanges(this,t)},e.intersectRanges=function(t,n){var r=t.startLineNumber,i=t.startColumn,s=t.endLineNumber,o=t.endColumn,u=n.startLineNumber,a=n.startColumn,f=n.endLineNumber,l=n.endColumn;return r<u?(r=u,i=a):r===u&&(i=Math.max(i,a)),s>f?(s=f,o=l):s===f&&(o=Math.min(o,l)),r>s?null:r===s&&i>o?null:new e(r,i,s,o)},e.prototype.equalsRange=function(t){return e.equalsRange(this,t)},e.equalsRange=function(e,t){return!e&&!t?!0:!!e&&!!t&&e.startLineNumber===t.startLineNumber&&e.startColumn===t.startColumn&&e.endLineNumber===t.endLineNumber&&e.endColumn===t.endColumn},e.prototype.getEndPosition=function(){return e.getEndPosition(this)},e.getEndPosition=function(e){return new N(e.endLineNumber,e.endColumn)},e.prototype.getStartPosition=function(){return e.getStartPosition(this)},e.getStartPosition=function(e){return new N(e.startLineNumber,e.startColumn)},e.prototype.collapseToStart=function(){return e.collapseToStart(this)},e.collapseToStart=function(t){return new e(t.startLineNumber,t.startColumn,t.startLineNumber,t.startColumn)},e.prototype.collapseToEnd=function(){return e.collapseToEnd(this)},e.collapseToEnd=function(t){return new e(t.endLineNumber,t.endColumn,t.endLineNumber,t.endColumn)},e.fromPositions=function(t,n){return n===void 0&&(n=t),new e(t.lineNumber,t.column,n.lineNumber,n.column)},e}(),M=function(){function e(e){this._array=e,this._findLastMonotonousLastIdx=0}return e.prototype.findLastMonotonous=function(e){var t,n;if(u.assertInvariants){if(this._prevFindLastPredicate)try{for(var r=s(this._array),i=r.next();!i.done;i=r.next()){var o=i.value;if(this._prevFindLastPredicate(o)&&!e(o))throw new Error("MonotonousArray: current predicate must be weaker than (or equal to) the previous predicate.")}}catch(a){t={error:a}}finally{try{i&&!i.done&&(n=r.return)&&n.call(r)}finally{if(t)throw t.error}}this._prevFindLastPredicate=e}var f=L(this._array,e,this._findLastMonotonousLastIdx);return this._findLastMonotonousLastIdx=f+1,f===-1?undefined:this._array[f]},e}();u=M,function(){u.assertInvariants=!1}();var _=function(){function e(e,t){if(e>t)throw new w("startLineNumber ".concat(e," cannot be after endLineNumberExclusive ").concat(t));this.startLineNumber=e,this.endLineNumberExclusive=t}return e.fromRangeInclusive=function(t){return new e(t.startLineNumber,t.endLineNumber+1)},e.join=function(t){if(t.length===0)throw new w("lineRanges cannot be empty");var n=t[0].startLineNumber,r=t[0].endLineNumberExclusive;for(var i=1;i<t.length;i++)n=Math.min(n,t[i].startLineNumber),r=Math.max(r,t[i].endLineNumberExclusive);return new e(n,r)},e.ofLength=function(t,n){return new e(t,t+n)},Object.defineProperty(e.prototype,"isEmpty",{get:function(){return this.startLineNumber===this.endLineNumberExclusive},enumerable:!1,configurable:!0}),e.prototype.delta=function(t){return new e(this.startLineNumber+t,this.endLineNumberExclusive+t)},Object.defineProperty(e.prototype,"length",{get:function(){return this.endLineNumberExclusive-this.startLineNumber},enumerable:!1,configurable:!0}),e.prototype.join=function(t){return new e(Math.min(this.startLineNumber,t.startLineNumber),Math.max(this.endLineNumberExclusive,t.endLineNumberExclusive))},e.prototype.intersect=function(t){var n=Math.max(this.startLineNumber,t.startLineNumber),r=Math.min(this.endLineNumberExclusive,t.endLineNumberExclusive);return n<=r?new e(n,r):undefined},e.prototype.overlapOrTouch=function(e){return this.startLineNumber<=e.endLineNumberExclusive&&e.startLineNumber<=this.endLineNumberExclusive},e.prototype.toInclusiveRange=function(){return this.isEmpty?null:new C(this.startLineNumber,1,this.endLineNumberExclusive-1,Number.MAX_SAFE_INTEGER)},e.prototype.toOffsetRange=function(){return new T(this.startLineNumber-1,this.endLineNumberExclusive-1)},e}(),D=function(){function e(e){e===void 0&&(e=[]),this._normalizedRanges=e}return Object.defineProperty(e.prototype,"ranges",{get:function(){return this._normalizedRanges},enumerable:!1,configurable:!0}),e.prototype.addRange=function(e){if(e.length===0)return;var t=O(this._normalizedRanges,function(t){return t.endLineNumberExclusive>=e.startLineNumber}),n=L(this._normalizedRanges,function(t){return t.startLineNumber<=e.endLineNumberExclusive})+1;if(t===n)this._normalizedRanges.splice(t,0,e);else if(t===n-1){var r=this._normalizedRanges[t];this._normalizedRanges[t]=r.join(e)}else{var r=this._normalizedRanges[t].join(this._normalizedRanges[n-1]).join(e);this._normalizedRanges.splice(t,n-t,r)}},e.prototype.contains=function(e){var t=k(this._normalizedRanges,function(t){return t.startLineNumber<=e});return!!t&&t.endLineNumberExclusive>e},e.prototype.subtractFrom=function(t){var n=O(this._normalizedRanges,function(e){return e.endLineNumberExclusive>=t.startLineNumber}),r=L(this._normalizedRanges,function(e){return e.startLineNumber<=t.endLineNumberExclusive})+1;if(n===r)return new e([t]);var i=[],s=t.startLineNumber;for(var o=n;o<r;o++){var u=this._normalizedRanges[o];u.startLineNumber>s&&i.push(new _(s,u.startLineNumber)),s=u.endLineNumberExclusive}return s<t.endLineNumberExclusive&&i.push(new _(s,t.endLineNumberExclusive)),new e(i)},e.prototype.getIntersection=function(t){var n=[],r=0,i=0;while(r<this._normalizedRanges.length&&i<t._normalizedRanges.length){var s=this._normalizedRanges[r],o=t._normalizedRanges[i],u=s.intersect(o);u&&!u.isEmpty&&n.push(u),s.endLineNumberExclusive<o.endLineNumberExclusive?r++:i++}return new e(n)},e.prototype.getWithDelta=function(t){return new e(this._normalizedRanges.map(function(e){return e.delta(t)}))},e}(),P=function(){function e(e,t){this.lineCount=e,this.columnCount=t}return e.prototype.toLineRange=function(){return _.ofLength(1,this.lineCount)},e.prototype.addToPosition=function(e){return this.lineCount===0?new N(e.lineNumber,e.column+this.columnCount):new N(e.lineNumber+this.lineCount,this.columnCount+1)},e}();a=P,function(){a.zero=new a(0,0)}();var H=function(){function e(e,t){E(t>=1),this._getLineContent=e,this._lineCount=t}return e.prototype.getValueOfRange=function(e){if(e.startLineNumber===e.endLineNumber)return this._getLineContent(e.startLineNumber).substring(e.startColumn-1,e.endColumn-1);var t=this._getLineContent(e.startLineNumber).substring(e.startColumn-1);for(var n=e.startLineNumber+1;n<e.endLineNumber;n++)t+="\n"+this._getLineContent(n);return t+="\n"+this._getLineContent(e.endLineNumber).substring(0,e.endColumn-1),t},e.prototype.getLineLength=function(e){return this._getLineContent(e).length},Object.defineProperty(e.prototype,"length",{get:function(){var e=this._getLineContent(this._lineCount);return new P(this._lineCount-1,e.length)},enumerable:!1,configurable:!0}),e}(),B=function(e){function t(t){return e.call(this,function(e){return t[e-1]},t.length)||this}return r(t,e),t}(H),j=function(){function e(e,t,n){this.changes=e,this.moves=t,this.hitTimeout=n}return e}(),F=function(){function e(e,t){this.lineRangeMapping=e,this.changes=t}return e}(),I=function(){function e(e,t){this.original=e,this.modified=t}return e.prototype.join=function(t){return new e(this.original.join(t.original),this.modified.join(t.modified))},Object.defineProperty(e.prototype,"changedLineCount",{get:function(){return Math.max(this.original.length,this.modified.length)},enumerable:!1,configurable:!0}),e.prototype.toRangeMapping=function(){var e=this.original.toInclusiveRange(),t=this.modified.toInclusiveRange();if(e&&t)return new z(e,t);if(this.original.startLineNumber===1||this.modified.startLineNumber===1){if(this.modified.startLineNumber!==1||this.original.startLineNumber!==1)throw new w("not a valid diff");return new z(new C(this.original.startLineNumber,1,this.original.endLineNumberExclusive,1),new C(this.modified.startLineNumber,1,this.modified.endLineNumberExclusive,1))}return new z(new C(this.original.startLineNumber-1,Number.MAX_SAFE_INTEGER,this.original.endLineNumberExclusive-1,Number.MAX_SAFE_INTEGER),new C(this.modified.startLineNumber-1,Number.MAX_SAFE_INTEGER,this.modified.endLineNumberExclusive-1,Number.MAX_SAFE_INTEGER))},e.prototype.toRangeMapping2=function(e,t){if(R(this.original.endLineNumberExclusive,e)&&R(this.modified.endLineNumberExclusive,t))return new z(new C(this.original.startLineNumber,1,this.original.endLineNumberExclusive,1),new C(this.modified.startLineNumber,1,this.modified.endLineNumberExclusive,1));if(!this.original.isEmpty&&!this.modified.isEmpty)return new z(C.fromPositions(new N(this.original.startLineNumber,1),q(new N(this.original.endLineNumberExclusive-1,Number.MAX_SAFE_INTEGER),e)),C.fromPositions(new N(this.modified.startLineNumber,1),q(new N(this.modified.endLineNumberExclusive-1,Number.MAX_SAFE_INTEGER),t)));if(this.original.startLineNumber>1&&this.modified.startLineNumber>1)return new z(C.fromPositions(q(new N(this.original.startLineNumber-1,Number.MAX_SAFE_INTEGER),e),q(new N(this.original.endLineNumberExclusive-1,Number.MAX_SAFE_INTEGER),e)),C.fromPositions(q(new N(this.modified.startLineNumber-1,Number.MAX_SAFE_INTEGER),t),q(new N(this.modified.endLineNumberExclusive-1,Number.MAX_SAFE_INTEGER),t)));throw new w},e}(),U=function(e){function t(t,n,r){var i=e.call(this,t,n)||this;return i.innerChanges=r,i}return r(t,e),t.fromRangeMappings=function(e){var n=_.join(e.map(function(e){return _.fromRangeInclusive(e.originalRange)})),r=_.join(e.map(function(e){return _.fromRangeInclusive(e.modifiedRange)}));return new t(n,r,e)},t.prototype.flip=function(){var e;return new t(this.modified,this.original,(e=this.innerChanges)===null||e===void 0?void 0:e.map(function(e){return e.flip()}))},t.prototype.withInnerChangesFromLineRanges=function(){return new t(this.original,this.modified,[this.toRangeMapping()])},t}(I),z=function(){function e(e,t){this.originalRange=e,this.modifiedRange=t}return e.join=function(e){if(e.length===0)throw new w("Cannot join an empty list of range mappings");var t=e[0];for(var n=1;n<e.length;n++)t=t.join(e[n]);return t},e.assertSorted=function(e){for(var t=1;t<e.length;t++){var n=e[t-1],r=e[t];if(!n.originalRange.getEndPosition().isBeforeOrEqual(r.originalRange.getStartPosition())||!n.modifiedRange.getEndPosition().isBeforeOrEqual(r.modifiedRange.getStartPosition()))throw new w("Range mappings must be sorted")}},e.prototype.flip=function(){return new e(this.modifiedRange,this.originalRange)},e.prototype.join=function(t){return new e(this.originalRange.plusRange(t.originalRange),this.modifiedRange.plusRange(t.modifiedRange))},e}(),V=function(){function e(e,t){this.diffs=e,this.hitTimeout=t}return e.trivial=function(t,n){return new e([new $(T.ofLength(t.length),T.ofLength(n.length))],!1)},e.trivialTimedOut=function(t,n){return new e([new $(T.ofLength(t.length),T.ofLength(n.length))],!0)},e}(),$=function(){function e(e,t){this.seq1Range=e,this.seq2Range=t}return e.invert=function(t,n){var r=[];return d(t,function(t,i){r.push(e.fromOffsetPairs(t?t.getEndExclusives():J.zero,i?i.getStarts():new J(n,(t?t.seq2Range.endExclusive-t.seq1Range.endExclusive:0)+n)))}),r},e.fromOffsetPairs=function(t,n){return new e(new T(t.offset1,n.offset1),new T(t.offset2,n.offset2))},e.assertSorted=function(e){var t,n,r=undefined;try{for(var i=s(e),o=i.next();!o.done;o=i.next()){var u=o.value;if(!(!r||r.seq1Range.endExclusive<=u.seq1Range.start&&r.seq2Range.endExclusive<=u.seq2Range.start))throw new w("Sequence diffs must be sorted");r=u}}catch(a){t={error:a}}finally{try{o&&!o.done&&(n=i.return)&&n.call(i)}finally{if(t)throw t.error}}},e.prototype.swap=function(){return new e(this.seq2Range,this.seq1Range)},e.prototype.join=function(t){return new e(this.seq1Range.join(t.seq1Range),this.seq2Range.join(t.seq2Range))},e.prototype.delta=function(t){return t===0?this:new e(this.seq1Range.delta(t),this.seq2Range.delta(t))},e.prototype.deltaStart=function(t){return t===0?this:new e(this.seq1Range.deltaStart(t),this.seq2Range.deltaStart(t))},e.prototype.deltaEnd=function(t){return t===0?this:new e(this.seq1Range.deltaEnd(t),this.seq2Range.deltaEnd(t))},e.prototype.intersect=function(t){var n=this.seq1Range.intersect(t.seq1Range),r=this.seq2Range.intersect(t.seq2Range);return!n||!r?undefined:new e(n,r)},e.prototype.getStarts=function(){return new J(this.seq1Range.start,this.seq2Range.start)},e.prototype.getEndExclusives=function(){return new J(this.seq1Range.endExclusive,this.seq2Range.endExclusive)},e}(),J=function(){function e(e,t){this.offset1=e,this.offset2=t}return e.prototype.delta=function(e){return e===0?this:new f(this.offset1+e,this.offset2+e)},e.prototype.equals=function(e){return this.offset1===e.offset1&&this.offset2===e.offset2},e}();f=J,function(){f.zero=new f(0,0)}(),function(){f.max=new f(Number.MAX_SAFE_INTEGER,Number.MAX_SAFE_INTEGER)}();var K=function(){function e(){}return e.prototype.isValid=function(){return!0},e}();l=K,function(){l.instance=new l}();var Q=function(){function e(e){this.timeout=e,this.startTime=Date.now(),this.valid=!0;if(e<=0)throw new w("timeout must be positive")}return e.prototype.isValid=function(){var e=Date.now()-this.startTime<this.timeout;return!e&&this.valid&&(this.valid=!1),this.valid},e.prototype.disable=function(){this.timeout=Number.MAX_SAFE_INTEGER,this.isValid=function(){return!0},this.valid=!0},e}(),G=function(){function e(e,t){this.width=e,this.height=t,this.array=[],this.array=new Array(e*t)}return e.prototype.get=function(e,t){return this.array[e+t*this.width]},e.prototype.set=function(e,t,n){this.array[e+t*this.width]=n},e}(),Z=function(){function e(e,t,n){this.range=e,this.lines=t,this.source=n,this.histogram=[];var r=0;for(var i=e.startLineNumber-1;i<e.endLineNumberExclusive-1;i++){var s=t[i];for(var o=0;o<s.length;o++){r++;var u=s[o],a=c.getKey(u);this.histogram[a]=(this.histogram[a]||0)+1}r++;var f=c.getKey("\n");this.histogram[f]=(this.histogram[f]||0)+1}this.totalCount=r}return e.getKey=function(e){var t=this.chrKeys.get(e);return t===undefined&&(t=this.chrKeys.size,this.chrKeys.set(e,t)),t},e.prototype.computeSimilarity=function(e){var t,n,r=0,i=Math.max(this.histogram.length,e.histogram.length);for(var s=0;s<i;s++)r+=Math.abs(((t=this.histogram[s])!==null&&t!==void 0?t:0)-((n=e.histogram[s])!==null&&n!==void 0?n:0));return 1-r/(this.totalCount+e.totalCount)},e}();c=Z,function(){c.chrKeys=new Map}();var et=function(){function e(){}return e.prototype.compute=function(e,t,n,r){function g(e,t){(e+1!==v||t+1!==m)&&d.push(new $(new T(e+1,v),new T(t+1,m))),v=e,m=t}n===void 0&&(n=K.instance);if(e.length===0||t.length===0)return V.trivial(e,t);var i=new G(e.length,t.length),s=new G(e.length,t.length),o=new G(e.length,t.length);for(var u=0;u<e.length;u++)for(var a=0;a<t.length;a++){if(!n.isValid())return V.trivialTimedOut(e,t);var f=u===0?0:i.get(u-1,a),l=a===0?0:i.get(u,a-1),c=void 0;e.getElement(u)===t.getElement(a)?(u===0||a===0?c=0:c=i.get(u-1,a-1),u>0&&a>0&&s.get(u-1,a-1)===3&&(c+=o.get(u-1,a-1)),c+=r?r(u,a):1):c=-1;var h=Math.max(f,l,c);if(h===c){var p=u>0&&a>0?o.get(u-1,a-1):0;o.set(u,a,p+1),s.set(u,a,3)}else h===f?(o.set(u,a,0),s.set(u,a,1)):h===l&&(o.set(u,a,0),s.set(u,a,2));i.set(u,a,h)}var d=[],v=e.length,m=t.length,y=e.length-1,b=t.length-1;while(y>=0&&b>=0)s.get(y,b)===3?(g(y,b),y--,b--):s.get(y,b)===1?y--:b--;return g(-1,-1),d.reverse(),new V(d,!1)},e}(),tt=function(){function e(){}return e.prototype.compute=function(e,t,n){function s(e,t){while(e<r.length&&t<i.length&&r.getElement(e)===i.getElement(t))e++,t++;return e}n===void 0&&(n=K.instance);if(e.length===0||t.length===0)return V.trivial(e,t);var r=e,i=t,o=0,u=new rt;u.set(0,s(0,0));var a=new it;a.set(0,u.get(0)===0?null:new nt(null,0,0,u.get(0)));var f=0;e:for(;;){o++;if(!n.isValid())return V.trivialTimedOut(r,i);var l=-Math.min(o,i.length+o%2),c=Math.min(o,r.length+o%2);for(f=l;f<=c;f+=2){var h=f===c?-1:u.get(f+1),p=f===l?-1:u.get(f-1)+1,d=Math.min(Math.max(h,p),r.length),v=d-f;if(d>r.length||v>i.length)continue;var m=s(d,v);u.set(f,m);var g=d===h?a.get(f+1):a.get(f-1);a.set(f,m!==d?new nt(g,d,v,m-d):g);if(u.get(f)===r.length&&u.get(f)-f===i.length)break e}}var y=a.get(f),b=[],w=r.length,E=i.length;for(;;){var S=y?y.x+y.length:0,x=y?y.y+y.length:0;(S!==w||x!==E)&&b.push(new $(new T(S,w),new T(x,E)));if(!y)break;w=y.x,E=y.y,y=y.prev}return b.reverse(),new V(b,!1)},e}(),nt=function(){function e(e,t,n,r){this.prev=e,this.x=t,this.y=n,this.length=r}return e}(),rt=function(){function e(){this.positiveArr=new Int32Array(10),this.negativeArr=new Int32Array(10)}return e.prototype.get=function(e){return e<0?(e=-e-1,this.negativeArr[e]):this.positiveArr[e]},e.prototype.set=function(e,t){if(e<0){e=-e-1;if(e>=this.negativeArr.length){var n=this.negativeArr;this.negativeArr=new Int32Array(n.length*2),this.negativeArr.set(n)}this.negativeArr[e]=t}else{if(e>=this.positiveArr.length){var n=this.positiveArr;this.positiveArr=new Int32Array(n.length*2),this.positiveArr.set(n)}this.positiveArr[e]=t}},e}(),it=function(){function e(){this.positiveArr=[],this.negativeArr=[]}return e.prototype.get=function(e){return e<0?(e=-e-1,this.negativeArr[e]):this.positiveArr[e]},e.prototype.set=function(e,t){e<0?(e=-e-1,this.negativeArr[e]=t):this.positiveArr[e]=t},e}(),st=function(){function e(){this.map=new Map}return e.prototype.add=function(e,t){var n=this.map.get(e);n||(n=new Set,this.map.set(e,n)),n.add(t)},e.prototype.forEach=function(e,t){var n=this.map.get(e);if(!n)return;n.forEach(t)},e.prototype.get=function(e){var t=this.map.get(e);return t?t:new Set},e}(),ot=function(){function e(e,t,n){this.lines=e,this.range=t,this.considerWhitespaceChanges=n,this.elements=[],this.firstElementOffsetByLineIdx=[],this.lineStartOffsets=[],this.trimmedWsLengthsByLineIdx=[],this.firstElementOffsetByLineIdx.push(0);for(var r=this.range.startLineNumber;r<=this.range.endLineNumber;r++){var i=e[r-1],s=0;r===this.range.startLineNumber&&this.range.startColumn>1&&(s=this.range.startColumn-1,i=i.substring(s)),this.lineStartOffsets.push(s);var o=0;if(!n){var u=i.trimStart();o=i.length-u.length,i=u.trimEnd()}this.trimmedWsLengthsByLineIdx.push(o);var a=r===this.range.endLineNumber?Math.min(this.range.endColumn-1-s-o,i.length):i.length;for(var f=0;f<a;f++)this.elements.push(i.charCodeAt(f));r<this.range.endLineNumber&&(this.elements.push("\n".charCodeAt(0)),this.firstElementOffsetByLineIdx.push(this.elements.length))}}return e.prototype.toString=function(){return'Slice: "'.concat(this.text,'"')},Object.defineProperty(e.prototype,"text",{get:function(){return this.getText(new T(0,this.length))},enumerable:!1,configurable:!0}),e.prototype.getText=function(e){return this.elements.slice(e.start,e.endExclusive).map(function(e){return String.fromCharCode(e)}).join("")},e.prototype.getElement=function(e){return this.elements[e]},Object.defineProperty(e.prototype,"length",{get:function(){return this.elements.length},enumerable:!1,configurable:!0}),e.prototype.getBoundaryScore=function(e){var t=ct(e>0?this.elements[e-1]:-1),n=ct(e<this.elements.length?this.elements[e]:-1);if(t===7&&n===8)return 0;if(t===8)return 150;var r=0;return t!==n&&(r+=10,t===0&&n===1&&(r+=1)),r+=lt(t),r+=lt(n),r},e.prototype.translateOffset=function(e,t){t===void 0&&(t="right");var n=L(this.firstElementOffsetByLineIdx,function(t){return t<=e}),r=e-this.firstElementOffsetByLineIdx[n];return new N(this.range.startLineNumber+n,1+this.lineStartOffsets[n]+r+(r===0&&t==="left"?0:this.trimmedWsLengthsByLineIdx[n]))},e.prototype.translateRange=function(e){var t=this.translateOffset(e.start,"right"),n=this.translateOffset(e.endExclusive,"left");return n.isBefore(t)?C.fromPositions(n,n):C.fromPositions(t,n)},e.prototype.findWordContaining=function(e){if(e<0||e>=this.elements.length)return undefined;if(!ut(this.elements[e]))return undefined;var t=e;while(t>0&&ut(this.elements[t-1]))t--;var n=e;while(n<this.elements.length&&ut(this.elements[n]))n++;return new T(t,n)},e.prototype.findSubWordContaining=function(e){if(e<0||e>=this.elements.length)return undefined;if(!ut(this.elements[e]))return undefined;var t=e;while(t>0&&ut(this.elements[t-1])&&!at(this.elements[t]))t--;var n=e;while(n<this.elements.length&&ut(this.elements[n])&&!at(this.elements[n]))n++;return new T(t,n)},e.prototype.countLinesIn=function(e){return this.translateOffset(e.endExclusive).lineNumber-this.translateOffset(e.start).lineNumber},e.prototype.isStronglyEqual=function(e,t){return this.elements[e]===this.elements[t]},e.prototype.extendToFullLines=function(e){var t,n,r=(t=k(this.firstElementOffsetByLineIdx,function(t){return t<=e.start}))!==null&&t!==void 0?t:0,i=(n=A(this.firstElementOffsetByLineIdx,function(t){return e.endExclusive<=t}))!==null&&n!==void 0?n:this.elements.length;return new T(r,i)},e}(),ft=(o={},o[0]=0,o[1]=0,o[2]=0,o[3]=10,o[4]=2,o[5]=30,o[6]=3,o[7]=10,o[8]=10,o),Lt=function(){function e(e,t){this.trimmedHash=e,this.lines=t}return e.prototype.getElement=function(e){return this.trimmedHash[e]},Object.defineProperty(e.prototype,"length",{get:function(){return this.trimmedHash.length},enumerable:!1,configurable:!0}),e.prototype.getBoundaryScore=function(e){var t=e===0?0:At(this.lines[e-1]),n=e===this.lines.length?0:At(this.lines[e]);return 1e3-(t+n)},e.prototype.getText=function(e){return this.lines.slice(e.start,e.endExclusive).join("\n")},e.prototype.isStronglyEqual=function(e,t){return this.lines[e]===this.lines[t]},e}(),Ot=function(){function e(){this.dynamicProgrammingDiffing=new et,this.myersDiffingAlgorithm=new tt}return e.prototype.computeDiff=function(e,t,n){function l(e){var t=f.get(e);return t===undefined&&(t=f.size,f.set(e,t)),t}var r,i,o=this;if(e.length<=1&&h(e,t,function(e,t){return e===t}))return new j([],[],!1);if(e.length===1&&e[0].length===0||t.length===1&&t[0].length===0)return new j([new U(new _(1,e.length+1),new _(1,t.length+1),[new z(new C(1,1,e.length,e[e.length-1].length+1),new C(1,1,t.length,t[t.length-1].length+1))])],[],!1);var u=n.maxComputationTimeMs===0?K.instance:new Q(n.maxComputationTimeMs),a=!n.ignoreTrimWhitespace,f=new Map,c=e.map(function(e){return l(e.trim())}),p=t.map(function(e){return l(e.trim())}),d=new Lt(c,e),v=new Lt(p,t),m=function(){return d.length+v.length<1700?o.dynamicProgrammingDiffing.compute(d,v,u,function(n,r){return e[n]===t[r]?t[r].length===0?.1:1+Math.log(1+t[r].length):.99}):o.myersDiffingAlgorithm.compute(d,v,u)}(),g=m.diffs,y=m.hitTimeout;g=bt(d,v,g),g=Ct(d,v,g);var b=[],w=function(r){var i,f;if(!a)return;for(var l=0;l<r;l++){var c=E+l,h=x+l;if(e[c]!==t[h]){var p=o.refineDiff(e,t,new $(new T(c,c+1),new T(h,h+1)),u,a,n);try{for(var d=(i=void 0,s(p.mappings)),v=d.next();!v.done;v=d.next()){var m=v.value;b.push(m)}}catch(g){i={error:g}}finally{try{v&&!v.done&&(f=d.return)&&f.call(d)}finally{if(i)throw i.error}}p.hitTimeout&&(y=!0)}}},E=0,x=0,N=function(r){var i,o;S(function(){return r.seq1Range.start-E===r.seq2Range.start-x});var f=r.seq1Range.start-E;w(f),E=r.seq1Range.endExclusive,x=r.seq2Range.endExclusive;var l=k.refineDiff(e,t,r,u,a,n);l.hitTimeout&&(y=!0);try{for(var c=(i=void 0,s(l.mappings)),h=c.next();!h.done;h=c.next()){var p=h.value;b.push(p)}}catch(d){i={error:d}}finally{try{h&&!h.done&&(o=c.return)&&o.call(c)}finally{if(i)throw i.error}}},k=this;try{for(var L=s(g),A=L.next();!A.done;A=L.next()){var O=A.value;N(O)}}catch(M){r={error:M}}finally{try{A&&!A.done&&(i=L.return)&&i.call(L)}finally{if(r)throw r.error}}w(e.length-E);var D=W(b,new B(e),new B(t)),P=[];return n.computeMoves&&(P=this.computeMoves(D,e,t,c,p,u,a,n)),S(function(){function u(e,t){if(e.lineNumber<1||e.lineNumber>t.length)return!1;var n=t[e.lineNumber-1];return e.column<1||e.column>n.length+1?!1:!0}function a(e,t){return e.startLineNumber<1||e.startLineNumber>t.length+1?!1:e.endLineNumberExclusive<1||e.endLineNumberExclusive>t.length+1?!1:!0}var n,r,i,o;try{for(var f=s(D),l=f.next();!l.done;l=f.next()){var c=l.value;if(!c.innerChanges)return!1;try{for(var h=(i=void 0,s(c.innerChanges)),p=h.next();!p.done;p=h.next()){var d=p.value,v=u(d.modifiedRange.getStartPosition(),t)&&u(d.modifiedRange.getEndPosition(),t)&&u(d.originalRange.getStartPosition(),e)&&u(d.originalRange.getEndPosition(),e);if(!v)return!1}}catch(m){i={error:m}}finally{try{p&&!p.done&&(o=h.return)&&o.call(h)}finally{if(i)throw i.error}}if(!a(c.modified,t)||!a(c.original,e))return!1}}catch(g){n={error:g}}finally{try{l&&!l.done&&(r=f.return)&&r.call(f)}finally{if(n)throw n.error}}return!0}),new j(D,P,y)},e.prototype.computeMoves=function(e,t,n,r,i,s,o,u){var a=this,f=ht(e,t,n,r,i,s),l=f.map(function(e){var r=a.refineDiff(t,n,new $(e.original.toOffsetRange(),e.modified.toOffsetRange()),s,o,u),i=W(r.mappings,new B(t),new B(n),!0);return new F(e,i)});return l},e.prototype.refineDiff=function(e,t,n,r,i,s){var o=Mt(n),u=o.toRangeMapping2(e,t),a=new ot(e,u.originalRange,i),f=new ot(t,u.modifiedRange,i),l=a.length+f.length<500?this.dynamicProgrammingDiffing.compute(a,f,r):this.myersDiffingAlgorithm.compute(a,f,r),c=l.diffs;c=bt(a,f,c),c=Tt(a,f,c,function(e,t){return e.findWordContaining(t)}),s.extendToSubwords&&(c=Tt(a,f,c,function(e,t){return e.findSubWordContaining(t)},!0)),c=xt(a,f,c),c=kt(a,f,c);var h=c.map(function(e){return new z(a.translateRange(e.seq1Range),f.translateRange(e.seq2Range))});return{mappings:h,hitTimeout:l.hitTimeout}},e}();t.computeDiff=_t;var Dt=e("../../../range").Range,Pt=e("../base_diff_view").DiffChunk,Ht=function(){function e(){}return e.prototype.compute=function(e,t,n){n||(n={}),n.maxComputationTimeMs||(n.maxComputationTimeMs=500);var r=_t(e,t,n)||[];return r.map(function(e){return new Pt(new Dt(e.origStart,0,e.origEnd,0),new Dt(e.editStart,0,e.editEnd,0),e.charChanges)})},e}();t.DiffProvider=Ht}),ace.define("ace/ext/diff",["require","exports","module","ace/ext/diff/inline_diff_view","ace/ext/diff/split_diff_view","ace/ext/diff/providers/default"],function(e,t,n){function o(e,t){e=e||{},e.diffProvider=e.diffProvider||new s;var n;return e.inline?n=new r(e):n=new i(e),t&&n.setOptions(t),n}var r=e("./diff/inline_diff_view").InlineDiffView,i=e("./diff/split_diff_view").SplitDiffView,s=e("./diff/providers/default").DiffProvider;t.InlineDiffView=r,t.SplitDiffView=i,t.DiffProvider=s,t.createDiffView=o});                (function() {
-                    ace.require(["ace/ext/diff"], function(m) {
+define("ace/ext/diff/scroll_diff_decorator",["require","exports","module","ace/layer/decorators"], function(require, exports, module){var __extends = (this && this.__extends) || (function () {
+    var extendStatics = function (d, b) {
+        extendStatics = Object.setPrototypeOf ||
+            ({ __proto__: [] } instanceof Array && function (d, b) { d.__proto__ = b; }) ||
+            function (d, b) { for (var p in b) if (Object.prototype.hasOwnProperty.call(b, p)) d[p] = b[p]; };
+        return extendStatics(d, b);
+    };
+    return function (d, b) {
+        if (typeof b !== "function" && b !== null)
+            throw new TypeError("Class extends value " + String(b) + " is not a constructor or null");
+        extendStatics(d, b);
+        function __() { this.constructor = d; }
+        d.prototype = b === null ? Object.create(b) : (__.prototype = b.prototype, new __());
+    };
+})();
+var __values = (this && this.__values) || function(o) {
+    var s = typeof Symbol === "function" && Symbol.iterator, m = s && o[s], i = 0;
+    if (m) return m.call(o);
+    if (o && typeof o.length === "number") return {
+        next: function () {
+            if (o && i >= o.length) o = void 0;
+            return { value: o && o[i++], done: !o };
+        }
+    };
+    throw new TypeError(s ? "Object is not iterable." : "Symbol.iterator is not defined.");
+};
+var Decorator = require("../../layer/decorators").Decorator;
+var ScrollDiffDecorator = /** @class */ (function (_super) {
+    __extends(ScrollDiffDecorator, _super);
+    function ScrollDiffDecorator(scrollbarV, renderer, forInlineDiff) {
+        var _this = _super.call(this, scrollbarV, renderer) || this;
+        _this.colors.dark["delete"] = "rgba(255, 18, 18, 1)";
+        _this.colors.dark["insert"] = "rgba(18, 136, 18, 1)";
+        _this.colors.light["delete"] = "rgb(255,51,51)";
+        _this.colors.light["insert"] = "rgb(32,133,72)";
+        _this.$zones = [];
+        _this.$forInlineDiff = forInlineDiff;
+        return _this;
+    }
+    ScrollDiffDecorator.prototype.addZone = function (startRow, endRow, type) {
+        this.$zones.push({
+            startRow: startRow,
+            endRow: endRow,
+            type: type
+        });
+    };
+    ScrollDiffDecorator.prototype.setSessions = function (sessionA, sessionB) {
+        this.sessionA = sessionA;
+        this.sessionB = sessionB;
+    };
+    ScrollDiffDecorator.prototype.$updateDecorators = function (config) {
+        if (typeof this.canvas.getContext !== "function") {
+            return;
+        }
+        _super.prototype.$updateDecorators.call(this, config);
+        if (this.$zones.length > 0) {
+            var colors = (this.renderer.theme.isDark === true) ? this.colors.dark : this.colors.light;
+            var ctx = this.canvas.getContext("2d");
+            this.$setDiffDecorators(ctx, colors);
+        }
+    };
+    ScrollDiffDecorator.prototype.$transformPosition = function (row, type) {
+        if (type == "delete") {
+            return this.sessionA.documentToScreenRow(row, 0);
+        }
+        else {
+            return this.sessionB.documentToScreenRow(row, 0);
+        }
+    };
+    ScrollDiffDecorator.prototype.$setDiffDecorators = function (ctx, colors) {
+        var e_1, _a;
+        var _this = this;
+        function compare(a, b) {
+            if (a.from === b.from) {
+                return a.to - b.to;
+            }
+            return a.from - b.from;
+        }
+        var zones = this.$zones;
+        if (zones) {
+            var resolvedZones = [];
+            var deleteZones = zones.filter(function (z) { return z.type === "delete"; });
+            var insertZones = zones.filter(function (z) { return z.type === "insert"; });
+            [deleteZones, insertZones].forEach(function (typeZones) {
+                typeZones.forEach(function (zone, i) {
+                    var offset1 = _this.$transformPosition(zone.startRow, zone.type) * _this.lineHeight;
+                    var offset2 = _this.$transformPosition(zone.endRow, zone.type) * _this.lineHeight + _this.lineHeight;
+                    var y1 = Math.round(_this.heightRatio * offset1);
+                    var y2 = Math.round(_this.heightRatio * offset2);
+                    var padding = 1;
+                    var ycenter = Math.round((y1 + y2) / 2);
+                    var halfHeight = (y2 - ycenter);
+                    if (halfHeight < _this.halfMinDecorationHeight) {
+                        halfHeight = _this.halfMinDecorationHeight;
+                    }
+                    var previousZone = resolvedZones[resolvedZones.length - 1];
+                    if (i > 0 && previousZone && previousZone.type === zone.type && ycenter - halfHeight < previousZone.to + padding) {
+                        ycenter = resolvedZones[resolvedZones.length - 1].to + padding + halfHeight;
+                    }
+                    if (ycenter - halfHeight < 0) {
+                        ycenter = halfHeight;
+                    }
+                    if (ycenter + halfHeight > _this.canvasHeight) {
+                        ycenter = _this.canvasHeight - halfHeight;
+                    }
+                    resolvedZones.push({
+                        type: zone.type,
+                        from: ycenter - halfHeight,
+                        to: ycenter + halfHeight,
+                        color: colors[zone.type] || null
+                    });
+                });
+            });
+            resolvedZones = resolvedZones.sort(compare);
+            try {
+                for (var resolvedZones_1 = __values(resolvedZones), resolvedZones_1_1 = resolvedZones_1.next(); !resolvedZones_1_1.done; resolvedZones_1_1 = resolvedZones_1.next()) {
+                    var zone = resolvedZones_1_1.value;
+                    ctx.fillStyle = zone.color || null;
+                    var zoneFrom = zone.from;
+                    var zoneTo = zone.to;
+                    var zoneHeight = zoneTo - zoneFrom;
+                    if (this.$forInlineDiff) {
+                        ctx.fillRect(this.oneZoneWidth, zoneFrom, 2 * this.oneZoneWidth, zoneHeight);
+                    }
+                    else {
+                        if (zone.type == "delete") {
+                            ctx.fillRect(this.oneZoneWidth, zoneFrom, this.oneZoneWidth, zoneHeight);
+                        }
+                        else {
+                            ctx.fillRect(2 * this.oneZoneWidth, zoneFrom, this.oneZoneWidth, zoneHeight);
+                        }
+                    }
+                }
+            }
+            catch (e_1_1) { e_1 = { error: e_1_1 }; }
+            finally {
+                try {
+                    if (resolvedZones_1_1 && !resolvedZones_1_1.done && (_a = resolvedZones_1.return)) _a.call(resolvedZones_1);
+                }
+                finally { if (e_1) throw e_1.error; }
+            }
+        }
+    };
+    ScrollDiffDecorator.prototype.setZoneWidth = function () {
+        this.oneZoneWidth = Math.round(this.canvasWidth / 3);
+    };
+    return ScrollDiffDecorator;
+}(Decorator));
+exports.ScrollDiffDecorator = ScrollDiffDecorator;
+
+});
+
+define("ace/ext/diff/styles-css.js",["require","exports","module"], function(require, exports, module){exports.cssText = "\n/*\n * Line Markers\n */\n.ace_diff {\n    position: absolute;\n    z-index: 0;\n}\n.ace_diff.inline {\n    z-index: 20;\n}\n/*\n * Light Colors \n */\n.ace_diff.insert {\n    background-color: #EFFFF1;\n}\n.ace_diff.delete {\n    background-color: #FFF1F1;\n}\n.ace_diff.aligned_diff {\n    background: rgba(206, 194, 191, 0.26);\n    background: repeating-linear-gradient(\n                45deg,\n              rgba(122, 111, 108, 0.26),\n              rgba(122, 111, 108, 0.26) 5px,\n              rgba(0, 0, 0, 0) 5px,\n              rgba(0, 0, 0, 0) 10px \n    );\n}\n\n.ace_diff.insert.inline {\n    background-color:  rgb(74 251 74 / 18%); \n}\n.ace_diff.delete.inline {\n    background-color: rgb(251 74 74 / 15%);\n}\n\n.ace_diff.delete.inline.empty {\n    background-color: rgba(255, 128, 79, 0.7);\n    width: 2px !important;\n}\n\n.ace_diff.insert.inline.empty {\n    background-color: rgba(49, 230, 96, 0.7);\n    width: 2px !important;\n}\n\n.ace_diff-active-line {\n    border-bottom: 1px solid;\n    border-top: 1px solid;\n    background: transparent;\n    position: absolute;\n    box-sizing: border-box;\n    border-color: #9191ac;\n}\n\n.ace_dark .ace_diff-active-line {\n    background: transparent;\n    border-color: #75777a;\n}\n \n\n/* gutter changes */\n.ace_mini-diff_gutter-enabled > .ace_gutter-cell,\n.ace_mini-diff_gutter-enabled > .ace_gutter-cell_svg-icons {\n    padding-right: 13px;\n}\n\n.ace_mini-diff_gutter_other > .ace_gutter-cell,\n.ace_mini-diff_gutter_other > .ace_gutter-cell_svg-icons  {\n    display: none;\n}\n\n.ace_mini-diff_gutter_other {\n    pointer-events: none;\n}\n\n\n.ace_mini-diff_gutter-enabled > .mini-diff-added {\n    background-color: #EFFFF1;\n    border-left: 3px solid #2BB534;\n    padding-left: 16px;\n    display: block;\n}\n\n.ace_mini-diff_gutter-enabled > .mini-diff-deleted {\n    background-color: #FFF1F1;\n    border-left: 3px solid #EA7158;\n    padding-left: 16px;\n    display: block;\n}\n\n\n.ace_mini-diff_gutter-enabled > .mini-diff-added:after {\n    position: absolute;\n    right: 2px;\n    content: \"+\";\n    background-color: inherit;\n}\n\n.ace_mini-diff_gutter-enabled > .mini-diff-deleted:after {\n    position: absolute;\n    right: 2px;\n    content: \"-\";\n    background-color: inherit;\n}\n.ace_fade-fold-widgets:hover > .ace_folding-enabled > .mini-diff-added:after,\n.ace_fade-fold-widgets:hover > .ace_folding-enabled > .mini-diff-deleted:after {\n    display: none;\n}\n\n.ace_diff_other .ace_selection {\n    filter: drop-shadow(1px 2px 3px darkgray);\n}\n\n.ace_hidden_marker-layer .ace_bracket,\n.ace_hidden_marker-layer .ace_error_bracket {\n    display: none;\n}\n\n\n\n/*\n * Dark Colors \n */\n\n.ace_dark .ace_diff.insert {\n    background-color: #212E25;\n}\n.ace_dark .ace_diff.delete {\n    background-color: #3F2222;\n}\n\n.ace_dark .ace_mini-diff_gutter-enabled > .mini-diff-added {\n    background-color: #212E25;\n    border-left-color:#00802F;\n}\n\n.ace_dark .ace_mini-diff_gutter-enabled > .mini-diff-deleted {\n    background-color: #3F2222;\n    border-left-color: #9C3838;\n}\n\n";
+
+});
+
+define("ace/ext/diff/gutter_decorator",["require","exports","module","ace/lib/dom"], function(require, exports, module){var dom = require("../../lib/dom");
+var MinimalGutterDiffDecorator = /** @class */ (function () {
+    function MinimalGutterDiffDecorator(editor, type) {
+        this.gutterClass = "ace_mini-diff_gutter-enabled";
+        this.gutterCellsClasses = {
+            add: "mini-diff-added",
+            delete: "mini-diff-deleted",
+        };
+        this.editor = editor;
+        this.type = type;
+        this.chunks = [];
+        this.attachToEditor();
+    }
+    MinimalGutterDiffDecorator.prototype.attachToEditor = function () {
+        this.renderGutters = this.renderGutters.bind(this);
+        dom.addCssClass(this.editor.renderer.$gutterLayer.element, this.gutterClass);
+        this.editor.renderer.$gutterLayer.on("afterRender", this.renderGutters);
+    };
+    MinimalGutterDiffDecorator.prototype.renderGutters = function (e, gutterLayer) {
+        var _this = this;
+        var cells = this.editor.renderer.$gutterLayer.$lines.cells;
+        cells.forEach(function (cell) {
+            cell.element.classList.remove(Object.values(_this.gutterCellsClasses));
+        });
+        var dir = this.type === -1 ? "old" : "new";
+        var diffClass = this.type === -1 ? this.gutterCellsClasses.delete : this.gutterCellsClasses.add;
+        this.chunks.forEach(function (lineChange) {
+            var startRow = lineChange[dir].start.row;
+            var endRow = lineChange[dir].end.row - 1;
+            cells.forEach(function (cell) {
+                if (cell.row >= startRow && cell.row <= endRow) {
+                    cell.element.classList.add(diffClass);
+                }
+            });
+        });
+    };
+    MinimalGutterDiffDecorator.prototype.setDecorations = function (changes) {
+        this.chunks = changes;
+        this.renderGutters();
+    };
+    MinimalGutterDiffDecorator.prototype.dispose = function () {
+        dom.removeCssClass(this.editor.renderer.$gutterLayer.element, this.gutterClass);
+        this.editor.renderer.$gutterLayer.off("afterRender", this.renderGutters);
+    };
+    return MinimalGutterDiffDecorator;
+}());
+exports.MinimalGutterDiffDecorator = MinimalGutterDiffDecorator;
+
+});
+
+define("ace/ext/diff/base_diff_view",["require","exports","module","ace/range","ace/lib/dom","ace/config","ace/line_widgets","ace/ext/diff/scroll_diff_decorator","ace/ext/diff/styles-css.js","ace/editor","ace/virtual_renderer","ace/undomanager","ace/layer/decorators","ace/theme/textmate","ace/multi_select","ace/edit_session","ace/ext/diff/gutter_decorator"], function(require, exports, module){"use strict";
+var __values = (this && this.__values) || function(o) {
+    var s = typeof Symbol === "function" && Symbol.iterator, m = s && o[s], i = 0;
+    if (m) return m.call(o);
+    if (o && typeof o.length === "number") return {
+        next: function () {
+            if (o && i >= o.length) o = void 0;
+            return { value: o && o[i++], done: !o };
+        }
+    };
+    throw new TypeError(s ? "Object is not iterable." : "Symbol.iterator is not defined.");
+};
+var __read = (this && this.__read) || function (o, n) {
+    var m = typeof Symbol === "function" && o[Symbol.iterator];
+    if (!m) return o;
+    var i = m.call(o), r, ar = [], e;
+    try {
+        while ((n === void 0 || n-- > 0) && !(r = i.next()).done) ar.push(r.value);
+    }
+    catch (error) { e = { error: error }; }
+    finally {
+        try {
+            if (r && !r.done && (m = i["return"])) m.call(i);
+        }
+        finally { if (e) throw e.error; }
+    }
+    return ar;
+};
+var Range = require("../../range").Range;
+var dom = require("../../lib/dom");
+var config = require("../../config");
+var LineWidgets = require("../../line_widgets").LineWidgets;
+var ScrollDiffDecorator = require("./scroll_diff_decorator").ScrollDiffDecorator;
+var css = require("./styles-css.js").cssText;
+var Editor = require("../../editor").Editor;
+var Renderer = require("../../virtual_renderer").VirtualRenderer;
+var UndoManager = require("../../undomanager").UndoManager;
+var Decorator = require("../../layer/decorators").Decorator;
+require("../../theme/textmate");
+require("../../multi_select");
+var EditSession = require("../../edit_session").EditSession;
+var MinimalGutterDiffDecorator = require("./gutter_decorator").MinimalGutterDiffDecorator;
+var dummyDiffProvider = {
+    compute: function (val1, val2, options) {
+        return [];
+    }
+};
+dom.importCssString(css, "diffview.css", false);
+var BaseDiffView = /** @class */ (function () {
+    function BaseDiffView(inlineDiffEditor, container) {
+        this.onChangeTheme = this.onChangeTheme.bind(this);
+        this.onInput = this.onInput.bind(this);
+        this.onChangeFold = this.onChangeFold.bind(this);
+        this.realign = this.realign.bind(this);
+        this.onSelect = this.onSelect.bind(this);
+        this.onChangeWrapLimit = this.onChangeWrapLimit.bind(this);
+        this.realignPending = false; this.diffSession; this.chunks;
+        this.inlineDiffEditor = inlineDiffEditor || false;
+        this.currentDiffIndex = 0;
+        this.diffProvider = dummyDiffProvider;
+        if (container) {
+            this.container = container;
+        }
+        this.$ignoreTrimWhitespace = false;
+        this.$maxDiffs = 5000;
+        this.$maxComputationTimeMs = 150;
+        this.$syncSelections = false;
+        this.$foldUnchangedOnInput = false;
+        this.$inlineRefineTimer = null;
+        this.$inlineRefineMaxComputationTimeMs = 25;
+        this.$diffOriginalLines = null;
+        this.$diffModifiedLines = null;
+        this.markerB = new DiffHighlight(this, 1);
+        this.markerA = new DiffHighlight(this, -1);
+    }
+    BaseDiffView.prototype.$setupModels = function (diffModel) {
+        if (diffModel.diffProvider) {
+            this.setProvider(diffModel.diffProvider);
+        }
+        this.showSideA = diffModel.inline == undefined ? true : diffModel.inline === "a";
+        var diffEditorOptions = /**@type {Partial<import("../../../ace-internal").Ace.EditorOptions>}*/ ({
+            scrollPastEnd: 0.5,
+            highlightActiveLine: false,
+            highlightGutterLine: false,
+            animatedScroll: true,
+            customScrollbar: true,
+            vScrollBarAlwaysVisible: true,
+            fadeFoldWidgets: true,
+            showFoldWidgets: true,
+            selectionStyle: "text",
+        });
+        this.savedOptionsA = diffModel.editorA && diffModel.editorA.getOptions(diffEditorOptions);
+        this.savedOptionsB = diffModel.editorB && diffModel.editorB.getOptions(diffEditorOptions);
+        if (!this.inlineDiffEditor || diffModel.inline === "a") {
+            this.editorA = diffModel.editorA || this.$setupModel(diffModel.sessionA, diffModel.valueA);
+            this.container && this.container.appendChild(this.editorA.container);
+            this.editorA.setOptions(diffEditorOptions);
+        }
+        if (!this.inlineDiffEditor || diffModel.inline === "b") {
+            this.editorB = diffModel.editorB || this.$setupModel(diffModel.sessionB, diffModel.valueB);
+            this.container && this.container.appendChild(this.editorB.container);
+            this.editorB.setOptions(diffEditorOptions);
+        }
+        if (this.inlineDiffEditor) {
+            this.activeEditor = this.showSideA ? this.editorA : this.editorB;
+            this.otherSession = this.showSideA ? this.sessionB : this.sessionA;
+            var cloneOptions = this.activeEditor.getOptions();
+            cloneOptions.readOnly = true;
+            delete cloneOptions.mode;
+            this.otherEditor = new Editor(new Renderer(null), undefined, cloneOptions);
+            if (this.showSideA) {
+                this.editorB = this.otherEditor;
+            }
+            else {
+                this.editorA = this.otherEditor;
+            }
+        }
+        this.setDiffSession({
+            sessionA: diffModel.sessionA || (diffModel.editorA ? diffModel.editorA.session : new EditSession(diffModel.valueA || "")),
+            sessionB: diffModel.sessionB || (diffModel.editorB ? diffModel.editorB.session : new EditSession(diffModel.valueB || "")),
+            chunks: []
+        });
+        if (this.otherEditor && this.activeEditor) {
+            this.otherSession.setOption("wrap", this.activeEditor.getOption("wrap"));
+        }
+        this.setupScrollbars();
+    };
+    BaseDiffView.prototype.addGutterDecorators = function () {
+        if (!this.gutterDecoratorA)
+            this.gutterDecoratorA = new MinimalGutterDiffDecorator(this.editorA, -1);
+        if (!this.gutterDecoratorB)
+            this.gutterDecoratorB = new MinimalGutterDiffDecorator(this.editorB, 1);
+    };
+    BaseDiffView.prototype.$setupModel = function (session, value) {
+        var editor = new Editor(new Renderer(), session);
+        editor.session.setUndoManager(new UndoManager());
+        if (value != undefined) {
+            editor.setValue(value, -1);
+        }
+        return editor;
+    };
+    BaseDiffView.prototype.foldUnchanged = function () {
+        var chunks = this.chunks;
+        var placeholder = "-".repeat(120);
+        var prev = {
+            old: new Range(0, 0, 0, 0),
+            new: new Range(0, 0, 0, 0)
+        };
+        var foldsChanged = false;
+        for (var i = 0; i < chunks.length + 1; i++) {
+            var current = chunks[i] || {
+                old: new Range(this.sessionA.getLength(), 0, this.sessionA.getLength(), 0),
+                new: new Range(this.sessionB.getLength(), 0, this.sessionB.getLength(), 0)
+            };
+            var l = current.new.start.row - prev.new.end.row - 5;
+            if (l > 2) {
+                var s = prev.old.end.row + 2;
+                var fold1 = this.sessionA.addFold(placeholder, new Range(s, 0, s + l, Number.MAX_VALUE));
+                s = prev.new.end.row + 2;
+                var fold2 = this.sessionB.addFold(placeholder, new Range(s, 0, s + l, Number.MAX_VALUE));
+                if (fold1 || fold2)
+                    foldsChanged = true;
+                if (fold2 && fold1) {
+                    fold1["other"] = fold2;
+                    fold2["other"] = fold1;
+                }
+            }
+            prev = current;
+        }
+        return foldsChanged;
+    };
+    BaseDiffView.prototype.unfoldUnchanged = function () {
+        var folds = this.sessionA.getAllFolds();
+        for (var i = folds.length - 1; i >= 0; i--) {
+            var fold = folds[i];
+            if (fold.placeholder.length == 120) {
+                this.sessionA.removeFold(fold);
+            }
+        }
+    };
+    BaseDiffView.prototype.toggleFoldUnchanged = function () {
+        if (!this.foldUnchanged()) {
+            this.unfoldUnchanged();
+        }
+    };
+    BaseDiffView.prototype.setDiffSession = function (session) {
+        if (this.diffSession) {
+            this.$detachSessionsEventHandlers();
+            this.clearSelectionMarkers();
+        }
+        this.diffSession = session;
+        this.sessionA = this.sessionB = null;
+        if (this.diffSession) {
+            this.chunks = this.diffSession.chunks || [];
+            this.editorA && this.editorA.setSession(session.sessionA);
+            this.editorB && this.editorB.setSession(session.sessionB);
+            this.sessionA = this.diffSession.sessionA;
+            this.sessionB = this.diffSession.sessionB;
+            this.$attachSessionsEventHandlers();
+            this.initSelectionMarkers();
+        }
+        this.otherSession = this.showSideA ? this.sessionB : this.sessionA;
+    };
+    BaseDiffView.prototype.$attachSessionsEventHandlers = function () {
+    };
+    BaseDiffView.prototype.$detachSessionsEventHandlers = function () {
+    };
+    BaseDiffView.prototype.getDiffSession = function () {
+        return this.diffSession;
+    };
+    BaseDiffView.prototype.setTheme = function (theme) {
+        this.editorA && this.editorA.setTheme(theme);
+        this.editorB && this.editorB.setTheme(theme);
+    };
+    BaseDiffView.prototype.getTheme = function () {
+        return (this.editorA || this.editorB).getTheme();
+    };
+    BaseDiffView.prototype.onChangeTheme = function (e) {
+        var theme = e && e.theme || this.getTheme();
+        if (this.editorA && this.editorA.getTheme() !== theme) {
+            this.editorA.setTheme(theme);
+        }
+        if (this.editorB && this.editorB.getTheme() !== theme) {
+            this.editorB.setTheme(theme);
+        }
+    };
+    BaseDiffView.prototype.resize = function (force) {
+        this.editorA && this.editorA.resize(force);
+        this.editorB && this.editorB.resize(force);
+    };
+    BaseDiffView.prototype.scheduleOnInput = function () {
+        var _this = this;
+        if (this.$onInputTimer)
+            return;
+        this.$onInputTimer = setTimeout(function () {
+            _this.$onInputTimer = null;
+            _this.onInput();
+        });
+    };
+    BaseDiffView.prototype.onInput = function () {
+        var _this = this;
+        if (this.$onInputTimer)
+            clearTimeout(this.$onInputTimer);
+        if (this.$inlineRefineTimer)
+            clearTimeout(this.$inlineRefineTimer);
+        this.$inlineRefineTimer = null;
+        var val1 = this.sessionA.doc.getAllLines();
+        var val2 = this.sessionB.doc.getAllLines();
+        this.$diffOriginalLines = val1;
+        this.$diffModifiedLines = val2;
+        this.selectionRangeA = null;
+        this.selectionRangeB = null;
+        var diffStartTime = Date.now();
+        var chunks = this.$diffLines(val1, val2);
+        if (chunks && chunks.length <= this.$maxDiffs) {
+            this.$refineVisibleInlineChunks(chunks, val1, val2, diffStartTime);
+        }
+        this.diffSession.chunks = this.chunks = chunks;
+        this.gutterDecoratorA && this.gutterDecoratorA.setDecorations(chunks);
+        this.gutterDecoratorB && this.gutterDecoratorB.setDecorations(chunks);
+        if (this.chunks && this.chunks.length > this.$maxDiffs) {
+            return;
+        }
+        this.align();
+        this.editorA && this.editorA.renderer.updateBackMarkers();
+        this.editorB && this.editorB.renderer.updateBackMarkers();
+        setTimeout(function () {
+            _this.updateScrollBarDecorators();
+        }, 0);
+        if (this.$foldUnchangedOnInput) {
+            this.foldUnchanged();
+        }
+    };
+    BaseDiffView.prototype.setupScrollbars = function () {
+        var _this = this;
+        var setupScrollBar = function (renderer) {
+            setTimeout(function () {
+                _this.$setScrollBarDecorators(renderer);
+                _this.updateScrollBarDecorators();
+            }, 0);
+        };
+        if (this.inlineDiffEditor) {
+            setupScrollBar(this.activeEditor.renderer);
+        }
+        else {
+            setupScrollBar(this.editorA.renderer);
+            setupScrollBar(this.editorB.renderer);
+        }
+    };
+    BaseDiffView.prototype.$setScrollBarDecorators = function (renderer) {
+        if (renderer.$scrollDecorator) {
+            renderer.$scrollDecorator.destroy();
+        }
+        renderer.$scrollDecorator = new ScrollDiffDecorator(renderer.scrollBarV, renderer, this.inlineDiffEditor);
+        renderer.$scrollDecorator.setSessions(this.sessionA, this.sessionB);
+        renderer.scrollBarV.setVisible(true);
+        renderer.scrollBarV.element.style.bottom = renderer.scrollBarH.getHeight() + "px";
+    };
+    BaseDiffView.prototype.$resetDecorators = function (renderer) {
+        if (renderer.$scrollDecorator) {
+            renderer.$scrollDecorator.destroy();
+        }
+        renderer.$scrollDecorator = new Decorator(renderer.scrollBarV, renderer);
+    };
+    BaseDiffView.prototype.updateScrollBarDecorators = function () {
+        var _this = this;
+        if (this.inlineDiffEditor) {
+            if (!this.activeEditor) {
+                return;
+            }
+            this.activeEditor.renderer.$scrollDecorator.$zones = [];
+        }
+        else {
+            if (!this.editorA || !this.editorB) {
+                return;
+            }
+            this.editorA.renderer.$scrollDecorator.$zones = [];
+            this.editorB.renderer.$scrollDecorator.$zones = [];
+        }
+        var updateDecorators = function (editor, change) {
+            if (!editor) {
+                return;
+            }
+            if (typeof editor.renderer.$scrollDecorator.addZone !== "function") {
+                return;
+            }
+            if (change.old.start.row != change.old.end.row) {
+                editor.renderer.$scrollDecorator.addZone(change.old.start.row, change.old.end.row - 1, "delete");
+            }
+            if (change.new.start.row != change.new.end.row) {
+                editor.renderer.$scrollDecorator.addZone(change.new.start.row, change.new.end.row - 1, "insert");
+            }
+        };
+        if (this.inlineDiffEditor) {
+            this.chunks && this.chunks.forEach(function (lineChange) {
+                updateDecorators(_this.activeEditor, lineChange);
+            });
+            this.activeEditor.renderer.$scrollDecorator.$updateDecorators(this.activeEditor.renderer.layerConfig);
+        }
+        else {
+            this.chunks && this.chunks.forEach(function (lineChange) {
+                updateDecorators(_this.editorA, lineChange);
+                updateDecorators(_this.editorB, lineChange);
+            });
+            this.editorA.renderer.$scrollDecorator.$updateDecorators(this.editorA.renderer.layerConfig);
+            this.editorB.renderer.$scrollDecorator.$updateDecorators(this.editorB.renderer.layerConfig);
+        }
+    };
+    BaseDiffView.prototype.$diffLines = function (val1, val2) {
+        return this.diffProvider.compute(val1, val2, {
+            ignoreTrimWhitespace: this.$ignoreTrimWhitespace,
+            maxComputationTimeMs: this.$maxComputationTimeMs
+        });
+    };
+    BaseDiffView.prototype.setProvider = function (provider) {
+        this.diffProvider = provider;
+    };
+    BaseDiffView.prototype.scheduleVisibleInlineRefinement = function () {
+        var _this = this;
+        if (this.$inlineRefineTimer || !this.diffProvider
+            || typeof this.diffProvider.refine !== "function")
+            return;
+        if (!this.$findVisiblePendingChunk())
+            return;
+        this.$inlineRefineTimer = setTimeout(function () {
+            _this.$inlineRefineTimer = null;
+            _this.$refineVisibleInlineChunk();
+        }, 0);
+    };
+    BaseDiffView.prototype.$refineVisibleInlineChunk = function () {
+        if (!this.sessionA || !this.sessionB)
+            return;
+        var chunk = this.$findVisiblePendingChunk();
+        if (!chunk)
+            return;
+        this.$refineInlineChunk(chunk, this.$diffOriginalLines, this.$diffModifiedLines, this.$inlineRefineMaxComputationTimeMs);
+        this.editorA && this.editorA.renderer.updateBackMarkers();
+        this.editorB && this.editorB.renderer.updateBackMarkers();
+    };
+    BaseDiffView.prototype.$refineVisibleInlineChunks = function (chunks, originalLines, modifiedLines, diffStartTime) {
+        if (!chunks || !this.diffProvider
+            || typeof this.diffProvider.refine !== "function")
+            return;
+        var roughDiffTime = Date.now() - diffStartTime;
+        var remainingDiffTime = this.$maxComputationTimeMs === 0
+            ? this.$inlineRefineMaxComputationTimeMs
+            : Math.max(0, this.$maxComputationTimeMs - roughDiffTime);
+        var maxComputationTimeMs = Math.min(this.$inlineRefineMaxComputationTimeMs, remainingDiffTime);
+        if (maxComputationTimeMs <= 0)
+            return;
+        var deadline = Date.now() + maxComputationTimeMs;
+        var chunk;
+        while ((chunk = this.$findVisiblePendingChunk(chunks))) {
+            var remainingTime = deadline - Date.now();
+            if (remainingTime <= 0)
+                break;
+            this.$refineInlineChunk(chunk, originalLines, modifiedLines, remainingTime);
+        }
+    };
+    BaseDiffView.prototype.$refineInlineChunk = function (chunk, originalLines, modifiedLines, maxComputationTimeMs) {
+        chunk.inlinePending = false;
+        var result = this.diffProvider.refine(originalLines, modifiedLines, chunk, {
+            ignoreTrimWhitespace: this.$ignoreTrimWhitespace,
+            maxComputationTimeMs: maxComputationTimeMs
+        });
+        if (!result)
+            return;
+        chunk.charChanges = result.charChanges || [];
+        chunk.inlineRefineHitTimeout = result.hitTimeout === true;
+    };
+    BaseDiffView.prototype.$findVisiblePendingChunk = function (chunks) {
+        var e_1, _a;
+        if (chunks === void 0) { chunks = this.chunks; }
+        if (!chunks)
+            return null;
+        var margin = 10;
+        var isVisible = function (editor, range) {
+            if (!editor || !editor.renderer || !editor.renderer.layerConfig)
+                return false;
+            var firstRow = editor.getFirstVisibleRow() - margin;
+            var lastRow = editor.getLastVisibleRow() + margin;
+            var rangeEndRow = range.end.row > range.start.row
+                ? range.end.row - 1
+                : range.start.row;
+            return rangeEndRow >= firstRow && range.start.row <= lastRow;
+        };
+        try {
+            for (var chunks_1 = __values(chunks), chunks_1_1 = chunks_1.next(); !chunks_1_1.done; chunks_1_1 = chunks_1.next()) {
+                var chunk = chunks_1_1.value;
+                if (!chunk.inlinePending)
+                    continue;
+                if (this.inlineDiffEditor) {
+                    var range = this.showSideA ? chunk.old : chunk.new;
+                    if (isVisible(this.activeEditor, range))
+                        return chunk;
+                }
+                else if (isVisible(this.editorA, chunk.old) || isVisible(this.editorB, chunk.new)) {
+                    return chunk;
+                }
+            }
+        }
+        catch (e_1_1) { e_1 = { error: e_1_1 }; }
+        finally {
+            try {
+                if (chunks_1_1 && !chunks_1_1.done && (_a = chunks_1.return)) _a.call(chunks_1);
+            }
+            finally { if (e_1) throw e_1.error; }
+        }
+        return null;
+    };
+    BaseDiffView.prototype.$addWidget = function (session, w) {
+        var lineWidget = session.lineWidgets[w.row];
+        if (lineWidget) {
+            w.rowsAbove += lineWidget.rowsAbove > w.rowsAbove ? lineWidget.rowsAbove : w.rowsAbove;
+            w.rowCount += lineWidget.rowCount;
+        }
+        session.lineWidgets[w.row] = w;
+        session.widgetManager.lineWidgets[w.row] = w;
+        session.$resetRowCache(w.row);
+        var fold = session.getFoldAt(w.row, 0);
+        if (fold) {
+            session.widgetManager.updateOnFold({
+                data: fold,
+                action: "add",
+            }, session);
+        }
+    };
+    BaseDiffView.prototype.$initWidgets = function (editor) {
+        var session = editor.session;
+        if (!session)
+            return;
+        if (!session.widgetManager) {
+            session.widgetManager = new LineWidgets(session);
+            session.widgetManager.attach(editor);
+        }
+        session.lineWidgets = [];
+        session.widgetManager.lineWidgets = [];
+        session.$resetRowCache(0);
+    };
+    BaseDiffView.prototype.$screenRow = function (pos, session) {
+        var row = session.documentToScreenPosition(pos).row;
+        var afterEnd = pos.row - session.getLength() + 1;
+        if (afterEnd > 0) {
+            row += afterEnd;
+        }
+        return row;
+    };
+    BaseDiffView.prototype.align = function () { };
+    BaseDiffView.prototype.onChangeWrapLimit = function (e, session) { };
+    BaseDiffView.prototype.onSelect = function (e, selection) {
+        this.searchHighlight(selection);
+        this.syncSelect(selection);
+    };
+    BaseDiffView.prototype.syncSelect = function (selection) {
+        if (this.$updatingSelection)
+            return;
+        var isOld = selection.session === this.sessionA;
+        var selectionRange = selection.getRange();
+        var currSelectionRange = isOld ? this.selectionRangeA : this.selectionRangeB;
+        if (currSelectionRange && selectionRange.isEqual(currSelectionRange))
+            return;
+        if (isOld) {
+            this.selectionRangeA = selectionRange;
+        }
+        else {
+            this.selectionRangeB = selectionRange;
+        }
+        this.$updatingSelection = true;
+        var newRange = this.transformRange(selectionRange, isOld);
+        if (this.$syncSelections) {
+            (isOld ? this.editorB : this.editorA).session.selection.setSelectionRange(newRange);
+        }
+        this.$updatingSelection = false;
+        if (isOld) {
+            this.selectionRangeA = selectionRange;
+            this.selectionRangeB = newRange;
+        }
+        else {
+            this.selectionRangeA = newRange;
+            this.selectionRangeB = selectionRange;
+        }
+        this.updateSelectionMarker(this.syncSelectionMarkerA, this.sessionA, this.selectionRangeA);
+        this.updateSelectionMarker(this.syncSelectionMarkerB, this.sessionB, this.selectionRangeB);
+    };
+    BaseDiffView.prototype.updateSelectionMarker = function (marker, session, range) {
+        marker.setRange(range);
+        session._signal("changeFrontMarker");
+    };
+    BaseDiffView.prototype.onChangeFold = function (ev, session) {
+        var fold = ev.data;
+        if (this.$syncingFold || !fold || !ev.action)
+            return;
+        this.scheduleRealign();
+        var isOrig = session === this.sessionA;
+        var other = isOrig ? this.sessionB : this.sessionA;
+        if (ev.action === "remove") {
+            if (fold.other) {
+                fold.other.other = null;
+                other.removeFold(fold.other);
+            }
+            else if (fold.lineWidget) {
+                other.widgetManager.addLineWidget(fold.lineWidget);
+                fold.lineWidget = null;
+                if (other["$editor"]) {
+                    other["$editor"].renderer.updateBackMarkers();
+                }
+            }
+        }
+        if (ev.action === "add") {
+            var range = this.transformRange(fold.range, isOrig);
+            if (range.isEmpty()) {
+                var row = range.start.row + 1;
+                if (other.lineWidgets[row]) {
+                    fold.lineWidget = other.lineWidgets[row];
+                    other.widgetManager.removeLineWidget(fold.lineWidget);
+                    if (other["$editor"]) {
+                        other["$editor"].renderer.updateBackMarkers();
+                    }
+                }
+            }
+            else {
+                this.$syncingFold = true;
+                fold.other = other.addFold(fold.placeholder, range);
+                if (fold.other) {
+                    fold.other.other = fold;
+                }
+                this.$syncingFold = false;
+            }
+        }
+    };
+    BaseDiffView.prototype.scheduleRealign = function () {
+        if (!this.realignPending) {
+            this.realignPending = true;
+            this.editorA.renderer.on("beforeRender", this.realign);
+            this.editorB.renderer.on("beforeRender", this.realign);
+        }
+    };
+    BaseDiffView.prototype.realign = function () {
+        this.realignPending = true;
+        this.editorA.renderer.off("beforeRender", this.realign);
+        this.editorB.renderer.off("beforeRender", this.realign);
+        this.align();
+        this.realignPending = false;
+    };
+    BaseDiffView.prototype.detach = function () {
+        if (!this.editorA || !this.editorB)
+            return;
+        if (this.savedOptionsA)
+            this.editorA.setOptions(this.savedOptionsA);
+        if (this.savedOptionsB)
+            this.editorB.setOptions(this.savedOptionsB);
+        this.editorA.renderer.off("beforeRender", this.realign);
+        this.editorB.renderer.off("beforeRender", this.realign);
+        this.$detachEventHandlers();
+        this.$removeLineWidgets(this.sessionA);
+        this.$removeLineWidgets(this.sessionB);
+        this.gutterDecoratorA && this.gutterDecoratorA.dispose();
+        this.gutterDecoratorB && this.gutterDecoratorB.dispose();
+        this.sessionA.selection.clearSelection();
+        this.sessionB.selection.clearSelection();
+        if (this.savedOptionsA && this.savedOptionsA.customScrollbar) {
+            this.$resetDecorators(this.editorA.renderer);
+        }
+        if (this.savedOptionsB && this.savedOptionsB.customScrollbar) {
+            this.$resetDecorators(this.editorB.renderer);
+        }
+        clearTimeout(this.$onInputTimer);
+        clearTimeout(this.$inlineRefineTimer);
+        this.$inlineRefineTimer = null;
+        this.$diffOriginalLines = null;
+        this.$diffModifiedLines = null;
+    };
+    BaseDiffView.prototype.$removeLineWidgets = function (session) {
+        session.lineWidgets = [];
+        session.widgetManager.lineWidgets = [];
+        session._signal("changeFold", { data: { start: { row: 0 } } });
+    };
+    BaseDiffView.prototype.$detachEventHandlers = function () {
+    };
+    BaseDiffView.prototype.destroy = function () {
+        this.detach();
+        this.editorA && this.editorA.destroy();
+        this.editorB && this.editorB.destroy();
+        this.editorA = this.editorB = null;
+    };
+    BaseDiffView.prototype.gotoNext = function (dir) {
+        var ace = this.activeEditor || this.editorA;
+        if (this.inlineDiffEditor) {
+            ace = this.editorA;
+        }
+        var sideA = ace == this.editorA;
+        var row = ace.selection.lead.row;
+        var i = this.findChunkIndex(this.chunks, row, sideA);
+        var chunk = this.chunks[i + dir] || this.chunks[i];
+        var scrollTop = ace.session.getScrollTop();
+        if (chunk) {
+            var range = chunk[sideA ? "old" : "new"];
+            var line = Math.max(range.start.row, range.end.row - 1);
+            ace.selection.setRange(new Range(line, 0, line, 0));
+        }
+        ace.renderer.scrollSelectionIntoView(ace.selection.lead, ace.selection.anchor, 0.5);
+        ace.renderer.animateScrolling(scrollTop);
+    };
+    BaseDiffView.prototype.firstDiffSelected = function () {
+        return this.currentDiffIndex <= 1;
+    };
+    BaseDiffView.prototype.lastDiffSelected = function () {
+        return this.currentDiffIndex > this.chunks.length - 1;
+    };
+    BaseDiffView.prototype.transformRange = function (range, isOriginal) {
+        return Range.fromPoints(this.transformPosition(range.start, isOriginal), this.transformPosition(range.end, isOriginal));
+    };
+    BaseDiffView.prototype.transformPosition = function (pos, isOriginal) {
+        var chunkIndex = this.findChunkIndex(this.chunks, pos.row, isOriginal);
+        var chunk = this.chunks[chunkIndex];
+        var clonePos = this.sessionB.doc.clonePos;
+        var result = clonePos(pos);
+        var _a = __read(isOriginal ? ["old", "new"] : ["new", "old"], 2), from = _a[0], to = _a[1];
+        var deltaChar = 0;
+        var ignoreIndent = false;
+        if (chunk) {
+            if (chunk[from].end.row <= pos.row) {
+                result.row -= chunk[from].end.row - chunk[to].end.row;
+            }
+            else if (chunk.charChanges) {
+                for (var i = 0; i < chunk.charChanges.length; i++) {
+                    var change = chunk.charChanges[i];
+                    var fromRange = change[from];
+                    var toRange = change[to];
+                    if (fromRange.end.row < pos.row)
+                        continue;
+                    if (fromRange.start.row > pos.row)
+                        break;
+                    if (fromRange.isMultiLine() && fromRange.contains(pos.row, pos.column)) {
+                        result.row = toRange.start.row + pos.row - fromRange.start.row;
+                        var maxRow = toRange.end.row;
+                        if (toRange.end.column === 0)
+                            maxRow--;
+                        if (result.row > maxRow) {
+                            result.row = maxRow;
+                            result.column = (isOriginal ? this.sessionB : this.sessionA).getLine(maxRow).length;
+                            ignoreIndent = true;
+                        }
+                        result.row = Math.min(result.row, maxRow);
+                    }
+                    else {
+                        result.row = toRange.start.row;
+                        if (fromRange.start.column > pos.column)
+                            break;
+                        ignoreIndent = true;
+                        if (!fromRange.isEmpty() && fromRange.contains(pos.row, pos.column)) {
+                            result.column = toRange.start.column;
+                            deltaChar = pos.column - fromRange.start.column;
+                            deltaChar = Math.min(deltaChar, toRange.end.column - toRange.start.column);
+                        }
+                        else {
+                            result = clonePos(toRange.end);
+                            deltaChar = pos.column - fromRange.end.column;
+                        }
+                    }
+                }
+            }
+            else if (chunk[from].start.row <= pos.row) {
+                result.row += chunk[to].start.row - chunk[from].start.row;
+                if (result.row >= chunk[to].end.row) {
+                    result.row = chunk[to].end.row - 1;
+                    result.column = (isOriginal ? this.sessionB : this.sessionA).getLine(result.row).length;
+                }
+            }
+        }
+        if (!ignoreIndent) { //TODO:
+            var _b = __read(isOriginal ? [this.sessionA, this.sessionB] : [
+                this.sessionB, this.sessionA
+            ], 2), fromEditSession = _b[0], toEditSession = _b[1];
+            deltaChar -= this.$getDeltaIndent(fromEditSession, toEditSession, pos.row, result.row);
+        }
+        result.column += deltaChar;
+        return result;
+    };
+    BaseDiffView.prototype.$getDeltaIndent = function (fromEditSession, toEditSession, fromLine, toLine) {
+        var origIndent = this.$getIndent(fromEditSession, fromLine);
+        var editIndent = this.$getIndent(toEditSession, toLine);
+        return origIndent - editIndent;
+    };
+    BaseDiffView.prototype.$getIndent = function (editSession, line) {
+        return editSession.getLine(line).match(/^\s*/)[0].length;
+    };
+    BaseDiffView.prototype.printDiffs = function () {
+        this.chunks.forEach(function (diff) {
+            console.log(diff.toString());
+        });
+    };
+    BaseDiffView.prototype.findChunkIndex = function (chunks, row, isOriginal) {
+        for (var i = 0; i < chunks.length; i++) {
+            var ch = chunks[i];
+            var chunk = isOriginal ? ch.old : ch.new;
+            if (chunk.end.row < row)
+                continue;
+            if (chunk.start.row > row)
+                break;
+        }
+        this.currentDiffIndex = i;
+        return i - 1;
+    };
+    BaseDiffView.prototype.searchHighlight = function (selection) {
+        if (this.$syncSelections || this.inlineDiffEditor) {
+            return;
+        }
+        var currSession = selection.session;
+        var otherSession = currSession === this.sessionA
+            ? this.sessionB : this.sessionA;
+        otherSession.highlight(currSession.$searchHighlight.regExp);
+        otherSession._signal("changeBackMarker");
+    };
+    BaseDiffView.prototype.initSelectionMarkers = function () {
+        this.syncSelectionMarkerA = new SyncSelectionMarker();
+        this.syncSelectionMarkerB = new SyncSelectionMarker();
+        this.sessionA.addDynamicMarker(this.syncSelectionMarkerA, true);
+        this.sessionB.addDynamicMarker(this.syncSelectionMarkerB, true);
+    };
+    BaseDiffView.prototype.clearSelectionMarkers = function () {
+        this.sessionA.removeMarker(this.syncSelectionMarkerA.id);
+        this.sessionB.removeMarker(this.syncSelectionMarkerB.id);
+    };
+    return BaseDiffView;
+}());
+config.defineOptions(BaseDiffView.prototype, "DiffView", {
+    showOtherLineNumbers: {
+        set: function (value) {
+            if (this.gutterLayer) {
+                this.gutterLayer.$renderer = value ? null : emptyGutterRenderer;
+                this.editorA.renderer.updateFull();
+            }
+        },
+        initialValue: true
+    },
+    folding: {
+        set: function (value) {
+            this.editorA.setOption("showFoldWidgets", value);
+            this.editorB.setOption("showFoldWidgets", value);
+            if (!value) {
+                var posA = [];
+                var posB = [];
+                if (this.chunks) {
+                    this.chunks.forEach(function (x) {
+                        posA.push(x.old.start, x.old.end);
+                        posB.push(x.new.start, x.new.end);
+                    });
+                }
+                this.sessionA.unfold(posA);
+                this.sessionB.unfold(posB);
+            }
+        }
+    },
+    syncSelections: {
+        set: function (value) {
+        },
+    },
+    ignoreTrimWhitespace: {
+        set: function (value) {
+            this.scheduleOnInput();
+        },
+    },
+    wrap: {
+        set: function (value) {
+            this.sessionA.setOption("wrap", value);
+            this.sessionB.setOption("wrap", value);
+        }
+    },
+    maxDiffs: {
+        value: 5000,
+    },
+    theme: {
+        set: function (value) {
+            this.setTheme(value);
+        },
+        get: function () {
+            return this.editorA.getTheme();
+        }
+    },
+});
+var emptyGutterRenderer = {
+    getText: function name(params) {
+        return "";
+    },
+    getWidth: function () {
+        return 0;
+    }
+};
+exports.BaseDiffView = BaseDiffView;
+var DiffChunk = /** @class */ (function () {
+    function DiffChunk(originalRange, modifiedRange, charChanges, inlinePending) {
+        if (inlinePending === void 0) { inlinePending = false; }
+        this.old = originalRange;
+        this.new = modifiedRange;
+        this.inlinePending = inlinePending;
+        this.inlineRefineHitTimeout = false;
+        this.charChanges = charChanges && charChanges.map(function (m) { return new DiffChunk(new Range(m.originalStartLineNumber, m.originalStartColumn, m.originalEndLineNumber, m.originalEndColumn), new Range(m.modifiedStartLineNumber, m.modifiedStartColumn, m.modifiedEndLineNumber, m.modifiedEndColumn)); });
+    }
+    return DiffChunk;
+}());
+function inlineChangeSpansLineChange(changeRange, lineRange, session) {
+    var normalizeDocumentEnd = function (position) {
+        var lineCount = session.getLength();
+        if (position.row >= lineCount) {
+            var lastRow = Math.max(0, lineCount - 1);
+            return { row: lastRow, column: session.getLine(lastRow).length };
+        }
+        return position;
+    };
+    var changeStart = normalizeDocumentEnd(changeRange.start);
+    var changeEnd = normalizeDocumentEnd(changeRange.end);
+    var lineStart = normalizeDocumentEnd(lineRange.start);
+    var lineEnd = normalizeDocumentEnd(lineRange.end);
+    return changeStart.row === lineStart.row
+        && changeStart.column === lineStart.column
+        && changeEnd.row === lineEnd.row
+        && changeEnd.column === lineEnd.column;
+}
+var DiffHighlight = /** @class */ (function () {
+    function DiffHighlight(diffView, type) { this.id;
+        this.diffView = diffView;
+        this.type = type;
+    }
+    DiffHighlight.prototype.update = function (html, markerLayer, session, config) {
+        var dir, operation, opOperation;
+        var diffView = this.diffView;
+        if (this.type === -1) { // original editor
+            dir = "old";
+            operation = "delete";
+            opOperation = "insert";
+        }
+        else { //modified editor
+            dir = "new";
+            operation = "insert";
+            opOperation = "delete";
+        }
+        var ignoreTrimWhitespace = diffView.$ignoreTrimWhitespace;
+        var lineChanges = diffView.chunks;
+        if (session.lineWidgets && !diffView.inlineDiffEditor) {
+            for (var row = config.firstRow; row <= config.lastRow; row++) {
+                var lineWidget = session.lineWidgets[row];
+                if (!lineWidget || lineWidget.hidden)
+                    continue;
+                var start = session.documentToScreenRow(row, 0);
+                if (lineWidget.rowsAbove > 0) {
+                    var range = new Range(start - lineWidget.rowsAbove, 0, start - 1, Number.MAX_VALUE);
+                    markerLayer.drawFullLineMarker(html, range, "ace_diff aligned_diff", config);
+                }
+                var offset = session.getRowLength(row) - lineWidget.rowCount;
+                var end = start + offset - 1 + lineWidget.rowCount - (lineWidget.rowsAbove || 0);
+                var range = new Range(start + offset, 0, end, Number.MAX_VALUE);
+                markerLayer.drawFullLineMarker(html, range, "ace_diff aligned_diff", config);
+            }
+        }
+        lineChanges.forEach(function (lineChange) {
+            var startRow = lineChange[dir].start.row;
+            var endRow = lineChange[dir].end.row;
+            if (endRow < config.firstRow || startRow > config.lastRow)
+                return;
+            var range = new Range(startRow, 0, endRow - 1, 1 << 30);
+            if (startRow !== endRow) {
+                range = range.toScreenRange(session);
+                markerLayer.drawFullLineMarker(html, range, "ace_diff " + operation, config);
+            }
+            if (lineChange.charChanges) {
+                for (var i = 0; i < lineChange.charChanges.length; i++) {
+                    var storedChangeRange = lineChange.charChanges[i][dir];
+                    if (storedChangeRange.end.row < config.firstRow || storedChangeRange.start.row > config.lastRow) {
+                        continue;
+                    }
+                    if (inlineChangeSpansLineChange(storedChangeRange, lineChange[dir], session)) {
+                        continue;
+                    }
+                    var changeRange = storedChangeRange.clone();
+                    if (changeRange.end.column == 0 && changeRange.end.row > changeRange.start.row && changeRange.end.row == lineChange[dir].end.row) {
+                        changeRange.end.row--;
+                        changeRange.end.column = Number.MAX_VALUE;
+                    }
+                    if (ignoreTrimWhitespace) {
+                        for (var lineNumber = changeRange.start.row; lineNumber <= changeRange.end.row; lineNumber++) {
+                            var startColumn = void 0;
+                            var endColumn = void 0;
+                            var sessionLineStart = session.getLine(lineNumber).match(/^\s*/)[0].length;
+                            var sessionLineEnd = session.getLine(lineNumber).length;
+                            if (lineNumber === changeRange.start.row) {
+                                startColumn = changeRange.start.column;
+                            }
+                            else {
+                                startColumn = sessionLineStart;
+                            }
+                            if (lineNumber === changeRange.end.row) {
+                                endColumn = changeRange.end.column;
+                            }
+                            else {
+                                endColumn = sessionLineEnd;
+                            }
+                            var range_1 = new Range(lineNumber, startColumn, lineNumber, endColumn);
+                            var screenRange = range_1.toScreenRange(session);
+                            if (sessionLineStart === startColumn && sessionLineEnd === endColumn) {
+                                continue;
+                            }
+                            var cssClass = "inline " + operation;
+                            if (range_1.isEmpty() && startColumn !== 0) {
+                                cssClass = "inline " + opOperation + " empty";
+                            }
+                            markerLayer.drawSingleLineMarker(html, screenRange, "ace_diff " + cssClass, config);
+                        }
+                    }
+                    else {
+                        var range_2 = new Range(changeRange.start.row, changeRange.start.column, changeRange.end.row, changeRange.end.column);
+                        var screenRange = range_2.toScreenRange(session);
+                        var cssClass = "inline " + operation;
+                        if (range_2.isEmpty()) {
+                            cssClass = "inline empty " + opOperation;
+                        }
+                        if (screenRange.isMultiLine()) {
+                            markerLayer.drawTextMarker(html, screenRange, "ace_diff " + cssClass, config);
+                        }
+                        else {
+                            markerLayer.drawSingleLineMarker(html, screenRange, "ace_diff " + cssClass, config);
+                        }
+                    }
+                }
+            }
+        });
+    };
+    return DiffHighlight;
+}());
+var SyncSelectionMarker = /** @class */ (function () {
+    function SyncSelectionMarker() { this.id;
+        this.type = "fullLine";
+        this.clazz = "ace_diff-active-line";
+    }
+    SyncSelectionMarker.prototype.update = function (html, markerLayer, session, config) {
+    };
+    SyncSelectionMarker.prototype.setRange = function (range) {
+        var newRange = range.clone();
+        newRange.end.column++;
+        this.range = newRange;
+    };
+    return SyncSelectionMarker;
+}());
+exports.DiffChunk = DiffChunk;
+exports.DiffHighlight = DiffHighlight;
+
+});
+
+define("ace/ext/diff/inline_diff_view",["require","exports","module","ace/ext/diff/base_diff_view","ace/virtual_renderer","ace/config"], function(require, exports, module){"use strict";
+var __extends = (this && this.__extends) || (function () {
+    var extendStatics = function (d, b) {
+        extendStatics = Object.setPrototypeOf ||
+            ({ __proto__: [] } instanceof Array && function (d, b) { d.__proto__ = b; }) ||
+            function (d, b) { for (var p in b) if (Object.prototype.hasOwnProperty.call(b, p)) d[p] = b[p]; };
+        return extendStatics(d, b);
+    };
+    return function (d, b) {
+        if (typeof b !== "function" && b !== null)
+            throw new TypeError("Class extends value " + String(b) + " is not a constructor or null");
+        extendStatics(d, b);
+        function __() { this.constructor = d; }
+        d.prototype = b === null ? Object.create(b) : (__.prototype = b.prototype, new __());
+    };
+})();
+var BaseDiffView = require("./base_diff_view").BaseDiffView;
+var Renderer = require("../../virtual_renderer").VirtualRenderer;
+var config = require("../../config");
+var InlineDiffView = /** @class */ (function (_super) {
+    __extends(InlineDiffView, _super);
+    function InlineDiffView(diffModel, container) {
+        var _this = this;
+        diffModel = diffModel || {};
+        diffModel.inline = diffModel.inline || "a";
+        _this = _super.call(this, true, container) || this;
+        _this.init(diffModel);
+        return _this;
+    }
+    InlineDiffView.prototype.init = function (diffModel) {
+        this.onSelect = this.onSelect.bind(this);
+        this.onAfterRender = this.onAfterRender.bind(this);
+        this.$setupModels(diffModel);
+        this.onChangeTheme();
+        config.resetOptions(this);
+        config["_signal"]("diffView", this);
+        var padding = this.activeEditor.renderer.$padding;
+        this.addGutterDecorators();
+        this.otherEditor.renderer.setPadding(padding);
+        this.textLayer = this.otherEditor.renderer.$textLayer;
+        this.markerLayer = this.otherEditor.renderer.$markerBack;
+        this.gutterLayer = this.otherEditor.renderer.$gutterLayer;
+        this.cursorLayer = this.otherEditor.renderer.$cursorLayer;
+        this.otherEditor.renderer.$updateCachedSize = function () {
+        };
+        var textLayerElement = this.activeEditor.renderer.$textLayer.element;
+        textLayerElement.parentNode.insertBefore(this.textLayer.element, textLayerElement);
+        var markerLayerElement = this.activeEditor.renderer.$markerBack.element;
+        markerLayerElement.parentNode.insertBefore(this.markerLayer.element, markerLayerElement.nextSibling);
+        var gutterLayerElement = this.activeEditor.renderer.$gutterLayer.element;
+        gutterLayerElement.parentNode.insertBefore(this.gutterLayer.element, gutterLayerElement.nextSibling);
+        gutterLayerElement.style.position = "absolute";
+        this.gutterLayer.element.style.position = "absolute";
+        this.gutterLayer.element.style.width = "100%";
+        this.gutterLayer.element.classList.add("ace_mini-diff_gutter_other");
+        this.gutterLayer.$updateGutterWidth = function () { };
+        this.initMouse();
+        this.initTextInput();
+        this.initTextLayer();
+        this.initRenderer();
+        this.$attachEventHandlers();
+        this.selectEditor(this.activeEditor);
+    };
+    InlineDiffView.prototype.initRenderer = function (restore) {
+        var _this = this;
+        if (restore) {
+            delete this.activeEditor.renderer.$getLongestLine;
+        }
+        else {
+            this.editorA.renderer.$getLongestLine =
+                this.editorB.renderer.$getLongestLine = function () {
+                    var getLongestLine = Renderer.prototype.$getLongestLine;
+                    return Math.max(getLongestLine.call(_this.editorA.renderer), getLongestLine.call(_this.editorB.renderer));
+                };
+        }
+    };
+    InlineDiffView.prototype.initTextLayer = function () {
+        var renderLine = this.textLayer.$renderLine;
+        var diffView = this;
+        this.otherEditor.renderer.$textLayer.$renderLine = function (parent, row, foldLIne) {
+            if (isVisibleRow(diffView.chunks, row)) {
+                renderLine.call(this, parent, row, foldLIne);
+            }
+        };
+        var side = this.showSideA ? "new" : "old";
+        function isVisibleRow(chunks, row) {
+            var min = 0;
+            var max = chunks.length - 1;
+            var result = -1;
+            while (min < max) {
+                var mid = Math.floor((min + max) / 2);
+                var chunkStart = chunks[mid][side].start.row;
+                if (chunkStart < row) {
+                    result = mid;
+                    min = mid + 1;
+                }
+                else if (chunkStart > row) {
+                    max = mid - 1;
+                }
+                else {
+                    result = mid;
+                    break;
+                }
+            }
+            if (chunks[result + 1] && chunks[result + 1][side].start.row <= row) {
+                result++;
+            }
+            var range = chunks[result] && chunks[result][side];
+            if (range && range.end.row > row) {
+                return true;
+            }
+            return false;
+        }
+    };
+    InlineDiffView.prototype.initTextInput = function (restore) {
+        if (restore) {
+            this.otherEditor.textInput = this.othertextInput;
+            this.otherEditor.container = this.otherEditorContainer;
+        }
+        else {
+            this.othertextInput = this.otherEditor.textInput;
+            this.otherEditor.textInput = this.activeEditor.textInput;
+            this.otherEditorContainer = this.otherEditor.container;
+            this.otherEditor.container = this.activeEditor.container;
+        }
+    };
+    InlineDiffView.prototype.selectEditor = function (editor) {
+        if (editor == this.activeEditor) {
+            this.otherEditor.selection && this.otherEditor.selection.clearSelection();
+            this.activeEditor.textInput.setHost(this.activeEditor);
+            this.activeEditor.setStyle("ace_diff_other", false);
+            this.cursorLayer.element.remove();
+            this.activeEditor.renderer.$cursorLayer.element.style.display = "block";
+            if (this.showSideA) {
+                this.sessionA.removeMarker(this.syncSelectionMarkerA.id);
+                this.sessionA.addDynamicMarker(this.syncSelectionMarkerA, true);
+            }
+            this.markerLayer.element.classList.add("ace_hidden_marker-layer");
+            this.activeEditor.renderer.$markerBack.element.classList.remove("ace_hidden_marker-layer");
+            this.removeBracketHighlight(this.otherEditor);
+        }
+        else {
+            this.activeEditor.selection && this.activeEditor.selection.clearSelection();
+            this.activeEditor.textInput.setHost(this.otherEditor);
+            this.activeEditor.setStyle("ace_diff_other");
+            this.activeEditor.renderer.$cursorLayer.element.parentNode.appendChild(this.cursorLayer.element);
+            this.activeEditor.renderer.$cursorLayer.element.style.display = "none";
+            if (this.activeEditor.$isFocused) {
+                this.otherEditor.onFocus();
+            }
+            if (this.showSideA) {
+                this.sessionA.removeMarker(this.syncSelectionMarkerA.id);
+            }
+            this.markerLayer.element.classList.remove("ace_hidden_marker-layer");
+            this.activeEditor.renderer.$markerBack.element.classList.add("ace_hidden_marker-layer");
+            this.removeBracketHighlight(this.activeEditor);
+        }
+    };
+    InlineDiffView.prototype.removeBracketHighlight = function (editor) {
+        var session = editor.session;
+        if (session && session.$bracketHighlight) {
+            session.$bracketHighlight.markerIds.forEach(function (id) {
+                session.removeMarker(id);
+            });
+            session.$bracketHighlight = null;
+        }
+    };
+    InlineDiffView.prototype.initMouse = function () {
+        var _this = this;
+        this.otherEditor.renderer.$loop = this.activeEditor.renderer.$loop;
+        this.otherEditor.renderer.scroller = {
+            getBoundingClientRect: function () {
+                return _this.activeEditor.renderer.scroller.getBoundingClientRect();
+            },
+            style: this.activeEditor.renderer.scroller.style,
+        };
+        var forwardEvent = function (ev) {
+            if (!ev.domEvent)
+                return;
+            var screenPos = ev.editor.renderer.pixelToScreenCoordinates(ev.clientX, ev.clientY);
+            var sessionA = _this.activeEditor.session;
+            var sessionB = _this.otherEditor.session;
+            var posA = sessionA.screenToDocumentPosition(screenPos.row, screenPos.column);
+            var posB = sessionB.screenToDocumentPosition(screenPos.row, screenPos.column);
+            var posAx = sessionA.documentToScreenPosition(posA);
+            var posBx = sessionB.documentToScreenPosition(posB);
+            if (ev.editor == _this.activeEditor) {
+                if (posBx.row == screenPos.row && posAx.row != screenPos.row) {
+                    if (ev.type == "mousedown") {
+                        _this.selectEditor(_this.otherEditor);
+                    }
+                    ev.propagationStopped = true;
+                    ev.defaultPrevented = true;
+                    _this.otherEditor.$mouseHandler.onMouseEvent(ev.type, ev.domEvent);
+                }
+                else if (ev.type == "mousedown") {
+                    _this.selectEditor(_this.activeEditor);
+                }
+            }
+        };
+        var events = [
+            "mousedown",
+            "click",
+            "mouseup",
+            "dblclick",
+            "tripleclick",
+            "quadclick",
+        ];
+        events.forEach(function (event) {
+            _this.activeEditor.on(event, forwardEvent, true);
+            _this.activeEditor.on("gutter" + event, forwardEvent, true);
+        });
+        var onFocus = function (e) {
+            _this.activeEditor.onFocus(e);
+        };
+        var onBlur = function (e) {
+            _this.activeEditor.onBlur(e);
+        };
+        this.otherEditor.on("focus", onFocus);
+        this.otherEditor.on("blur", onBlur);
+        this.onMouseDetach = function () {
+            events.forEach(function (event) {
+                _this.activeEditor.off(event, forwardEvent, true);
+                _this.activeEditor.off("gutter" + event, forwardEvent, true);
+            });
+            _this.otherEditor.off("focus", onFocus);
+            _this.otherEditor.off("blur", onBlur);
+        };
+    };
+    InlineDiffView.prototype.align = function () {
+        var diffView = this;
+        this.$initWidgets(diffView.editorA);
+        this.$initWidgets(diffView.editorB);
+        diffView.chunks.forEach(function (ch) {
+            var diff1 = diffView.$screenRow(ch.old.end, diffView.sessionA)
+                - diffView.$screenRow(ch.old.start, diffView.sessionA);
+            var diff2 = diffView.$screenRow(ch.new.end, diffView.sessionB)
+                - diffView.$screenRow(ch.new.start, diffView.sessionB);
+            diffView.$addWidget(diffView.sessionA, {
+                rowCount: diff2,
+                rowsAbove: ch.old.end.row === 0 ? diff2 : 0,
+                row: ch.old.end.row === 0 ? 0 : ch.old.end.row - 1
+            });
+            diffView.$addWidget(diffView.sessionB, {
+                rowCount: diff1,
+                rowsAbove: diff1,
+                row: ch.new.start.row,
+            });
+        });
+        diffView.sessionA["_emit"]("changeFold", { data: { start: { row: 0 } } });
+        diffView.sessionB["_emit"]("changeFold", { data: { start: { row: 0 } } });
+    };
+    InlineDiffView.prototype.onChangeWrapLimit = function (e, session) {
+        this.otherSession.setOption("wrap", session.getOption("wrap"));
+        this.otherSession.adjustWrapLimit(session.$wrapLimit);
+        this.scheduleRealign();
+        this.activeEditor.renderer.updateFull();
+    };
+    InlineDiffView.prototype.$attachSessionsEventHandlers = function () {
+        this.$attachSessionEventHandlers(this.editorA, this.markerA);
+        this.$attachSessionEventHandlers(this.editorB, this.markerB);
+        var session = this.activeEditor.session;
+        session.on("changeWrapLimit", this.onChangeWrapLimit);
+        session.on("changeWrapMode", this.onChangeWrapLimit);
+    };
+    InlineDiffView.prototype.$attachSessionEventHandlers = function (editor, marker) {
+        editor.session.on("changeFold", this.onChangeFold);
+        editor.session.addDynamicMarker(marker);
+        editor.selection.on("changeCursor", this.onSelect);
+        editor.selection.on("changeSelection", this.onSelect);
+    };
+    InlineDiffView.prototype.$detachSessionsEventHandlers = function () {
+        this.$detachSessionHandlers(this.editorA, this.markerA);
+        this.$detachSessionHandlers(this.editorB, this.markerB);
+        this.otherSession.bgTokenizer.lines.fill(undefined);
+        var session = this.activeEditor.session;
+        session.off("changeWrapLimit", this.onChangeWrapLimit);
+        session.off("changeWrapMode", this.onChangeWrapLimit);
+    };
+    InlineDiffView.prototype.$detachSessionHandlers = function (editor, marker) {
+        if (!editor.session)
+            return;
+        editor.session.removeMarker(marker.id);
+        editor.selection.off("changeCursor", this.onSelect);
+        editor.selection.off("changeSelection", this.onSelect);
+        editor.session.off("changeFold", this.onChangeFold);
+    };
+    InlineDiffView.prototype.$attachEventHandlers = function () {
+        this.activeEditor.on("input", this.onInput);
+        this.activeEditor.renderer.on("afterRender", this.onAfterRender);
+        this.otherSession.on("change", this.onInput);
+    };
+    InlineDiffView.prototype.$detachEventHandlers = function () {
+        this.$detachSessionsEventHandlers();
+        this.activeEditor.off("input", this.onInput);
+        this.activeEditor.renderer.off("afterRender", this.onAfterRender);
+        this.otherSession.off("change", this.onInput);
+        this.textLayer.element.textContent = "";
+        this.textLayer.element.remove();
+        this.gutterLayer.element.textContent = "";
+        this.gutterLayer.element.remove();
+        this.markerLayer.element.textContent = "";
+        this.markerLayer.element.remove();
+        this.onMouseDetach();
+        this.selectEditor(this.activeEditor);
+        this.clearSelectionMarkers();
+        this.otherEditor.setSession(null);
+        this.otherEditor.renderer.$loop = null;
+        this.initTextInput(true);
+        this.initRenderer(true);
+        this.otherEditor.destroy();
+    };
+    InlineDiffView.prototype.onAfterRender = function (changes, renderer) {
+        var config = renderer.layerConfig;
+        var session = this.otherSession;
+        var cloneRenderer = this.otherEditor.renderer;
+        session.$scrollTop = renderer.scrollTop;
+        session.$scrollLeft = renderer.scrollLeft;
+        [
+            "characterWidth",
+            "lineHeight",
+            "scrollTop",
+            "scrollLeft",
+            "scrollMargin",
+            "$padding",
+            "$size",
+            "layerConfig",
+            "$horizScroll",
+            "$vScroll",
+        ].forEach(function (prop) {
+            cloneRenderer[prop] = renderer[prop];
+        });
+        cloneRenderer.$computeLayerConfig();
+        var newConfig = cloneRenderer.layerConfig;
+        if (changes & cloneRenderer.CHANGE_LINES
+            || changes & cloneRenderer.CHANGE_FULL
+            || changes & cloneRenderer.CHANGE_SCROLL
+            || changes & cloneRenderer.CHANGE_TEXT)
+            this.textLayer.update(newConfig);
+        this.gutterLayer.update(newConfig);
+        newConfig.firstRowScreen = config.firstRowScreen;
+        cloneRenderer.$cursorLayer.config = newConfig;
+        cloneRenderer.$cursorLayer.update(newConfig);
+        this.markerLayer.setMarkers(this.otherSession.getMarkers());
+        this.markerLayer.update(newConfig);
+        this.scheduleVisibleInlineRefinement();
+    };
+    InlineDiffView.prototype.detach = function () {
+        _super.prototype.detach.call(this);
+        this.otherEditor && this.otherEditor.destroy();
+    };
+    return InlineDiffView;
+}(BaseDiffView));
+exports.InlineDiffView = InlineDiffView;
+
+});
+
+define("ace/ext/diff/split_diff_view",["require","exports","module","ace/ext/diff/base_diff_view","ace/config"], function(require, exports, module){"use strict";
+var __extends = (this && this.__extends) || (function () {
+    var extendStatics = function (d, b) {
+        extendStatics = Object.setPrototypeOf ||
+            ({ __proto__: [] } instanceof Array && function (d, b) { d.__proto__ = b; }) ||
+            function (d, b) { for (var p in b) if (Object.prototype.hasOwnProperty.call(b, p)) d[p] = b[p]; };
+        return extendStatics(d, b);
+    };
+    return function (d, b) {
+        if (typeof b !== "function" && b !== null)
+            throw new TypeError("Class extends value " + String(b) + " is not a constructor or null");
+        extendStatics(d, b);
+        function __() { this.constructor = d; }
+        d.prototype = b === null ? Object.create(b) : (__.prototype = b.prototype, new __());
+    };
+})();
+var BaseDiffView = require("./base_diff_view").BaseDiffView;
+var config = require("../../config");
+var SplitDiffView = /** @class */ (function (_super) {
+    __extends(SplitDiffView, _super);
+    function SplitDiffView(diffModel) {
+        var _this = this;
+        diffModel = diffModel || {};
+        _this = _super.call(this) || this;
+        _this.init(diffModel);
+        return _this;
+    }
+    SplitDiffView.prototype.init = function (diffModel) {
+        this.onChangeTheme = this.onChangeTheme.bind(this);
+        this.onMouseWheel = this.onMouseWheel.bind(this);
+        this.onScroll = this.onScroll.bind(this);
+        this.onAfterRender = this.onAfterRender.bind(this);
+        this.$setupModels(diffModel);
+        this.addGutterDecorators();
+        this.onChangeTheme();
+        config.resetOptions(this);
+        config["_signal"]("diffView", this);
+        this.$attachEventHandlers();
+    };
+    SplitDiffView.prototype.onChangeWrapLimit = function () {
+        this.scheduleRealign();
+    };
+    SplitDiffView.prototype.align = function () {
+        var diffView = this;
+        this.$initWidgets(diffView.editorA);
+        this.$initWidgets(diffView.editorB);
+        diffView.chunks.forEach(function (ch) {
+            var diff1 = diffView.$screenRow(ch.old.start, diffView.sessionA);
+            var diff2 = diffView.$screenRow(ch.new.start, diffView.sessionB);
+            if (diff1 < diff2) {
+                diffView.$addWidget(diffView.sessionA, {
+                    rowCount: diff2 - diff1,
+                    rowsAbove: ch.old.start.row === 0 ? diff2 - diff1 : 0,
+                    row: ch.old.start.row === 0 ? 0 : ch.old.start.row - 1
+                });
+            }
+            else if (diff1 > diff2) {
+                diffView.$addWidget(diffView.sessionB, {
+                    rowCount: diff1 - diff2,
+                    rowsAbove: ch.new.start.row === 0 ? diff1 - diff2 : 0,
+                    row: ch.new.start.row === 0 ? 0 : ch.new.start.row - 1
+                });
+            }
+            var diff1 = diffView.$screenRow(ch.old.end, diffView.sessionA);
+            var diff2 = diffView.$screenRow(ch.new.end, diffView.sessionB);
+            if (diff1 < diff2) {
+                diffView.$addWidget(diffView.sessionA, {
+                    rowCount: diff2 - diff1,
+                    rowsAbove: ch.old.end.row === 0 ? diff2 - diff1 : 0,
+                    row: ch.old.end.row === 0 ? 0 : ch.old.end.row - 1
+                });
+            }
+            else if (diff1 > diff2) {
+                diffView.$addWidget(diffView.sessionB, {
+                    rowCount: diff1 - diff2,
+                    rowsAbove: ch.new.end.row === 0 ? diff1 - diff2 : 0,
+                    row: ch.new.end.row === 0 ? 0 : ch.new.end.row - 1
+                });
+            }
+        });
+        diffView.sessionA["_emit"]("changeFold", { data: { start: { row: 0 } } });
+        diffView.sessionB["_emit"]("changeFold", { data: { start: { row: 0 } } });
+    };
+    SplitDiffView.prototype.onScroll = function (e, session) {
+        this.syncScroll(this.sessionA === session ? this.editorA.renderer : this.editorB.renderer);
+    };
+    SplitDiffView.prototype.onAfterRender = function () {
+        this.scheduleVisibleInlineRefinement();
+    };
+    SplitDiffView.prototype.syncScroll = function (renderer) {
+        if (this.$syncScroll == false)
+            return;
+        var r1 = this.editorA.renderer;
+        var r2 = this.editorB.renderer;
+        var isOrig = renderer == r1;
+        if (r1["$scrollAnimation"] && r2["$scrollAnimation"])
+            return;
+        var now = Date.now();
+        if (this.scrollSetBy != renderer && now - this.scrollSetAt < 500)
+            return;
+        var r = isOrig ? r1 : r2;
+        if (this.scrollSetBy != renderer) {
+            if (isOrig && this.scrollA == r.session.getScrollTop())
+                return;
+            else if (!isOrig && this.scrollB
+                == r.session.getScrollTop())
+                return;
+        }
+        var rOther = isOrig ? r2 : r1;
+        var targetPos = r.session.getScrollTop();
+        this.$syncScroll = false;
+        if (isOrig) {
+            this.scrollA = r.session.getScrollTop();
+            this.scrollB = targetPos;
+        }
+        else {
+            this.scrollA = targetPos;
+            this.scrollB = r.session.getScrollTop();
+        }
+        this.scrollSetBy = renderer;
+        rOther.session.setScrollTop(targetPos);
+        this.$syncScroll = true;
+        this.scrollSetAt = now;
+    };
+    SplitDiffView.prototype.onMouseWheel = function (ev) {
+        if (ev.getAccelKey())
+            return;
+        if (ev.getShiftKey() && ev.wheelY && !ev.wheelX) {
+            ev.wheelX = ev.wheelY;
+            ev.wheelY = 0;
+        }
+        var editor = ev.editor;
+        var isScrolable = editor.renderer.isScrollableBy(ev.wheelX * ev.speed, ev.wheelY * ev.speed);
+        if (!isScrolable) {
+            var other = editor == this.editorA ? this.editorB : this.editorA;
+            if (other.renderer.isScrollableBy(ev.wheelX * ev.speed, ev.wheelY * ev.speed))
+                other.renderer.scrollBy(ev.wheelX * ev.speed, ev.wheelY * ev.speed);
+            return ev.stop();
+        }
+    };
+    SplitDiffView.prototype.$attachSessionsEventHandlers = function () {
+        this.$attachSessionEventHandlers(this.editorA, this.markerA);
+        this.$attachSessionEventHandlers(this.editorB, this.markerB);
+    };
+    SplitDiffView.prototype.$attachSessionEventHandlers = function (editor, marker) {
+        editor.session.on("changeScrollTop", this.onScroll);
+        editor.session.on("changeFold", this.onChangeFold);
+        editor.session.addDynamicMarker(marker);
+        editor.selection.on("changeCursor", this.onSelect);
+        editor.selection.on("changeSelection", this.onSelect);
+        editor.session.on("changeWrapLimit", this.onChangeWrapLimit);
+        editor.session.on("changeWrapMode", this.onChangeWrapLimit);
+    };
+    SplitDiffView.prototype.$detachSessionsEventHandlers = function () {
+        this.$detachSessionHandlers(this.editorA, this.markerA);
+        this.$detachSessionHandlers(this.editorB, this.markerB);
+    };
+    SplitDiffView.prototype.$detachSessionHandlers = function (editor, marker) {
+        editor.session.off("changeScrollTop", this.onScroll);
+        editor.session.off("changeFold", this.onChangeFold);
+        editor.session.removeMarker(marker.id);
+        editor.selection.off("changeCursor", this.onSelect);
+        editor.selection.off("changeSelection", this.onSelect);
+        editor.session.off("changeWrapLimit", this.onChangeWrapLimit);
+        editor.session.off("changeWrapMode", this.onChangeWrapLimit);
+    };
+    SplitDiffView.prototype.$attachEventHandlers = function () {
+        this.editorA.renderer.on("themeChange", this.onChangeTheme);
+        this.editorB.renderer.on("themeChange", this.onChangeTheme);
+        this.editorA.renderer.on("afterRender", this.onAfterRender);
+        this.editorB.renderer.on("afterRender", this.onAfterRender);
+        this.editorA.on("mousewheel", this.onMouseWheel);
+        this.editorB.on("mousewheel", this.onMouseWheel);
+        this.editorA.on("input", this.onInput);
+        this.editorB.on("input", this.onInput);
+    };
+    SplitDiffView.prototype.$detachEventHandlers = function () {
+        this.$detachSessionsEventHandlers();
+        this.clearSelectionMarkers();
+        this.editorA.renderer.off("themeChange", this.onChangeTheme);
+        this.editorB.renderer.off("themeChange", this.onChangeTheme);
+        this.editorA.renderer.off("afterRender", this.onAfterRender);
+        this.editorB.renderer.off("afterRender", this.onAfterRender);
+        this.$detachEditorEventHandlers(this.editorA);
+        this.$detachEditorEventHandlers(this.editorB);
+    };
+    SplitDiffView.prototype.$detachEditorEventHandlers = function (editor) {
+        editor.off("mousewheel", this.onMouseWheel);
+        editor.off("input", this.onInput);
+    };
+    return SplitDiffView;
+}(BaseDiffView));
+exports.SplitDiffView = SplitDiffView;
+
+});
+
+define("ace/ext/diff/providers/default",["require","exports","module","ace/range","ace/ext/diff/base_diff_view"], function(require, exports, module){// autogenerated from vscode-diff-bundle@1.1.1 with command build
+'use strict';
+var __extends = (this && this.__extends) || (function () {
+    var extendStatics = function (d, b) {
+        extendStatics = Object.setPrototypeOf ||
+            ({ __proto__: [] } instanceof Array && function (d, b) { d.__proto__ = b; }) ||
+            function (d, b) { for (var p in b) if (Object.prototype.hasOwnProperty.call(b, p)) d[p] = b[p]; };
+        return extendStatics(d, b);
+    };
+    return function (d, b) {
+        if (typeof b !== "function" && b !== null)
+            throw new TypeError("Class extends value " + String(b) + " is not a constructor or null");
+        extendStatics(d, b);
+        function __() { this.constructor = d; }
+        d.prototype = b === null ? Object.create(b) : (__.prototype = b.prototype, new __());
+    };
+})();
+var __generator = (this && this.__generator) || function (thisArg, body) {
+    var _ = { label: 0, sent: function() { if (t[0] & 1) throw t[1]; return t[1]; }, trys: [], ops: [] }, f, y, t, g = Object.create((typeof Iterator === "function" ? Iterator : Object).prototype);
+    return g.next = verb(0), g["throw"] = verb(1), g["return"] = verb(2), typeof Symbol === "function" && (g[Symbol.iterator] = function() { return this; }), g;
+    function verb(n) { return function (v) { return step([n, v]); }; }
+    function step(op) {
+        if (f) throw new TypeError("Generator is already executing.");
+        while (g && (g = 0, op[0] && (_ = 0)), _) try {
+            if (f = 1, y && (t = op[0] & 2 ? y["return"] : op[0] ? y["throw"] || ((t = y["return"]) && t.call(y), 0) : y.next) && !(t = t.call(y, op[1])).done) return t;
+            if (y = 0, t) op = [op[0] & 2, t.value];
+            switch (op[0]) {
+                case 0: case 1: t = op; break;
+                case 4: _.label++; return { value: op[1], done: false };
+                case 5: _.label++; y = op[1]; op = [0]; continue;
+                case 7: op = _.ops.pop(); _.trys.pop(); continue;
+                default:
+                    if (!(t = _.trys, t = t.length > 0 && t[t.length - 1]) && (op[0] === 6 || op[0] === 2)) { _ = 0; continue; }
+                    if (op[0] === 3 && (!t || (op[1] > t[0] && op[1] < t[3]))) { _.label = op[1]; break; }
+                    if (op[0] === 6 && _.label < t[1]) { _.label = t[1]; t = op; break; }
+                    if (t && _.label < t[2]) { _.label = t[2]; _.ops.push(op); break; }
+                    if (t[2]) _.ops.pop();
+                    _.trys.pop(); continue;
+            }
+            op = body.call(thisArg, _);
+        } catch (e) { op = [6, e]; y = 0; } finally { f = t = 0; }
+        if (op[0] & 5) throw op[1]; return { value: op[0] ? op[1] : void 0, done: true };
+    }
+};
+var __values = (this && this.__values) || function(o) {
+    var s = typeof Symbol === "function" && Symbol.iterator, m = s && o[s], i = 0;
+    if (m) return m.call(o);
+    if (o && typeof o.length === "number") return {
+        next: function () {
+            if (o && i >= o.length) o = void 0;
+            return { value: o && o[i++], done: !o };
+        }
+    };
+    throw new TypeError(s ? "Object is not iterable." : "Symbol.iterator is not defined.");
+};
+var _a;
+var _b, _c, _d, _e, _f, _g;
+var LinesDiff = /** @class */ (function () {
+    function LinesDiff(changes, moves, hitTimeout) {
+        this.changes = changes;
+        this.moves = moves;
+        this.hitTimeout = hitTimeout;
+    }
+    return LinesDiff;
+}());
+var MovedText = /** @class */ (function () {
+    function MovedText(lineRangeMapping, changes) {
+        this.lineRangeMapping = lineRangeMapping;
+        this.changes = changes;
+    }
+    return MovedText;
+}());
+function equals(one, other, itemEquals) {
+    if (itemEquals === void 0) { itemEquals = function (a, b) { return a === b; }; }
+    if (one === other) {
+        return true;
+    }
+    if (!one || !other) {
+        return false;
+    }
+    if (one.length !== other.length) {
+        return false;
+    }
+    for (var i = 0, len = one.length; i < len; i++) {
+        if (!itemEquals(one[i], other[i])) {
+            return false;
+        }
+    }
+    return true;
+}
+function groupAdjacentBy(items, shouldBeGrouped) {
+    var currentGroup, last, items_1, items_1_1, item, e_1_1;
+    var e_1, _a;
+    return __generator(this, function (_h) {
+        switch (_h.label) {
+            case 0:
+                _h.trys.push([0, 8, 9, 10]);
+                items_1 = __values(items), items_1_1 = items_1.next();
+                _h.label = 1;
+            case 1:
+                if (!!items_1_1.done) return [3 /*break*/, 7];
+                item = items_1_1.value;
+                if (!(last !== undefined && shouldBeGrouped(last, item))) return [3 /*break*/, 2];
+                currentGroup.push(item);
+                return [3 /*break*/, 5];
+            case 2:
+                if (!currentGroup) return [3 /*break*/, 4];
+                return [4 /*yield*/, currentGroup];
+            case 3:
+                _h.sent();
+                _h.label = 4;
+            case 4:
+                currentGroup = [item];
+                _h.label = 5;
+            case 5:
+                last = item;
+                _h.label = 6;
+            case 6:
+                items_1_1 = items_1.next();
+                return [3 /*break*/, 1];
+            case 7: return [3 /*break*/, 10];
+            case 8:
+                e_1_1 = _h.sent();
+                e_1 = { error: e_1_1 };
+                return [3 /*break*/, 10];
+            case 9:
+                try {
+                    if (items_1_1 && !items_1_1.done && (_a = items_1.return)) _a.call(items_1);
+                }
+                finally { if (e_1) throw e_1.error; }
+                return [7 /*endfinally*/];
+            case 10:
+                if (!currentGroup) return [3 /*break*/, 12];
+                return [4 /*yield*/, currentGroup];
+            case 11:
+                _h.sent();
+                _h.label = 12;
+            case 12: return [2 /*return*/];
+        }
+    });
+}
+function forEachAdjacent(arr, f) {
+    for (var i = 0; i <= arr.length; i++) {
+        f(i === 0 ? undefined : arr[i - 1], i === arr.length ? undefined : arr[i]);
+    }
+}
+function forEachWithNeighbors(arr, f) {
+    for (var i = 0; i < arr.length; i++) {
+        f(i === 0 ? undefined : arr[i - 1], arr[i], i + 1 === arr.length ? undefined : arr[i + 1]);
+    }
+}
+function pushMany(arr, items) {
+    var e_2, _a;
+    try {
+        for (var items_2 = __values(items), items_2_1 = items_2.next(); !items_2_1.done; items_2_1 = items_2.next()) {
+            var item = items_2_1.value;
+            arr.push(item);
+        }
+    }
+    catch (e_2_1) { e_2 = { error: e_2_1 }; }
+    finally {
+        try {
+            if (items_2_1 && !items_2_1.done && (_a = items_2.return)) _a.call(items_2);
+        }
+        finally { if (e_2) throw e_2.error; }
+    }
+}
+function compareBy(selector, comparator) {
+    return function (a, b) { return comparator(selector(a), selector(b)); };
+}
+var numberComparator = function (a, b) { return a - b; };
+function reverseOrder(comparator) {
+    return function (a, b) { return -comparator(a, b); };
+}
+var BugIndicatingError = /** @class */ (function (_super) {
+    __extends(BugIndicatingError, _super);
+    function BugIndicatingError(message) {
+        var _this = _super.call(this, message || "An unexpected bug occurred.") || this;
+        Object.setPrototypeOf(_this, BugIndicatingError.prototype);
+        return _this;
+    }
+    return BugIndicatingError;
+}(Error));
+function assert(condition, messageOrError) {
+    if (messageOrError === void 0) { messageOrError = "unexpected state"; }
+    if (!condition) {
+        var errorToThrow = typeof messageOrError === "string" ? new BugIndicatingError("Assertion Failed: ".concat(messageOrError)) : messageOrError;
+        throw errorToThrow;
+    }
+}
+function assertFn(condition) {
+    condition();
+}
+function checkAdjacentItems(items, predicate) {
+    var i = 0;
+    while (i < items.length - 1) {
+        var a = items[i];
+        var b = items[i + 1];
+        if (!predicate(a, b)) {
+            return false;
+        }
+        i++;
+    }
+    return true;
+}
+var OffsetRange = /** @class */ (function () {
+    function OffsetRange(start, endExclusive) {
+        this.start = start;
+        this.endExclusive = endExclusive;
+        if (start > endExclusive) {
+            throw new BugIndicatingError("Invalid range: ".concat(this.toString()));
+        }
+    }
+    OffsetRange.ofLength = function (length) {
+        return new OffsetRange(0, length);
+    };
+    Object.defineProperty(OffsetRange.prototype, "isEmpty", {
+        get: function () {
+            return this.start === this.endExclusive;
+        },
+        enumerable: false,
+        configurable: true
+    });
+    OffsetRange.prototype.delta = function (offset) {
+        return new OffsetRange(this.start + offset, this.endExclusive + offset);
+    };
+    OffsetRange.prototype.deltaStart = function (offset) {
+        return new OffsetRange(this.start + offset, this.endExclusive);
+    };
+    OffsetRange.prototype.deltaEnd = function (offset) {
+        return new OffsetRange(this.start, this.endExclusive + offset);
+    };
+    Object.defineProperty(OffsetRange.prototype, "length", {
+        get: function () {
+            return this.endExclusive - this.start;
+        },
+        enumerable: false,
+        configurable: true
+    });
+    OffsetRange.prototype.toString = function () {
+        return "[".concat(this.start, ", ").concat(this.endExclusive, ")");
+    };
+    OffsetRange.prototype.join = function (other) {
+        return new OffsetRange(Math.min(this.start, other.start), Math.max(this.endExclusive, other.endExclusive));
+    };
+    OffsetRange.prototype.intersect = function (other) {
+        var start = Math.max(this.start, other.start);
+        var end = Math.min(this.endExclusive, other.endExclusive);
+        if (start <= end) {
+            return new OffsetRange(start, end);
+        }
+        return undefined;
+    };
+    OffsetRange.prototype.intersects = function (other) {
+        var start = Math.max(this.start, other.start);
+        var end = Math.min(this.endExclusive, other.endExclusive);
+        return start < end;
+    };
+    OffsetRange.prototype.slice = function (arr) {
+        return arr.slice(this.start, this.endExclusive);
+    };
+    OffsetRange.prototype.forEach = function (f) {
+        for (var i = this.start; i < this.endExclusive; i++) {
+            f(i);
+        }
+    };
+    return OffsetRange;
+}());
+function findLastMonotonous(array, predicate) {
+    var idx = findLastIdxMonotonous(array, predicate);
+    return idx === -1 ? undefined : array[idx];
+}
+function findLastIdxMonotonous(array, predicate, startIdx, endIdxEx) {
+    if (startIdx === void 0) { startIdx = 0; }
+    if (endIdxEx === void 0) { endIdxEx = array.length; }
+    var i = startIdx;
+    var j = endIdxEx;
+    while (i < j) {
+        var k = Math.floor((i + j) / 2);
+        if (predicate(array[k])) {
+            i = k + 1;
+        }
+        else {
+            j = k;
+        }
+    }
+    return i - 1;
+}
+function findFirstMonotonous(array, predicate) {
+    var idx = findFirstIdxMonotonousOrArrLen(array, predicate);
+    return idx === array.length ? undefined : array[idx];
+}
+function findFirstIdxMonotonousOrArrLen(array, predicate, startIdx, endIdxEx) {
+    if (startIdx === void 0) { startIdx = 0; }
+    if (endIdxEx === void 0) { endIdxEx = array.length; }
+    var i = startIdx;
+    var j = endIdxEx;
+    while (i < j) {
+        var k = Math.floor((i + j) / 2);
+        if (predicate(array[k])) {
+            j = k;
+        }
+        else {
+            i = k + 1;
+        }
+    }
+    return i;
+}
+var MonotonousArray = /** @class */ (function () {
+    function MonotonousArray(_array) {
+        this._array = _array;
+        this._findLastMonotonousLastIdx = 0;
+    }
+    MonotonousArray.prototype.findLastMonotonous = function (predicate) {
+        var e_3, _a;
+        if (_b.assertInvariants) {
+            if (this._prevFindLastPredicate) {
+                try {
+                    for (var _h = __values(this._array), _j = _h.next(); !_j.done; _j = _h.next()) {
+                        var item = _j.value;
+                        if (this._prevFindLastPredicate(item) && !predicate(item)) {
+                            throw new Error("MonotonousArray: current predicate must be weaker than (or equal to) the previous predicate.");
+                        }
+                    }
+                }
+                catch (e_3_1) { e_3 = { error: e_3_1 }; }
+                finally {
+                    try {
+                        if (_j && !_j.done && (_a = _h.return)) _a.call(_h);
+                    }
+                    finally { if (e_3) throw e_3.error; }
+                }
+            }
+            this._prevFindLastPredicate = predicate;
+        }
+        var idx = findLastIdxMonotonous(this._array, predicate, this._findLastMonotonousLastIdx);
+        this._findLastMonotonousLastIdx = idx + 1;
+        return idx === -1 ? undefined : this._array[idx];
+    };
+    return MonotonousArray;
+}());
+_b = MonotonousArray;
+(function () {
+    _b.assertInvariants = false;
+})();
+var LineRange = /** @class */ (function () {
+    function LineRange(startLineNumber, endLineNumberExclusive) {
+        if (startLineNumber > endLineNumberExclusive) {
+            throw new BugIndicatingError("startLineNumber ".concat(startLineNumber, " cannot be after endLineNumberExclusive ").concat(endLineNumberExclusive));
+        }
+        this.startLineNumber = startLineNumber;
+        this.endLineNumberExclusive = endLineNumberExclusive;
+    }
+    LineRange.join = function (lineRanges) {
+        if (lineRanges.length === 0) {
+            throw new BugIndicatingError("lineRanges cannot be empty");
+        }
+        var startLineNumber = lineRanges[0].startLineNumber;
+        var endLineNumberExclusive = lineRanges[0].endLineNumberExclusive;
+        for (var i = 1; i < lineRanges.length; i++) {
+            startLineNumber = Math.min(startLineNumber, lineRanges[i].startLineNumber);
+            endLineNumberExclusive = Math.max(endLineNumberExclusive, lineRanges[i].endLineNumberExclusive);
+        }
+        return new _c(startLineNumber, endLineNumberExclusive);
+    };
+    Object.defineProperty(LineRange.prototype, "isEmpty", {
+        get: function () {
+            return this.startLineNumber === this.endLineNumberExclusive;
+        },
+        enumerable: false,
+        configurable: true
+    });
+    LineRange.prototype.delta = function (offset) {
+        return new _c(this.startLineNumber + offset, this.endLineNumberExclusive + offset);
+    };
+    Object.defineProperty(LineRange.prototype, "length", {
+        get: function () {
+            return this.endLineNumberExclusive - this.startLineNumber;
+        },
+        enumerable: false,
+        configurable: true
+    });
+    LineRange.prototype.join = function (other) {
+        return new _c(Math.min(this.startLineNumber, other.startLineNumber), Math.max(this.endLineNumberExclusive, other.endLineNumberExclusive));
+    };
+    LineRange.prototype.intersect = function (other) {
+        var startLineNumber = Math.max(this.startLineNumber, other.startLineNumber);
+        var endLineNumberExclusive = Math.min(this.endLineNumberExclusive, other.endLineNumberExclusive);
+        if (startLineNumber <= endLineNumberExclusive) {
+            return new _c(startLineNumber, endLineNumberExclusive);
+        }
+        return undefined;
+    };
+    LineRange.prototype.intersectsOrTouches = function (other) {
+        return this.startLineNumber <= other.endLineNumberExclusive && other.startLineNumber <= this.endLineNumberExclusive;
+    };
+    LineRange.prototype.toOffsetRange = function () {
+        return new OffsetRange(this.startLineNumber - 1, this.endLineNumberExclusive - 1);
+    };
+    return LineRange;
+}());
+_c = LineRange;
+(function () {
+    _c.compareByStart = compareBy(function (l) { return l.startLineNumber; }, numberComparator);
+})();
+var LineRangeSet = /** @class */ (function () {
+    function LineRangeSet(_normalizedRanges) {
+        if (_normalizedRanges === void 0) { _normalizedRanges = []; }
+        this._normalizedRanges = _normalizedRanges;
+    }
+    Object.defineProperty(LineRangeSet.prototype, "ranges", {
+        get: function () {
+            return this._normalizedRanges;
+        },
+        enumerable: false,
+        configurable: true
+    });
+    LineRangeSet.prototype.addRange = function (range) {
+        if (range.length === 0) {
+            return;
+        }
+        var joinRangeStartIdx = findFirstIdxMonotonousOrArrLen(this._normalizedRanges, function (r) { return r.endLineNumberExclusive >= range.startLineNumber; });
+        var joinRangeEndIdxExclusive = findLastIdxMonotonous(this._normalizedRanges, function (r) { return r.startLineNumber <= range.endLineNumberExclusive; }) + 1;
+        if (joinRangeStartIdx === joinRangeEndIdxExclusive) {
+            this._normalizedRanges.splice(joinRangeStartIdx, 0, range);
+        }
+        else if (joinRangeStartIdx === joinRangeEndIdxExclusive - 1) {
+            var joinRange = this._normalizedRanges[joinRangeStartIdx];
+            this._normalizedRanges[joinRangeStartIdx] = joinRange.join(range);
+        }
+        else {
+            var joinRange = this._normalizedRanges[joinRangeStartIdx].join(this._normalizedRanges[joinRangeEndIdxExclusive - 1]).join(range);
+            this._normalizedRanges.splice(joinRangeStartIdx, joinRangeEndIdxExclusive - joinRangeStartIdx, joinRange);
+        }
+    };
+    LineRangeSet.prototype.contains = function (lineNumber) {
+        var rangeThatStartsBeforeEnd = findLastMonotonous(this._normalizedRanges, function (r) { return r.startLineNumber <= lineNumber; });
+        return !!rangeThatStartsBeforeEnd && rangeThatStartsBeforeEnd.endLineNumberExclusive > lineNumber;
+    };
+    LineRangeSet.prototype.subtractFrom = function (range) {
+        var joinRangeStartIdx = findFirstIdxMonotonousOrArrLen(this._normalizedRanges, function (r) { return r.endLineNumberExclusive >= range.startLineNumber; });
+        var joinRangeEndIdxExclusive = findLastIdxMonotonous(this._normalizedRanges, function (r) { return r.startLineNumber <= range.endLineNumberExclusive; }) + 1;
+        if (joinRangeStartIdx === joinRangeEndIdxExclusive) {
+            return new LineRangeSet([range]);
+        }
+        var result = [];
+        var startLineNumber = range.startLineNumber;
+        for (var i = joinRangeStartIdx; i < joinRangeEndIdxExclusive; i++) {
+            var r = this._normalizedRanges[i];
+            if (r.startLineNumber > startLineNumber) {
+                result.push(new LineRange(startLineNumber, r.startLineNumber));
+            }
+            startLineNumber = r.endLineNumberExclusive;
+        }
+        if (startLineNumber < range.endLineNumberExclusive) {
+            result.push(new LineRange(startLineNumber, range.endLineNumberExclusive));
+        }
+        return new LineRangeSet(result);
+    };
+    LineRangeSet.prototype.getIntersection = function (other) {
+        var result = [];
+        var i1 = 0;
+        var i2 = 0;
+        while (i1 < this._normalizedRanges.length && i2 < other._normalizedRanges.length) {
+            var r1 = this._normalizedRanges[i1];
+            var r2 = other._normalizedRanges[i2];
+            var i = r1.intersect(r2);
+            if (i && !i.isEmpty) {
+                result.push(i);
+            }
+            if (r1.endLineNumberExclusive < r2.endLineNumberExclusive) {
+                i1++;
+            }
+            else {
+                i2++;
+            }
+        }
+        return new LineRangeSet(result);
+    };
+    LineRangeSet.prototype.getWithDelta = function (value) {
+        return new LineRangeSet(this._normalizedRanges.map(function (r) { return r.delta(value); }));
+    };
+    return LineRangeSet;
+}());
+var Position = /** @class */ (function () {
+    function Position(lineNumber, column) {
+        this.lineNumber = lineNumber;
+        this.column = column;
+    }
+    Position.prototype.equals = function (other) {
+        return Position.equals(this, other);
+    };
+    Position.equals = function (a, b) {
+        if (!a && !b) {
+            return true;
+        }
+        return !!a && !!b && a.lineNumber === b.lineNumber && a.column === b.column;
+    };
+    Position.prototype.isBefore = function (other) {
+        return Position.isBefore(this, other);
+    };
+    Position.isBefore = function (a, b) {
+        if (a.lineNumber < b.lineNumber) {
+            return true;
+        }
+        if (b.lineNumber < a.lineNumber) {
+            return false;
+        }
+        return a.column < b.column;
+    };
+    Position.prototype.isBeforeOrEqual = function (other) {
+        return Position.isBeforeOrEqual(this, other);
+    };
+    Position.isBeforeOrEqual = function (a, b) {
+        if (a.lineNumber < b.lineNumber) {
+            return true;
+        }
+        if (b.lineNumber < a.lineNumber) {
+            return false;
+        }
+        return a.column <= b.column;
+    };
+    return Position;
+}());
+var Range = /** @class */ (function () {
+    function Range(startLineNumber, startColumn, endLineNumber, endColumn) {
+        if (startLineNumber > endLineNumber || startLineNumber === endLineNumber && startColumn > endColumn) {
+            this.startLineNumber = endLineNumber;
+            this.startColumn = endColumn;
+            this.endLineNumber = startLineNumber;
+            this.endColumn = startColumn;
+        }
+        else {
+            this.startLineNumber = startLineNumber;
+            this.startColumn = startColumn;
+            this.endLineNumber = endLineNumber;
+            this.endColumn = endColumn;
+        }
+    }
+    Range.prototype.isEmpty = function () {
+        return Range.isEmpty(this);
+    };
+    Range.isEmpty = function (range) {
+        return range.startLineNumber === range.endLineNumber && range.startColumn === range.endColumn;
+    };
+    Range.prototype.containsPosition = function (position) {
+        return Range.containsPosition(this, position);
+    };
+    Range.containsPosition = function (range, position) {
+        if (position.lineNumber < range.startLineNumber || position.lineNumber > range.endLineNumber) {
+            return false;
+        }
+        if (position.lineNumber === range.startLineNumber && position.column < range.startColumn) {
+            return false;
+        }
+        if (position.lineNumber === range.endLineNumber && position.column > range.endColumn) {
+            return false;
+        }
+        return true;
+    };
+    Range.prototype.containsRange = function (range) {
+        return Range.containsRange(this, range);
+    };
+    Range.containsRange = function (range, otherRange) {
+        if (otherRange.startLineNumber < range.startLineNumber || otherRange.endLineNumber < range.startLineNumber) {
+            return false;
+        }
+        if (otherRange.startLineNumber > range.endLineNumber || otherRange.endLineNumber > range.endLineNumber) {
+            return false;
+        }
+        if (otherRange.startLineNumber === range.startLineNumber && otherRange.startColumn < range.startColumn) {
+            return false;
+        }
+        if (otherRange.endLineNumber === range.endLineNumber && otherRange.endColumn > range.endColumn) {
+            return false;
+        }
+        return true;
+    };
+    Range.prototype.strictContainsRange = function (range) {
+        return Range.strictContainsRange(this, range);
+    };
+    Range.strictContainsRange = function (range, otherRange) {
+        if (otherRange.startLineNumber < range.startLineNumber || otherRange.endLineNumber < range.startLineNumber) {
+            return false;
+        }
+        if (otherRange.startLineNumber > range.endLineNumber || otherRange.endLineNumber > range.endLineNumber) {
+            return false;
+        }
+        if (otherRange.startLineNumber === range.startLineNumber && otherRange.startColumn <= range.startColumn) {
+            return false;
+        }
+        if (otherRange.endLineNumber === range.endLineNumber && otherRange.endColumn >= range.endColumn) {
+            return false;
+        }
+        return true;
+    };
+    Range.prototype.plusRange = function (range) {
+        return Range.plusRange(this, range);
+    };
+    Range.plusRange = function (a, b) {
+        var startLineNumber;
+        var startColumn;
+        var endLineNumber;
+        var endColumn;
+        if (b.startLineNumber < a.startLineNumber) {
+            startLineNumber = b.startLineNumber;
+            startColumn = b.startColumn;
+        }
+        else if (b.startLineNumber === a.startLineNumber) {
+            startLineNumber = b.startLineNumber;
+            startColumn = Math.min(b.startColumn, a.startColumn);
+        }
+        else {
+            startLineNumber = a.startLineNumber;
+            startColumn = a.startColumn;
+        }
+        if (b.endLineNumber > a.endLineNumber) {
+            endLineNumber = b.endLineNumber;
+            endColumn = b.endColumn;
+        }
+        else if (b.endLineNumber === a.endLineNumber) {
+            endLineNumber = b.endLineNumber;
+            endColumn = Math.max(b.endColumn, a.endColumn);
+        }
+        else {
+            endLineNumber = a.endLineNumber;
+            endColumn = a.endColumn;
+        }
+        return new Range(startLineNumber, startColumn, endLineNumber, endColumn);
+    };
+    Range.prototype.intersectRanges = function (range) {
+        return Range.intersectRanges(this, range);
+    };
+    Range.intersectRanges = function (a, b) {
+        var resultStartLineNumber = a.startLineNumber;
+        var resultStartColumn = a.startColumn;
+        var resultEndLineNumber = a.endLineNumber;
+        var resultEndColumn = a.endColumn;
+        var otherStartLineNumber = b.startLineNumber;
+        var otherStartColumn = b.startColumn;
+        var otherEndLineNumber = b.endLineNumber;
+        var otherEndColumn = b.endColumn;
+        if (resultStartLineNumber < otherStartLineNumber) {
+            resultStartLineNumber = otherStartLineNumber;
+            resultStartColumn = otherStartColumn;
+        }
+        else if (resultStartLineNumber === otherStartLineNumber) {
+            resultStartColumn = Math.max(resultStartColumn, otherStartColumn);
+        }
+        if (resultEndLineNumber > otherEndLineNumber) {
+            resultEndLineNumber = otherEndLineNumber;
+            resultEndColumn = otherEndColumn;
+        }
+        else if (resultEndLineNumber === otherEndLineNumber) {
+            resultEndColumn = Math.min(resultEndColumn, otherEndColumn);
+        }
+        if (resultStartLineNumber > resultEndLineNumber) {
+            return null;
+        }
+        if (resultStartLineNumber === resultEndLineNumber && resultStartColumn > resultEndColumn) {
+            return null;
+        }
+        return new Range(resultStartLineNumber, resultStartColumn, resultEndLineNumber, resultEndColumn);
+    };
+    Range.prototype.equalsRange = function (other) {
+        return Range.equalsRange(this, other);
+    };
+    Range.equalsRange = function (a, b) {
+        if (!a && !b) {
+            return true;
+        }
+        return !!a && !!b && a.startLineNumber === b.startLineNumber && a.startColumn === b.startColumn && a.endLineNumber === b.endLineNumber && a.endColumn === b.endColumn;
+    };
+    Range.prototype.getEndPosition = function () {
+        return Range.getEndPosition(this);
+    };
+    Range.getEndPosition = function (range) {
+        return new Position(range.endLineNumber, range.endColumn);
+    };
+    Range.prototype.getStartPosition = function () {
+        return Range.getStartPosition(this);
+    };
+    Range.getStartPosition = function (range) {
+        return new Position(range.startLineNumber, range.startColumn);
+    };
+    Range.prototype.collapseToStart = function () {
+        return Range.collapseToStart(this);
+    };
+    Range.collapseToStart = function (range) {
+        return new Range(range.startLineNumber, range.startColumn, range.startLineNumber, range.startColumn);
+    };
+    Range.prototype.collapseToEnd = function () {
+        return Range.collapseToEnd(this);
+    };
+    Range.collapseToEnd = function (range) {
+        return new Range(range.endLineNumber, range.endColumn, range.endLineNumber, range.endColumn);
+    };
+    Range.fromPositions = function (start, end) {
+        if (end === void 0) { end = start; }
+        return new Range(start.lineNumber, start.column, end.lineNumber, end.column);
+    };
+    return Range;
+}());
+var LineRangeMapping = /** @class */ (function () {
+    function LineRangeMapping(originalRange, modifiedRange) {
+        this.original = originalRange;
+        this.modified = modifiedRange;
+    }
+    LineRangeMapping.prototype.join = function (other) {
+        return new LineRangeMapping(this.original.join(other.original), this.modified.join(other.modified));
+    };
+    LineRangeMapping.prototype.toRangeMapping2 = function (original, modified) {
+        if (isValidLineNumber(this.original.endLineNumberExclusive, original) && isValidLineNumber(this.modified.endLineNumberExclusive, modified)) {
+            return new RangeMapping(new Range(this.original.startLineNumber, 1, this.original.endLineNumberExclusive, 1), new Range(this.modified.startLineNumber, 1, this.modified.endLineNumberExclusive, 1));
+        }
+        if (!this.original.isEmpty && !this.modified.isEmpty) {
+            return new RangeMapping(Range.fromPositions(new Position(this.original.startLineNumber, 1), normalizePosition(new Position(this.original.endLineNumberExclusive - 1, Number.MAX_SAFE_INTEGER), original)), Range.fromPositions(new Position(this.modified.startLineNumber, 1), normalizePosition(new Position(this.modified.endLineNumberExclusive - 1, Number.MAX_SAFE_INTEGER), modified)));
+        }
+        if (this.original.startLineNumber > 1 && this.modified.startLineNumber > 1) {
+            return new RangeMapping(Range.fromPositions(normalizePosition(new Position(this.original.startLineNumber - 1, Number.MAX_SAFE_INTEGER), original), normalizePosition(new Position(this.original.endLineNumberExclusive - 1, Number.MAX_SAFE_INTEGER), original)), Range.fromPositions(normalizePosition(new Position(this.modified.startLineNumber - 1, Number.MAX_SAFE_INTEGER), modified), normalizePosition(new Position(this.modified.endLineNumberExclusive - 1, Number.MAX_SAFE_INTEGER), modified)));
+        }
+        throw new BugIndicatingError();
+    };
+    return LineRangeMapping;
+}());
+function normalizePosition(position, content) {
+    if (position.lineNumber < 1) {
+        return new Position(1, 1);
+    }
+    if (position.lineNumber > content.length) {
+        return new Position(content.length, content[content.length - 1].length + 1);
+    }
+    var line = content[position.lineNumber - 1];
+    if (position.column > line.length + 1) {
+        return new Position(position.lineNumber, line.length + 1);
+    }
+    return position;
+}
+function isValidLineNumber(lineNumber, lines) {
+    return lineNumber >= 1 && lineNumber <= lines.length;
+}
+var DetailedLineRangeMapping = /** @class */ (function (_super) {
+    __extends(DetailedLineRangeMapping, _super);
+    function DetailedLineRangeMapping(originalRange, modifiedRange, innerChanges) {
+        var _this = _super.call(this, originalRange, modifiedRange) || this;
+        _this.innerChanges = innerChanges;
+        return _this;
+    }
+    return DetailedLineRangeMapping;
+}(LineRangeMapping));
+var RangeMapping = /** @class */ (function () {
+    function RangeMapping(originalRange, modifiedRange) {
+        this.originalRange = originalRange;
+        this.modifiedRange = modifiedRange;
+    }
+    RangeMapping.join = function (rangeMappings) {
+        if (rangeMappings.length === 0) {
+            throw new BugIndicatingError("Cannot join an empty list of range mappings");
+        }
+        var result = rangeMappings[0];
+        for (var i = 1; i < rangeMappings.length; i++) {
+            result = result.join(rangeMappings[i]);
+        }
+        return result;
+    };
+    RangeMapping.assertSorted = function (rangeMappings) {
+        for (var i = 1; i < rangeMappings.length; i++) {
+            var previous = rangeMappings[i - 1];
+            var current = rangeMappings[i];
+            if (!(previous.originalRange.getEndPosition().isBeforeOrEqual(current.originalRange.getStartPosition()) && previous.modifiedRange.getEndPosition().isBeforeOrEqual(current.modifiedRange.getStartPosition()))) {
+                throw new BugIndicatingError("Range mappings must be sorted");
+            }
+        }
+    };
+    RangeMapping.prototype.join = function (other) {
+        return new RangeMapping(this.originalRange.plusRange(other.originalRange), this.modifiedRange.plusRange(other.modifiedRange));
+    };
+    return RangeMapping;
+}());
+function lineRangeMappingFromRangeMappings(alignments, originalLines, modifiedLines, dontAssertStartLine) {
+    var e_4, _a;
+    if (dontAssertStartLine === void 0) { dontAssertStartLine = false; }
+    var changes = [];
+    try {
+        for (var _h = __values(groupAdjacentBy(alignments.map(function (a) { return getLineRangeMapping(a, originalLines, modifiedLines); }), function (a1, a2) { return a1.original.intersectsOrTouches(a2.original) || a1.modified.intersectsOrTouches(a2.modified); })), _j = _h.next(); !_j.done; _j = _h.next()) {
+            var g = _j.value;
+            var first = g[0];
+            var last = g[g.length - 1];
+            changes.push(new DetailedLineRangeMapping(first.original.join(last.original), first.modified.join(last.modified), g.map(function (a) { return a.innerChanges[0]; })));
+        }
+    }
+    catch (e_4_1) { e_4 = { error: e_4_1 }; }
+    finally {
+        try {
+            if (_j && !_j.done && (_a = _h.return)) _a.call(_h);
+        }
+        finally { if (e_4) throw e_4.error; }
+    }
+    assertFn(function () {
+        if (!dontAssertStartLine && changes.length > 0) {
+            if (changes[0].modified.startLineNumber !== changes[0].original.startLineNumber) {
+                return false;
+            }
+            if (modifiedLines.length.lineCount - changes[changes.length - 1].modified.endLineNumberExclusive !== originalLines.length.lineCount - changes[changes.length - 1].original.endLineNumberExclusive) {
+                return false;
+            }
+        }
+        return checkAdjacentItems(changes, function (m1, m2) { return m2.original.startLineNumber - m1.original.endLineNumberExclusive === m2.modified.startLineNumber - m1.modified.endLineNumberExclusive && // There has to be an unchanged line in between (otherwise both diffs should have been joined)
+            m1.original.endLineNumberExclusive < m2.original.startLineNumber && m1.modified.endLineNumberExclusive < m2.modified.startLineNumber; });
+    });
+    return changes;
+}
+function getLineRangeMapping(rangeMapping, originalLines, modifiedLines) {
+    var lineStartDelta = 0;
+    var lineEndDelta = 0;
+    if (rangeMapping.modifiedRange.endColumn === 1 && rangeMapping.originalRange.endColumn === 1 && rangeMapping.originalRange.startLineNumber + lineStartDelta <= rangeMapping.originalRange.endLineNumber && rangeMapping.modifiedRange.startLineNumber + lineStartDelta <= rangeMapping.modifiedRange.endLineNumber) {
+        lineEndDelta = -1;
+    }
+    if (rangeMapping.modifiedRange.startColumn - 1 >= modifiedLines.getLineLength(rangeMapping.modifiedRange.startLineNumber) && rangeMapping.originalRange.startColumn - 1 >= originalLines.getLineLength(rangeMapping.originalRange.startLineNumber) && rangeMapping.originalRange.startLineNumber <= rangeMapping.originalRange.endLineNumber + lineEndDelta && rangeMapping.modifiedRange.startLineNumber <= rangeMapping.modifiedRange.endLineNumber + lineEndDelta) {
+        lineStartDelta = 1;
+    }
+    var originalLineRange = new LineRange(rangeMapping.originalRange.startLineNumber + lineStartDelta, rangeMapping.originalRange.endLineNumber + 1 + lineEndDelta);
+    var modifiedLineRange = new LineRange(rangeMapping.modifiedRange.startLineNumber + lineStartDelta, rangeMapping.modifiedRange.endLineNumber + 1 + lineEndDelta);
+    return new DetailedLineRangeMapping(originalLineRange, modifiedLineRange, [rangeMapping]);
+}
+var DiffAlgorithmResult = /** @class */ (function () {
+    function DiffAlgorithmResult(diffs, hitTimeout) {
+        this.diffs = diffs;
+        this.hitTimeout = hitTimeout;
+    }
+    DiffAlgorithmResult.trivial = function (seq1, seq2) {
+        return new DiffAlgorithmResult([new SequenceDiff(OffsetRange.ofLength(seq1.length), OffsetRange.ofLength(seq2.length))], false);
+    };
+    DiffAlgorithmResult.trivialTimedOut = function (seq1, seq2) {
+        return new DiffAlgorithmResult([new SequenceDiff(OffsetRange.ofLength(seq1.length), OffsetRange.ofLength(seq2.length))], true);
+    };
+    return DiffAlgorithmResult;
+}());
+var SequenceDiff = /** @class */ (function () {
+    function SequenceDiff(seq1Range, seq2Range) {
+        this.seq1Range = seq1Range;
+        this.seq2Range = seq2Range;
+    }
+    SequenceDiff.invert = function (sequenceDiffs, doc1Length) {
+        var result = [];
+        forEachAdjacent(sequenceDiffs, function (a, b) {
+            result.push(SequenceDiff.fromOffsetPairs(a ? a.getEndExclusives() : OffsetPair.zero, b ? b.getStarts() : new OffsetPair(doc1Length, (a ? a.seq2Range.endExclusive - a.seq1Range.endExclusive : 0) + doc1Length)));
+        });
+        return result;
+    };
+    SequenceDiff.fromOffsetPairs = function (start, endExclusive) {
+        return new SequenceDiff(new OffsetRange(start.offset1, endExclusive.offset1), new OffsetRange(start.offset2, endExclusive.offset2));
+    };
+    SequenceDiff.assertSorted = function (sequenceDiffs) {
+        var e_5, _a;
+        var last = undefined;
+        try {
+            for (var sequenceDiffs_1 = __values(sequenceDiffs), sequenceDiffs_1_1 = sequenceDiffs_1.next(); !sequenceDiffs_1_1.done; sequenceDiffs_1_1 = sequenceDiffs_1.next()) {
+                var cur = sequenceDiffs_1_1.value;
+                if (last) {
+                    if (!(last.seq1Range.endExclusive <= cur.seq1Range.start && last.seq2Range.endExclusive <= cur.seq2Range.start)) {
+                        throw new BugIndicatingError("Sequence diffs must be sorted");
+                    }
+                }
+                last = cur;
+            }
+        }
+        catch (e_5_1) { e_5 = { error: e_5_1 }; }
+        finally {
+            try {
+                if (sequenceDiffs_1_1 && !sequenceDiffs_1_1.done && (_a = sequenceDiffs_1.return)) _a.call(sequenceDiffs_1);
+            }
+            finally { if (e_5) throw e_5.error; }
+        }
+    };
+    SequenceDiff.prototype.swap = function () {
+        return new SequenceDiff(this.seq2Range, this.seq1Range);
+    };
+    SequenceDiff.prototype.join = function (other) {
+        return new SequenceDiff(this.seq1Range.join(other.seq1Range), this.seq2Range.join(other.seq2Range));
+    };
+    SequenceDiff.prototype.delta = function (offset) {
+        if (offset === 0) {
+            return this;
+        }
+        return new SequenceDiff(this.seq1Range.delta(offset), this.seq2Range.delta(offset));
+    };
+    SequenceDiff.prototype.deltaStart = function (offset) {
+        if (offset === 0) {
+            return this;
+        }
+        return new SequenceDiff(this.seq1Range.deltaStart(offset), this.seq2Range.deltaStart(offset));
+    };
+    SequenceDiff.prototype.deltaEnd = function (offset) {
+        if (offset === 0) {
+            return this;
+        }
+        return new SequenceDiff(this.seq1Range.deltaEnd(offset), this.seq2Range.deltaEnd(offset));
+    };
+    SequenceDiff.prototype.intersect = function (other) {
+        var i1 = this.seq1Range.intersect(other.seq1Range);
+        var i2 = this.seq2Range.intersect(other.seq2Range);
+        if (!i1 || !i2) {
+            return undefined;
+        }
+        return new SequenceDiff(i1, i2);
+    };
+    SequenceDiff.prototype.getStarts = function () {
+        return new OffsetPair(this.seq1Range.start, this.seq2Range.start);
+    };
+    SequenceDiff.prototype.getEndExclusives = function () {
+        return new OffsetPair(this.seq1Range.endExclusive, this.seq2Range.endExclusive);
+    };
+    return SequenceDiff;
+}());
+var OffsetPair = /** @class */ (function () {
+    function OffsetPair(offset1, offset2) {
+        this.offset1 = offset1;
+        this.offset2 = offset2;
+    }
+    OffsetPair.prototype.delta = function (offset) {
+        if (offset === 0) {
+            return this;
+        }
+        return new _d(this.offset1 + offset, this.offset2 + offset);
+    };
+    OffsetPair.prototype.equals = function (other) {
+        return this.offset1 === other.offset1 && this.offset2 === other.offset2;
+    };
+    return OffsetPair;
+}());
+_d = OffsetPair;
+(function () {
+    _d.zero = new _d(0, 0);
+})();
+(function () {
+    _d.max = new _d(Number.MAX_SAFE_INTEGER, Number.MAX_SAFE_INTEGER);
+})();
+var InfiniteTimeout = /** @class */ (function () {
+    function InfiniteTimeout() {
+    }
+    InfiniteTimeout.prototype.isValid = function () {
+        return true;
+    };
+    return InfiniteTimeout;
+}());
+_e = InfiniteTimeout;
+(function () {
+    _e.instance = new _e();
+})();
+var DateTimeout = /** @class */ (function () {
+    function DateTimeout(timeout) {
+        this.timeout = timeout;
+        this.startTime = Date.now();
+        this.valid = true;
+        if (timeout <= 0) {
+            throw new BugIndicatingError("timeout must be positive");
+        }
+    }
+    DateTimeout.prototype.isValid = function () {
+        var valid = Date.now() - this.startTime < this.timeout;
+        if (!valid && this.valid) {
+            this.valid = false;
+        }
+        return this.valid;
+    };
+    return DateTimeout;
+}());
+var Array2D = /** @class */ (function () {
+    function Array2D(width, height) {
+        this.width = width;
+        this.height = height;
+        this.array = [];
+        this.array = new Array(width * height);
+    }
+    Array2D.prototype.get = function (x, y) {
+        return this.array[x + y * this.width];
+    };
+    Array2D.prototype.set = function (x, y, value) {
+        this.array[x + y * this.width] = value;
+    };
+    return Array2D;
+}());
+function isSpace(charCode) {
+    return charCode === 32 || charCode === 9;
+}
+var LineRangeFragment = /** @class */ (function () {
+    function LineRangeFragment(range, lines, source) {
+        this.range = range;
+        this.lines = lines;
+        this.source = source;
+        this.histogram = [];
+        var counter = 0;
+        for (var i = range.startLineNumber - 1; i < range.endLineNumberExclusive - 1; i++) {
+            var line = lines[i];
+            for (var j = 0; j < line.length; j++) {
+                counter++;
+                var chr = line[j];
+                var key2 = _f.getKey(chr);
+                this.histogram[key2] = (this.histogram[key2] || 0) + 1;
+            }
+            counter++;
+            var key = _f.getKey("\n");
+            this.histogram[key] = (this.histogram[key] || 0) + 1;
+        }
+        this.totalCount = counter;
+    }
+    LineRangeFragment.getKey = function (chr) {
+        var key = this.chrKeys.get(chr);
+        if (key === undefined) {
+            key = this.chrKeys.size;
+            this.chrKeys.set(chr, key);
+        }
+        return key;
+    };
+    LineRangeFragment.prototype.computeSimilarity = function (other) {
+        var _a, _h;
+        var sumDifferences = 0;
+        var maxLength = Math.max(this.histogram.length, other.histogram.length);
+        for (var i = 0; i < maxLength; i++) {
+            sumDifferences += Math.abs(((_a = this.histogram[i]) !== null && _a !== void 0 ? _a : 0) - ((_h = other.histogram[i]) !== null && _h !== void 0 ? _h : 0));
+        }
+        return 1 - sumDifferences / (this.totalCount + other.totalCount);
+    };
+    return LineRangeFragment;
+}());
+_f = LineRangeFragment;
+(function () {
+    _f.chrKeys = /* @__PURE__ */ new Map();
+})();
+var DynamicProgrammingDiffing = /** @class */ (function () {
+    function DynamicProgrammingDiffing() {
+    }
+    DynamicProgrammingDiffing.prototype.compute = function (sequence1, sequence2, timeout, equalityScore) {
+        if (timeout === void 0) { timeout = InfiniteTimeout.instance; }
+        if (sequence1.length === 0 || sequence2.length === 0) {
+            return DiffAlgorithmResult.trivial(sequence1, sequence2);
+        }
+        var lcsLengths = new Array2D(sequence1.length, sequence2.length);
+        var directions = new Array2D(sequence1.length, sequence2.length);
+        var lengths = new Array2D(sequence1.length, sequence2.length);
+        for (var s12 = 0; s12 < sequence1.length; s12++) {
+            for (var s22 = 0; s22 < sequence2.length; s22++) {
+                if (!timeout.isValid()) {
+                    return DiffAlgorithmResult.trivialTimedOut(sequence1, sequence2);
+                }
+                var horizontalLen = s12 === 0 ? 0 : lcsLengths.get(s12 - 1, s22);
+                var verticalLen = s22 === 0 ? 0 : lcsLengths.get(s12, s22 - 1);
+                var extendedSeqScore = void 0;
+                if (sequence1.getElement(s12) === sequence2.getElement(s22)) {
+                    if (s12 === 0 || s22 === 0) {
+                        extendedSeqScore = 0;
+                    }
+                    else {
+                        extendedSeqScore = lcsLengths.get(s12 - 1, s22 - 1);
+                    }
+                    if (s12 > 0 && s22 > 0 && directions.get(s12 - 1, s22 - 1) === 3) {
+                        extendedSeqScore += lengths.get(s12 - 1, s22 - 1);
+                    }
+                    extendedSeqScore += equalityScore ? equalityScore(s12, s22) : 1;
+                }
+                else {
+                    extendedSeqScore = -1;
+                }
+                var newValue = Math.max(horizontalLen, verticalLen, extendedSeqScore);
+                if (newValue === extendedSeqScore) {
+                    var prevLen = s12 > 0 && s22 > 0 ? lengths.get(s12 - 1, s22 - 1) : 0;
+                    lengths.set(s12, s22, prevLen + 1);
+                    directions.set(s12, s22, 3);
+                }
+                else if (newValue === horizontalLen) {
+                    lengths.set(s12, s22, 0);
+                    directions.set(s12, s22, 1);
+                }
+                else if (newValue === verticalLen) {
+                    lengths.set(s12, s22, 0);
+                    directions.set(s12, s22, 2);
+                }
+                lcsLengths.set(s12, s22, newValue);
+            }
+        }
+        var result = [];
+        var lastAligningPosS1 = sequence1.length;
+        var lastAligningPosS2 = sequence2.length;
+        function reportDecreasingAligningPositions(s12, s22) {
+            if (s12 + 1 !== lastAligningPosS1 || s22 + 1 !== lastAligningPosS2) {
+                result.push(new SequenceDiff(new OffsetRange(s12 + 1, lastAligningPosS1), new OffsetRange(s22 + 1, lastAligningPosS2)));
+            }
+            lastAligningPosS1 = s12;
+            lastAligningPosS2 = s22;
+        }
+        var s1 = sequence1.length - 1;
+        var s2 = sequence2.length - 1;
+        while (s1 >= 0 && s2 >= 0) {
+            if (directions.get(s1, s2) === 3) {
+                reportDecreasingAligningPositions(s1, s2);
+                s1--;
+                s2--;
+            }
+            else {
+                if (directions.get(s1, s2) === 1) {
+                    s1--;
+                }
+                else {
+                    s2--;
+                }
+            }
+        }
+        reportDecreasingAligningPositions(-1, -1);
+        result.reverse();
+        return new DiffAlgorithmResult(result, false);
+    };
+    return DynamicProgrammingDiffing;
+}());
+var MyersDiffAlgorithm = /** @class */ (function () {
+    function MyersDiffAlgorithm() {
+    }
+    MyersDiffAlgorithm.prototype.compute = function (seq1, seq2, timeout) {
+        if (timeout === void 0) { timeout = InfiniteTimeout.instance; }
+        if (seq1.length === 0 || seq2.length === 0) {
+            return DiffAlgorithmResult.trivial(seq1, seq2);
+        }
+        var seqX = seq1;
+        var seqY = seq2;
+        function getXAfterSnake(x, y) {
+            while (x < seqX.length && y < seqY.length && seqX.getElement(x) === seqY.getElement(y)) {
+                x++;
+                y++;
+            }
+            return x;
+        }
+        var d = 0;
+        var V = new FastInt32Array();
+        V.set(0, getXAfterSnake(0, 0));
+        var paths = new FastArrayNegativeIndices();
+        paths.set(0, V.get(0) === 0 ? null : new SnakePath(null, 0, 0, V.get(0)));
+        var k = 0;
+        loop: while (true) {
+            d++;
+            if (!timeout.isValid()) {
+                return DiffAlgorithmResult.trivialTimedOut(seqX, seqY);
+            }
+            var lowerBound = -Math.min(d, seqY.length + d % 2);
+            var upperBound = Math.min(d, seqX.length + d % 2);
+            for (k = lowerBound; k <= upperBound; k += 2) {
+                var maxXofDLineTop = k === upperBound ? -1 : V.get(k + 1);
+                var maxXofDLineLeft = k === lowerBound ? -1 : V.get(k - 1) + 1;
+                var x = Math.min(Math.max(maxXofDLineTop, maxXofDLineLeft), seqX.length);
+                var y = x - k;
+                if (x > seqX.length || y > seqY.length) {
+                    continue;
+                }
+                var newMaxX = getXAfterSnake(x, y);
+                V.set(k, newMaxX);
+                var lastPath = x === maxXofDLineTop ? paths.get(k + 1) : paths.get(k - 1);
+                paths.set(k, newMaxX !== x ? new SnakePath(lastPath, x, y, newMaxX - x) : lastPath);
+                if (V.get(k) === seqX.length && V.get(k) - k === seqY.length) {
+                    break loop;
+                }
+            }
+        }
+        var path = paths.get(k);
+        var result = [];
+        var lastAligningPosS1 = seqX.length;
+        var lastAligningPosS2 = seqY.length;
+        while (true) {
+            var endX = path ? path.x + path.length : 0;
+            var endY = path ? path.y + path.length : 0;
+            if (endX !== lastAligningPosS1 || endY !== lastAligningPosS2) {
+                result.push(new SequenceDiff(new OffsetRange(endX, lastAligningPosS1), new OffsetRange(endY, lastAligningPosS2)));
+            }
+            if (!path) {
+                break;
+            }
+            lastAligningPosS1 = path.x;
+            lastAligningPosS2 = path.y;
+            path = path.prev;
+        }
+        result.reverse();
+        return new DiffAlgorithmResult(result, false);
+    };
+    return MyersDiffAlgorithm;
+}());
+var SnakePath = /** @class */ (function () {
+    function SnakePath(prev, x, y, length) {
+        this.prev = prev;
+        this.x = x;
+        this.y = y;
+        this.length = length;
+    }
+    return SnakePath;
+}());
+var FastInt32Array = /** @class */ (function () {
+    function FastInt32Array() {
+        this.positiveArr = new Int32Array(10);
+        this.negativeArr = new Int32Array(10);
+    }
+    FastInt32Array.prototype.get = function (idx) {
+        if (idx < 0) {
+            idx = -idx - 1;
+            return this.negativeArr[idx];
+        }
+        else {
+            return this.positiveArr[idx];
+        }
+    };
+    FastInt32Array.prototype.set = function (idx, value) {
+        if (idx < 0) {
+            idx = -idx - 1;
+            if (idx >= this.negativeArr.length) {
+                var arr = this.negativeArr;
+                this.negativeArr = new Int32Array(arr.length * 2);
+                this.negativeArr.set(arr);
+            }
+            this.negativeArr[idx] = value;
+        }
+        else {
+            if (idx >= this.positiveArr.length) {
+                var arr = this.positiveArr;
+                this.positiveArr = new Int32Array(arr.length * 2);
+                this.positiveArr.set(arr);
+            }
+            this.positiveArr[idx] = value;
+        }
+    };
+    return FastInt32Array;
+}());
+var FastArrayNegativeIndices = /** @class */ (function () {
+    function FastArrayNegativeIndices() {
+        this.positiveArr = [];
+        this.negativeArr = [];
+    }
+    FastArrayNegativeIndices.prototype.get = function (idx) {
+        if (idx < 0) {
+            idx = -idx - 1;
+            return this.negativeArr[idx];
+        }
+        else {
+            return this.positiveArr[idx];
+        }
+    };
+    FastArrayNegativeIndices.prototype.set = function (idx, value) {
+        if (idx < 0) {
+            idx = -idx - 1;
+            this.negativeArr[idx] = value;
+        }
+        else {
+            this.positiveArr[idx] = value;
+        }
+    };
+    return FastArrayNegativeIndices;
+}());
+var LineSequence = /** @class */ (function () {
+    function LineSequence(trimmedHash, lines) {
+        this.trimmedHash = trimmedHash;
+        this.lines = lines;
+    }
+    LineSequence.prototype.getElement = function (offset) {
+        return this.trimmedHash[offset];
+    };
+    Object.defineProperty(LineSequence.prototype, "length", {
+        get: function () {
+            return this.trimmedHash.length;
+        },
+        enumerable: false,
+        configurable: true
+    });
+    LineSequence.prototype.getBoundaryScore = function (length) {
+        var indentationBefore = length === 0 ? 0 : getIndentation(this.lines[length - 1]);
+        var indentationAfter = length === this.lines.length ? 0 : getIndentation(this.lines[length]);
+        return 1e3 - (indentationBefore + indentationAfter);
+    };
+    LineSequence.prototype.getText = function (range) {
+        return this.lines.slice(range.start, range.endExclusive).join("\n");
+    };
+    LineSequence.prototype.isStronglyEqual = function (offset1, offset2) {
+        return this.lines[offset1] === this.lines[offset2];
+    };
+    return LineSequence;
+}());
+function getIndentation(str) {
+    var i = 0;
+    while (i < str.length && (str.charCodeAt(i) === 32 || str.charCodeAt(i) === 9)) {
+        i++;
+    }
+    return i;
+}
+function optimizeSequenceDiffs(sequence1, sequence2, sequenceDiffs) {
+    var result = sequenceDiffs;
+    result = joinSequenceDiffsByShifting(sequence1, sequence2, result);
+    result = joinSequenceDiffsByShifting(sequence1, sequence2, result);
+    result = shiftSequenceDiffs(sequence1, sequence2, result);
+    return result;
+}
+function joinSequenceDiffsByShifting(sequence1, sequence2, sequenceDiffs) {
+    if (sequenceDiffs.length === 0) {
+        return sequenceDiffs;
+    }
+    var result = [];
+    result.push(sequenceDiffs[0]);
+    for (var i = 1; i < sequenceDiffs.length; i++) {
+        var prevResult = result[result.length - 1];
+        var cur = sequenceDiffs[i];
+        if (cur.seq1Range.isEmpty || cur.seq2Range.isEmpty) {
+            var length = cur.seq1Range.start - prevResult.seq1Range.endExclusive;
+            var d = void 0;
+            for (d = 1; d <= length; d++) {
+                if (sequence1.getElement(cur.seq1Range.start - d) !== sequence1.getElement(cur.seq1Range.endExclusive - d) || sequence2.getElement(cur.seq2Range.start - d) !== sequence2.getElement(cur.seq2Range.endExclusive - d)) {
+                    break;
+                }
+            }
+            d--;
+            if (d === length) {
+                result[result.length - 1] = new SequenceDiff(new OffsetRange(prevResult.seq1Range.start, cur.seq1Range.endExclusive - length), new OffsetRange(prevResult.seq2Range.start, cur.seq2Range.endExclusive - length));
+                continue;
+            }
+            cur = cur.delta(-d);
+        }
+        result.push(cur);
+    }
+    var result2 = [];
+    for (var i = 0; i < result.length - 1; i++) {
+        var nextResult = result[i + 1];
+        var cur = result[i];
+        if (cur.seq1Range.isEmpty || cur.seq2Range.isEmpty) {
+            var length = nextResult.seq1Range.start - cur.seq1Range.endExclusive;
+            var d = void 0;
+            for (d = 0; d < length; d++) {
+                if (!sequence1.isStronglyEqual(cur.seq1Range.start + d, cur.seq1Range.endExclusive + d) || !sequence2.isStronglyEqual(cur.seq2Range.start + d, cur.seq2Range.endExclusive + d)) {
+                    break;
+                }
+            }
+            if (d === length) {
+                result[i + 1] = new SequenceDiff(new OffsetRange(cur.seq1Range.start + length, nextResult.seq1Range.endExclusive), new OffsetRange(cur.seq2Range.start + length, nextResult.seq2Range.endExclusive));
+                continue;
+            }
+            if (d > 0) {
+                cur = cur.delta(d);
+            }
+        }
+        result2.push(cur);
+    }
+    if (result.length > 0) {
+        result2.push(result[result.length - 1]);
+    }
+    return result2;
+}
+function shiftSequenceDiffs(sequence1, sequence2, sequenceDiffs) {
+    if (!sequence1.getBoundaryScore || !sequence2.getBoundaryScore) {
+        return sequenceDiffs;
+    }
+    for (var i = 0; i < sequenceDiffs.length; i++) {
+        var prevDiff = i > 0 ? sequenceDiffs[i - 1] : undefined;
+        var diff = sequenceDiffs[i];
+        var nextDiff = i + 1 < sequenceDiffs.length ? sequenceDiffs[i + 1] : undefined;
+        var seq1ValidRange = new OffsetRange(prevDiff ? prevDiff.seq1Range.endExclusive + 1 : 0, nextDiff ? nextDiff.seq1Range.start - 1 : sequence1.length);
+        var seq2ValidRange = new OffsetRange(prevDiff ? prevDiff.seq2Range.endExclusive + 1 : 0, nextDiff ? nextDiff.seq2Range.start - 1 : sequence2.length);
+        if (diff.seq1Range.isEmpty) {
+            sequenceDiffs[i] = shiftDiffToBetterPosition(diff, sequence1, sequence2, seq1ValidRange, seq2ValidRange);
+        }
+        else if (diff.seq2Range.isEmpty) {
+            sequenceDiffs[i] = shiftDiffToBetterPosition(diff.swap(), sequence2, sequence1, seq2ValidRange, seq1ValidRange).swap();
+        }
+    }
+    return sequenceDiffs;
+}
+function shiftDiffToBetterPosition(diff, sequence1, sequence2, seq1ValidRange, seq2ValidRange) {
+    var maxShiftLimit = 100;
+    var deltaBefore = 1;
+    while (diff.seq1Range.start - deltaBefore >= seq1ValidRange.start && diff.seq2Range.start - deltaBefore >= seq2ValidRange.start && sequence2.isStronglyEqual(diff.seq2Range.start - deltaBefore, diff.seq2Range.endExclusive - deltaBefore) && deltaBefore < maxShiftLimit) {
+        deltaBefore++;
+    }
+    deltaBefore--;
+    var deltaAfter = 0;
+    while (diff.seq1Range.start + deltaAfter < seq1ValidRange.endExclusive && diff.seq2Range.endExclusive + deltaAfter < seq2ValidRange.endExclusive && sequence2.isStronglyEqual(diff.seq2Range.start + deltaAfter, diff.seq2Range.endExclusive + deltaAfter) && deltaAfter < maxShiftLimit) {
+        deltaAfter++;
+    }
+    if (deltaBefore === 0 && deltaAfter === 0) {
+        return diff;
+    }
+    var bestDelta = 0;
+    var bestScore = -1;
+    for (var delta = -deltaBefore; delta <= deltaAfter; delta++) {
+        var seq2OffsetStart = diff.seq2Range.start + delta;
+        var seq2OffsetEndExclusive = diff.seq2Range.endExclusive + delta;
+        var seq1Offset = diff.seq1Range.start + delta;
+        var score_1 = sequence1.getBoundaryScore(seq1Offset) + sequence2.getBoundaryScore(seq2OffsetStart) + sequence2.getBoundaryScore(seq2OffsetEndExclusive);
+        if (score_1 > bestScore) {
+            bestScore = score_1;
+            bestDelta = delta;
+        }
+    }
+    return diff.delta(bestDelta);
+}
+function removeShortMatches(sequence1, sequence2, sequenceDiffs) {
+    var e_6, _a;
+    var result = [];
+    try {
+        for (var sequenceDiffs_2 = __values(sequenceDiffs), sequenceDiffs_2_1 = sequenceDiffs_2.next(); !sequenceDiffs_2_1.done; sequenceDiffs_2_1 = sequenceDiffs_2.next()) {
+            var s = sequenceDiffs_2_1.value;
+            var last = result[result.length - 1];
+            if (!last) {
+                result.push(s);
+                continue;
+            }
+            if (s.seq1Range.start - last.seq1Range.endExclusive <= 2 || s.seq2Range.start - last.seq2Range.endExclusive <= 2) {
+                result[result.length - 1] = new SequenceDiff(last.seq1Range.join(s.seq1Range), last.seq2Range.join(s.seq2Range));
+            }
+            else {
+                result.push(s);
+            }
+        }
+    }
+    catch (e_6_1) { e_6 = { error: e_6_1 }; }
+    finally {
+        try {
+            if (sequenceDiffs_2_1 && !sequenceDiffs_2_1.done && (_a = sequenceDiffs_2.return)) _a.call(sequenceDiffs_2);
+        }
+        finally { if (e_6) throw e_6.error; }
+    }
+    return result;
+}
+function extendDiffsToEntireWordIfAppropriate(sequence1, sequence2, sequenceDiffs, findParent, force) {
+    if (force === void 0) { force = false; }
+    var equalMappings = SequenceDiff.invert(sequenceDiffs, sequence1.length);
+    var additional = [];
+    var lastPoint = new OffsetPair(0, 0);
+    function scanWord(pair, equalMapping) {
+        if (pair.offset1 < lastPoint.offset1 || pair.offset2 < lastPoint.offset2) {
+            return;
+        }
+        var w1 = findParent(sequence1, pair.offset1);
+        var w2 = findParent(sequence2, pair.offset2);
+        if (!w1 || !w2) {
+            return;
+        }
+        var w = new SequenceDiff(w1, w2);
+        var equalPart = w.intersect(equalMapping);
+        var equalChars1 = equalPart.seq1Range.length;
+        var equalChars2 = equalPart.seq2Range.length;
+        while (equalMappings.length > 0) {
+            var next = equalMappings[0];
+            var intersects = next.seq1Range.intersects(w.seq1Range) || next.seq2Range.intersects(w.seq2Range);
+            if (!intersects) {
+                break;
+            }
+            var v1 = findParent(sequence1, next.seq1Range.start);
+            var v2 = findParent(sequence2, next.seq2Range.start);
+            var v = new SequenceDiff(v1, v2);
+            var equalPart2 = v.intersect(next);
+            equalChars1 += equalPart2.seq1Range.length;
+            equalChars2 += equalPart2.seq2Range.length;
+            w = w.join(v);
+            if (w.seq1Range.endExclusive >= next.seq1Range.endExclusive) {
+                equalMappings.shift();
+            }
+            else {
+                break;
+            }
+        }
+        if (force && equalChars1 + equalChars2 < w.seq1Range.length + w.seq2Range.length || equalChars1 + equalChars2 < (w.seq1Range.length + w.seq2Range.length) * 2 / 3) {
+            additional.push(w);
+        }
+        lastPoint = w.getEndExclusives();
+    }
+    while (equalMappings.length > 0) {
+        var next = equalMappings.shift();
+        if (next.seq1Range.isEmpty) {
+            continue;
+        }
+        scanWord(next.getStarts(), next);
+        scanWord(next.getEndExclusives().delta(-1), next);
+    }
+    var merged = mergeSequenceDiffs(sequenceDiffs, additional);
+    return merged;
+}
+function mergeSequenceDiffs(sequenceDiffs1, sequenceDiffs2) {
+    var result = [];
+    while (sequenceDiffs1.length > 0 || sequenceDiffs2.length > 0) {
+        var sd1 = sequenceDiffs1[0];
+        var sd2 = sequenceDiffs2[0];
+        var next = void 0;
+        if (sd1 && (!sd2 || sd1.seq1Range.start < sd2.seq1Range.start)) {
+            next = sequenceDiffs1.shift();
+        }
+        else {
+            next = sequenceDiffs2.shift();
+        }
+        if (result.length > 0 && result[result.length - 1].seq1Range.endExclusive >= next.seq1Range.start) {
+            result[result.length - 1] = result[result.length - 1].join(next);
+        }
+        else {
+            result.push(next);
+        }
+    }
+    return result;
+}
+function removeVeryShortMatchingLinesBetweenDiffs(sequence1, _sequence2, sequenceDiffs) {
+    var diffs = sequenceDiffs;
+    if (diffs.length === 0) {
+        return diffs;
+    }
+    var counter = 0;
+    var shouldRepeat;
+    do {
+        shouldRepeat = false;
+        var result = [
+            diffs[0]
+        ];
+        var _loop_1 = function (i) {
+            var shouldJoinDiffs = function (before, after) {
+                var unchangedRange = new OffsetRange(lastResult.seq1Range.endExclusive, cur.seq1Range.start);
+                var unchangedText = sequence1.getText(unchangedRange);
+                var unchangedTextWithoutWs = unchangedText.replace(/\s/g, "");
+                if (unchangedTextWithoutWs.length <= 4 && (before.seq1Range.length + before.seq2Range.length > 5 || after.seq1Range.length + after.seq2Range.length > 5)) {
+                    return true;
+                }
+                return false;
+            };
+            var cur = diffs[i];
+            var lastResult = result[result.length - 1];
+            var shouldJoin = shouldJoinDiffs(lastResult, cur);
+            if (shouldJoin) {
+                shouldRepeat = true;
+                result[result.length - 1] = result[result.length - 1].join(cur);
+            }
+            else {
+                result.push(cur);
+            }
+        };
+        for (var i = 1; i < diffs.length; i++) {
+            _loop_1(i);
+        }
+        diffs = result;
+    } while (counter++ < 10 && shouldRepeat);
+    return diffs;
+}
+function removeVeryShortMatchingTextBetweenLongDiffs(sequence1, sequence2, sequenceDiffs) {
+    var diffs = sequenceDiffs;
+    if (diffs.length === 0) {
+        return diffs;
+    }
+    var counter = 0;
+    var shouldRepeat;
+    do {
+        shouldRepeat = false;
+        var result = [
+            diffs[0]
+        ];
+        var _loop_2 = function (i) {
+            var shouldJoinDiffs = function (before, after) {
+                var unchangedRange = new OffsetRange(lastResult.seq1Range.endExclusive, cur.seq1Range.start);
+                var unchangedLineCount = sequence1.countLinesIn(unchangedRange);
+                if (unchangedLineCount > 5 || unchangedRange.length > 500) {
+                    return false;
+                }
+                var unchangedText = sequence1.getText(unchangedRange).trim();
+                if (unchangedText.length > 20 || unchangedText.split(/\r\n|\r|\n/).length > 1) {
+                    return false;
+                }
+                var beforeLineCount1 = sequence1.countLinesIn(before.seq1Range);
+                var beforeSeq1Length = before.seq1Range.length;
+                var beforeLineCount2 = sequence2.countLinesIn(before.seq2Range);
+                var beforeSeq2Length = before.seq2Range.length;
+                var afterLineCount1 = sequence1.countLinesIn(after.seq1Range);
+                var afterSeq1Length = after.seq1Range.length;
+                var afterLineCount2 = sequence2.countLinesIn(after.seq2Range);
+                var afterSeq2Length = after.seq2Range.length;
+                var max = 2 * 40 + 50;
+                function cap(v) {
+                    return Math.min(v, max);
+                }
+                if (Math.pow(Math.pow(cap(beforeLineCount1 * 40 + beforeSeq1Length), 1.5) + Math.pow(cap(beforeLineCount2 * 40 + beforeSeq2Length), 1.5), 1.5) + Math.pow(Math.pow(cap(afterLineCount1 * 40 + afterSeq1Length), 1.5) + Math.pow(cap(afterLineCount2 * 40 + afterSeq2Length), 1.5), 1.5) > Math.pow((Math.pow(max, 1.5)), 1.5) * 1.3) {
+                    return true;
+                }
+                return false;
+            };
+            var cur = diffs[i];
+            var lastResult = result[result.length - 1];
+            var shouldJoin = shouldJoinDiffs(lastResult, cur);
+            if (shouldJoin) {
+                shouldRepeat = true;
+                result[result.length - 1] = result[result.length - 1].join(cur);
+            }
+            else {
+                result.push(cur);
+            }
+        };
+        for (var i = 1; i < diffs.length; i++) {
+            _loop_2(i);
+        }
+        diffs = result;
+    } while (counter++ < 10 && shouldRepeat);
+    var newDiffs = [];
+    forEachWithNeighbors(diffs, function (prev, cur, next) {
+        var newDiff = cur;
+        function shouldMarkAsChanged(text) {
+            return text.length > 0 && text.trim().length <= 3 && cur.seq1Range.length + cur.seq2Range.length > 100;
+        }
+        var fullRange1 = sequence1.extendToFullLines(cur.seq1Range);
+        var prefix = sequence1.getText(new OffsetRange(fullRange1.start, cur.seq1Range.start));
+        if (shouldMarkAsChanged(prefix)) {
+            newDiff = newDiff.deltaStart(-prefix.length);
+        }
+        var suffix = sequence1.getText(new OffsetRange(cur.seq1Range.endExclusive, fullRange1.endExclusive));
+        if (shouldMarkAsChanged(suffix)) {
+            newDiff = newDiff.deltaEnd(suffix.length);
+        }
+        var availableSpace = SequenceDiff.fromOffsetPairs(prev ? prev.getEndExclusives() : OffsetPair.zero, next ? next.getStarts() : OffsetPair.max);
+        var result = newDiff.intersect(availableSpace);
+        if (newDiffs.length > 0 && result.getStarts().equals(newDiffs[newDiffs.length - 1].getEndExclusives())) {
+            newDiffs[newDiffs.length - 1] = newDiffs[newDiffs.length - 1].join(result);
+        }
+        else {
+            newDiffs.push(result);
+        }
+    });
+    return newDiffs;
+}
+var SetMap = /** @class */ (function () {
+    function SetMap() {
+        this.map = /* @__PURE__ */ new Map();
+    }
+    SetMap.prototype.add = function (key, value) {
+        var values = this.map.get(key);
+        if (!values) {
+            values = /* @__PURE__ */ new Set();
+            this.map.set(key, values);
+        }
+        values.add(value);
+    };
+    SetMap.prototype.forEach = function (key, fn) {
+        var values = this.map.get(key);
+        if (!values) {
+            return;
+        }
+        values.forEach(fn);
+    };
+    return SetMap;
+}());
+var LinesSliceCharSequence = /** @class */ (function () {
+    function LinesSliceCharSequence(lines, range, considerWhitespaceChanges) {
+        this.lines = lines;
+        this.range = range;
+        this.considerWhitespaceChanges = considerWhitespaceChanges;
+        this.elements = [];
+        this.firstElementOffsetByLineIdx = [];
+        this.lineStartOffsets = [];
+        this.trimmedWsLengthsByLineIdx = [];
+        this.firstElementOffsetByLineIdx.push(0);
+        for (var lineNumber = this.range.startLineNumber; lineNumber <= this.range.endLineNumber; lineNumber++) {
+            var line = lines[lineNumber - 1];
+            var lineStartOffset = 0;
+            if (lineNumber === this.range.startLineNumber && this.range.startColumn > 1) {
+                lineStartOffset = this.range.startColumn - 1;
+                line = line.substring(lineStartOffset);
+            }
+            this.lineStartOffsets.push(lineStartOffset);
+            var trimmedWsLength = 0;
+            if (!considerWhitespaceChanges) {
+                var trimmedStartLine = line.trimStart();
+                trimmedWsLength = line.length - trimmedStartLine.length;
+                line = trimmedStartLine.trimEnd();
+            }
+            this.trimmedWsLengthsByLineIdx.push(trimmedWsLength);
+            var lineLength = lineNumber === this.range.endLineNumber ? Math.min(this.range.endColumn - 1 - lineStartOffset - trimmedWsLength, line.length) : line.length;
+            for (var i = 0; i < lineLength; i++) {
+                this.elements.push(line.charCodeAt(i));
+            }
+            if (lineNumber < this.range.endLineNumber) {
+                this.elements.push("\n".charCodeAt(0));
+                this.firstElementOffsetByLineIdx.push(this.elements.length);
+            }
+        }
+    }
+    LinesSliceCharSequence.prototype.toString = function () {
+        return "Slice: \"".concat(this.text, "\"");
+    };
+    Object.defineProperty(LinesSliceCharSequence.prototype, "text", {
+        get: function () {
+            return this.getText(new OffsetRange(0, this.length));
+        },
+        enumerable: false,
+        configurable: true
+    });
+    LinesSliceCharSequence.prototype.getText = function (range) {
+        return this.elements.slice(range.start, range.endExclusive).map(function (e) { return String.fromCharCode(e); }).join("");
+    };
+    LinesSliceCharSequence.prototype.getElement = function (offset) {
+        return this.elements[offset];
+    };
+    Object.defineProperty(LinesSliceCharSequence.prototype, "length", {
+        get: function () {
+            return this.elements.length;
+        },
+        enumerable: false,
+        configurable: true
+    });
+    LinesSliceCharSequence.prototype.getBoundaryScore = function (length) {
+        var prevCategory = getCategory(length > 0 ? this.elements[length - 1] : -1);
+        var nextCategory = getCategory(length < this.elements.length ? this.elements[length] : -1);
+        if (prevCategory === 7 /* LineBreakCR */ && nextCategory === 8 /* LineBreakLF */) {
+            return 0;
+        }
+        if (prevCategory === 8 /* LineBreakLF */) {
+            return 150;
+        }
+        var score2 = 0;
+        if (prevCategory !== nextCategory) {
+            score2 += 10;
+            if (prevCategory === 0 /* WordLower */ && nextCategory === 1 /* WordUpper */) {
+                score2 += 1;
+            }
+        }
+        score2 += getCategoryBoundaryScore(prevCategory);
+        score2 += getCategoryBoundaryScore(nextCategory);
+        return score2;
+    };
+    LinesSliceCharSequence.prototype.translateOffset = function (offset, preference) {
+        if (preference === void 0) { preference = "right"; }
+        var i = findLastIdxMonotonous(this.firstElementOffsetByLineIdx, function (value) { return value <= offset; });
+        var lineOffset = offset - this.firstElementOffsetByLineIdx[i];
+        return new Position(this.range.startLineNumber + i, 1 + this.lineStartOffsets[i] + lineOffset + (lineOffset === 0 && preference === "left" ? 0 : this.trimmedWsLengthsByLineIdx[i]));
+    };
+    LinesSliceCharSequence.prototype.translateRange = function (range) {
+        var pos1 = this.translateOffset(range.start, "right");
+        var pos2 = this.translateOffset(range.endExclusive, "left");
+        if (pos2.isBefore(pos1)) {
+            return Range.fromPositions(pos2, pos2);
+        }
+        return Range.fromPositions(pos1, pos2);
+    };
+    LinesSliceCharSequence.prototype.findWordContaining = function (offset) {
+        if (offset < 0 || offset >= this.elements.length) {
+            return undefined;
+        }
+        if (!isWordChar(this.elements[offset])) {
+            return undefined;
+        }
+        var start = offset;
+        while (start > 0 && isWordChar(this.elements[start - 1])) {
+            start--;
+        }
+        var end = offset;
+        while (end < this.elements.length && isWordChar(this.elements[end])) {
+            end++;
+        }
+        return new OffsetRange(start, end);
+    };
+    LinesSliceCharSequence.prototype.findSubWordContaining = function (offset) {
+        if (offset < 0 || offset >= this.elements.length) {
+            return undefined;
+        }
+        if (!isWordChar(this.elements[offset])) {
+            return undefined;
+        }
+        var start = offset;
+        while (start > 0 && isWordChar(this.elements[start - 1]) && !isUpperCase(this.elements[start])) {
+            start--;
+        }
+        var end = offset;
+        while (end < this.elements.length && isWordChar(this.elements[end]) && !isUpperCase(this.elements[end])) {
+            end++;
+        }
+        return new OffsetRange(start, end);
+    };
+    LinesSliceCharSequence.prototype.countLinesIn = function (range) {
+        return this.translateOffset(range.endExclusive).lineNumber - this.translateOffset(range.start).lineNumber;
+    };
+    LinesSliceCharSequence.prototype.isStronglyEqual = function (offset1, offset2) {
+        return this.elements[offset1] === this.elements[offset2];
+    };
+    LinesSliceCharSequence.prototype.extendToFullLines = function (range) {
+        var _a, _h;
+        var start = (_a = findLastMonotonous(this.firstElementOffsetByLineIdx, function (x) { return x <= range.start; })) !== null && _a !== void 0 ? _a : 0;
+        var end = (_h = findFirstMonotonous(this.firstElementOffsetByLineIdx, function (x) { return range.endExclusive <= x; })) !== null && _h !== void 0 ? _h : this.elements.length;
+        return new OffsetRange(start, end);
+    };
+    return LinesSliceCharSequence;
+}());
+function isWordChar(charCode) {
+    return charCode >= 97 && charCode <= 122 || charCode >= 65 && charCode <= 90 || charCode >= 48 && charCode <= 57;
+}
+function isUpperCase(charCode) {
+    return charCode >= 65 && charCode <= 90;
+}
+var score = (_a = {},
+    _a[0 /* WordLower */] = 0,
+    _a[1 /* WordUpper */] = 0,
+    _a[2 /* WordNumber */] = 0,
+    _a[3 /* End */] = 10,
+    _a[4 /* Other */] = 2,
+    _a[5 /* Separator */] = 30,
+    _a[6 /* Space */] = 3,
+    _a[7 /* LineBreakCR */] = 10,
+    _a[8 /* LineBreakLF */] = 10,
+    _a);
+function getCategoryBoundaryScore(category) {
+    return score[category];
+}
+function getCategory(charCode) {
+    if (charCode === 10) {
+        return 8 /* LineBreakLF */;
+    }
+    else if (charCode === 13) {
+        return 7 /* LineBreakCR */;
+    }
+    else if (isSpace(charCode)) {
+        return 6 /* Space */;
+    }
+    else if (charCode >= 97 && charCode <= 122) {
+        return 0 /* WordLower */;
+    }
+    else if (charCode >= 65 && charCode <= 90) {
+        return 1 /* WordUpper */;
+    }
+    else if (charCode >= 48 && charCode <= 57) {
+        return 2 /* WordNumber */;
+    }
+    else if (charCode === -1) {
+        return 3 /* End */;
+    }
+    else if (charCode === 44 || charCode === 59) {
+        return 5 /* Separator */;
+    }
+    else {
+        return 4 /* Other */;
+    }
+}
+function computeMovedLines(changes, originalLines, modifiedLines, hashedOriginalLines, hashedModifiedLines, timeout) {
+    var _a = computeMovesFromSimpleDeletionsToSimpleInsertions(changes, originalLines, modifiedLines, timeout), moves = _a.moves, excludedChanges = _a.excludedChanges;
+    if (!timeout.isValid()) {
+        return [];
+    }
+    var filteredChanges = changes.filter(function (c) { return !excludedChanges.has(c); });
+    var unchangedMoves = computeUnchangedMoves(filteredChanges, hashedOriginalLines, hashedModifiedLines, originalLines, modifiedLines, timeout);
+    pushMany(moves, unchangedMoves);
+    moves = joinCloseConsecutiveMoves(moves);
+    moves = moves.filter(function (current) {
+        var lines = current.original.toOffsetRange().slice(originalLines).map(function (l) { return l.trim(); });
+        var originalText = lines.join("\n");
+        return originalText.length >= 15 && countWhere(lines, function (l) { return l.length >= 2; }) >= 2;
+    });
+    moves = removeMovesInSameDiff(changes, moves);
+    return moves;
+}
+function countWhere(arr, predicate) {
+    var e_7, _a;
+    var count = 0;
+    try {
+        for (var arr_1 = __values(arr), arr_1_1 = arr_1.next(); !arr_1_1.done; arr_1_1 = arr_1.next()) {
+            var t = arr_1_1.value;
+            if (predicate(t)) {
+                count++;
+            }
+        }
+    }
+    catch (e_7_1) { e_7 = { error: e_7_1 }; }
+    finally {
+        try {
+            if (arr_1_1 && !arr_1_1.done && (_a = arr_1.return)) _a.call(arr_1);
+        }
+        finally { if (e_7) throw e_7.error; }
+    }
+    return count;
+}
+function computeMovesFromSimpleDeletionsToSimpleInsertions(changes, originalLines, modifiedLines, timeout) {
+    var e_8, _a, e_9, _h;
+    var moves = [];
+    var deletions = changes.filter(function (c) { return c.modified.isEmpty && c.original.length >= 3; }).map(function (d) { return new LineRangeFragment(d.original, originalLines, d); });
+    var insertions = new Set(changes.filter(function (c) { return c.original.isEmpty && c.modified.length >= 3; }).map(function (d) { return new LineRangeFragment(d.modified, modifiedLines, d); }));
+    var excludedChanges = /* @__PURE__ */ new Set();
+    try {
+        for (var deletions_1 = __values(deletions), deletions_1_1 = deletions_1.next(); !deletions_1_1.done; deletions_1_1 = deletions_1.next()) {
+            var deletion = deletions_1_1.value;
+            var highestSimilarity = -1;
+            var best = void 0;
+            try {
+                for (var insertions_1 = (e_9 = void 0, __values(insertions)), insertions_1_1 = insertions_1.next(); !insertions_1_1.done; insertions_1_1 = insertions_1.next()) {
+                    var insertion = insertions_1_1.value;
+                    var similarity = deletion.computeSimilarity(insertion);
+                    if (similarity > highestSimilarity) {
+                        highestSimilarity = similarity;
+                        best = insertion;
+                    }
+                }
+            }
+            catch (e_9_1) { e_9 = { error: e_9_1 }; }
+            finally {
+                try {
+                    if (insertions_1_1 && !insertions_1_1.done && (_h = insertions_1.return)) _h.call(insertions_1);
+                }
+                finally { if (e_9) throw e_9.error; }
+            }
+            if (highestSimilarity > 0.9 && best) {
+                insertions.delete(best);
+                moves.push(new LineRangeMapping(deletion.range, best.range));
+                excludedChanges.add(deletion.source);
+                excludedChanges.add(best.source);
+            }
+            if (!timeout.isValid()) {
+                return { moves: moves, excludedChanges: excludedChanges };
+            }
+        }
+    }
+    catch (e_8_1) { e_8 = { error: e_8_1 }; }
+    finally {
+        try {
+            if (deletions_1_1 && !deletions_1_1.done && (_a = deletions_1.return)) _a.call(deletions_1);
+        }
+        finally { if (e_8) throw e_8.error; }
+    }
+    return { moves: moves, excludedChanges: excludedChanges };
+}
+function computeUnchangedMoves(changes, hashedOriginalLines, hashedModifiedLines, originalLines, modifiedLines, timeout) {
+    var e_10, _a, e_11, _h, e_12, _j, e_13, _k;
+    var moves = [];
+    var original3LineHashes = new SetMap();
+    try {
+        for (var changes_1 = __values(changes), changes_1_1 = changes_1.next(); !changes_1_1.done; changes_1_1 = changes_1.next()) {
+            var change = changes_1_1.value;
+            for (var i = change.original.startLineNumber; i < change.original.endLineNumberExclusive - 2; i++) {
+                var key = "".concat(hashedOriginalLines[i - 1], ":").concat(hashedOriginalLines[i + 1 - 1], ":").concat(hashedOriginalLines[i + 2 - 1]);
+                original3LineHashes.add(key, { range: new LineRange(i, i + 3) });
+            }
+        }
+    }
+    catch (e_10_1) { e_10 = { error: e_10_1 }; }
+    finally {
+        try {
+            if (changes_1_1 && !changes_1_1.done && (_a = changes_1.return)) _a.call(changes_1);
+        }
+        finally { if (e_10) throw e_10.error; }
+    }
+    var possibleMappings = [];
+    changes.sort(compareBy(function (c) { return c.modified.startLineNumber; }, numberComparator));
+    var _loop_3 = function (change) {
+        var lastMappings = [];
+        var _loop_5 = function (i) {
+            var key = "".concat(hashedModifiedLines[i - 1], ":").concat(hashedModifiedLines[i + 1 - 1], ":").concat(hashedModifiedLines[i + 2 - 1]);
+            var currentModifiedRange = new LineRange(i, i + 3);
+            var nextMappings = [];
+            original3LineHashes.forEach(key, function (_a) {
+                var e_14, _h;
+                var range = _a.range;
+                try {
+                    for (var lastMappings_1 = (e_14 = void 0, __values(lastMappings)), lastMappings_1_1 = lastMappings_1.next(); !lastMappings_1_1.done; lastMappings_1_1 = lastMappings_1.next()) {
+                        var lastMapping = lastMappings_1_1.value;
+                        if (lastMapping.originalLineRange.endLineNumberExclusive + 1 === range.endLineNumberExclusive && lastMapping.modifiedLineRange.endLineNumberExclusive + 1 === currentModifiedRange.endLineNumberExclusive) {
+                            lastMapping.originalLineRange = new LineRange(lastMapping.originalLineRange.startLineNumber, range.endLineNumberExclusive);
+                            lastMapping.modifiedLineRange = new LineRange(lastMapping.modifiedLineRange.startLineNumber, currentModifiedRange.endLineNumberExclusive);
+                            nextMappings.push(lastMapping);
+                            return;
+                        }
+                    }
+                }
+                catch (e_14_1) { e_14 = { error: e_14_1 }; }
+                finally {
+                    try {
+                        if (lastMappings_1_1 && !lastMappings_1_1.done && (_h = lastMappings_1.return)) _h.call(lastMappings_1);
+                    }
+                    finally { if (e_14) throw e_14.error; }
+                }
+                var mapping = {
+                    modifiedLineRange: currentModifiedRange,
+                    originalLineRange: range
+                };
+                possibleMappings.push(mapping);
+                nextMappings.push(mapping);
+            });
+            lastMappings = nextMappings;
+        };
+        for (var i = change.modified.startLineNumber; i < change.modified.endLineNumberExclusive - 2; i++) {
+            _loop_5(i);
+        }
+        if (!timeout.isValid()) {
+            return { value: [] };
+        }
+    };
+    try {
+        for (var changes_2 = __values(changes), changes_2_1 = changes_2.next(); !changes_2_1.done; changes_2_1 = changes_2.next()) {
+            var change = changes_2_1.value;
+            var state_1 = _loop_3(change);
+            if (typeof state_1 === "object")
+                return state_1.value;
+        }
+    }
+    catch (e_11_1) { e_11 = { error: e_11_1 }; }
+    finally {
+        try {
+            if (changes_2_1 && !changes_2_1.done && (_h = changes_2.return)) _h.call(changes_2);
+        }
+        finally { if (e_11) throw e_11.error; }
+    }
+    possibleMappings.sort(reverseOrder(compareBy(function (m) { return m.modifiedLineRange.length; }, numberComparator)));
+    var modifiedSet = new LineRangeSet();
+    var originalSet = new LineRangeSet();
+    try {
+        for (var possibleMappings_1 = __values(possibleMappings), possibleMappings_1_1 = possibleMappings_1.next(); !possibleMappings_1_1.done; possibleMappings_1_1 = possibleMappings_1.next()) {
+            var mapping = possibleMappings_1_1.value;
+            var diffOrigToMod = mapping.modifiedLineRange.startLineNumber - mapping.originalLineRange.startLineNumber;
+            var modifiedSections = modifiedSet.subtractFrom(mapping.modifiedLineRange);
+            var originalTranslatedSections = originalSet.subtractFrom(mapping.originalLineRange).getWithDelta(diffOrigToMod);
+            var modifiedIntersectedSections = modifiedSections.getIntersection(originalTranslatedSections);
+            try {
+                for (var _l = (e_13 = void 0, __values(modifiedIntersectedSections.ranges)), _m = _l.next(); !_m.done; _m = _l.next()) {
+                    var s = _m.value;
+                    if (s.length < 3) {
+                        continue;
+                    }
+                    var modifiedLineRange = s;
+                    var originalLineRange = s.delta(-diffOrigToMod);
+                    moves.push(new LineRangeMapping(originalLineRange, modifiedLineRange));
+                    modifiedSet.addRange(modifiedLineRange);
+                    originalSet.addRange(originalLineRange);
+                }
+            }
+            catch (e_13_1) { e_13 = { error: e_13_1 }; }
+            finally {
+                try {
+                    if (_m && !_m.done && (_k = _l.return)) _k.call(_l);
+                }
+                finally { if (e_13) throw e_13.error; }
+            }
+        }
+    }
+    catch (e_12_1) { e_12 = { error: e_12_1 }; }
+    finally {
+        try {
+            if (possibleMappings_1_1 && !possibleMappings_1_1.done && (_j = possibleMappings_1.return)) _j.call(possibleMappings_1);
+        }
+        finally { if (e_12) throw e_12.error; }
+    }
+    moves.sort(compareBy(function (m) { return m.original.startLineNumber; }, numberComparator));
+    var monotonousChanges = new MonotonousArray(changes);
+    var _loop_4 = function (i) {
+        var move = moves[i];
+        var firstTouchingChangeOrig = monotonousChanges.findLastMonotonous(function (c) { return c.original.startLineNumber <= move.original.startLineNumber; });
+        var firstTouchingChangeMod = findLastMonotonous(changes, function (c) { return c.modified.startLineNumber <= move.modified.startLineNumber; });
+        var linesAbove = Math.max(move.original.startLineNumber - firstTouchingChangeOrig.original.startLineNumber, move.modified.startLineNumber - firstTouchingChangeMod.modified.startLineNumber);
+        var lastTouchingChangeOrig = monotonousChanges.findLastMonotonous(function (c) { return c.original.startLineNumber < move.original.endLineNumberExclusive; });
+        var lastTouchingChangeMod = findLastMonotonous(changes, function (c) { return c.modified.startLineNumber < move.modified.endLineNumberExclusive; });
+        var linesBelow = Math.max(lastTouchingChangeOrig.original.endLineNumberExclusive - move.original.endLineNumberExclusive, lastTouchingChangeMod.modified.endLineNumberExclusive - move.modified.endLineNumberExclusive);
+        var extendToTop = void 0;
+        for (extendToTop = 0; extendToTop < linesAbove; extendToTop++) {
+            var origLine = move.original.startLineNumber - extendToTop - 1;
+            var modLine = move.modified.startLineNumber - extendToTop - 1;
+            if (origLine > originalLines.length || modLine > modifiedLines.length) {
+                break;
+            }
+            if (modifiedSet.contains(modLine) || originalSet.contains(origLine)) {
+                break;
+            }
+            if (!areLinesSimilar(originalLines[origLine - 1], modifiedLines[modLine - 1], timeout)) {
+                break;
+            }
+        }
+        if (extendToTop > 0) {
+            originalSet.addRange(new LineRange(move.original.startLineNumber - extendToTop, move.original.startLineNumber));
+            modifiedSet.addRange(new LineRange(move.modified.startLineNumber - extendToTop, move.modified.startLineNumber));
+        }
+        var extendToBottom = void 0;
+        for (extendToBottom = 0; extendToBottom < linesBelow; extendToBottom++) {
+            var origLine = move.original.endLineNumberExclusive + extendToBottom;
+            var modLine = move.modified.endLineNumberExclusive + extendToBottom;
+            if (origLine > originalLines.length || modLine > modifiedLines.length) {
+                break;
+            }
+            if (modifiedSet.contains(modLine) || originalSet.contains(origLine)) {
+                break;
+            }
+            if (!areLinesSimilar(originalLines[origLine - 1], modifiedLines[modLine - 1], timeout)) {
+                break;
+            }
+        }
+        if (extendToBottom > 0) {
+            originalSet.addRange(new LineRange(move.original.endLineNumberExclusive, move.original.endLineNumberExclusive + extendToBottom));
+            modifiedSet.addRange(new LineRange(move.modified.endLineNumberExclusive, move.modified.endLineNumberExclusive + extendToBottom));
+        }
+        if (extendToTop > 0 || extendToBottom > 0) {
+            moves[i] = new LineRangeMapping(new LineRange(move.original.startLineNumber - extendToTop, move.original.endLineNumberExclusive + extendToBottom), new LineRange(move.modified.startLineNumber - extendToTop, move.modified.endLineNumberExclusive + extendToBottom));
+        }
+    };
+    for (var i = 0; i < moves.length; i++) {
+        _loop_4(i);
+    }
+    return moves;
+}
+function areLinesSimilar(line1, line2, timeout) {
+    var e_15, _a;
+    if (line1.trim() === line2.trim()) {
+        return true;
+    }
+    if (line1.length > 300 && line2.length > 300) {
+        return false;
+    }
+    var myersDiffingAlgorithm = new MyersDiffAlgorithm();
+    var result = myersDiffingAlgorithm.compute(new LinesSliceCharSequence([line1], new Range(1, 1, 1, line1.length), false), new LinesSliceCharSequence([line2], new Range(1, 1, 1, line2.length), false), timeout);
+    var commonNonSpaceCharCount = 0;
+    var inverted = SequenceDiff.invert(result.diffs, line1.length);
+    try {
+        for (var inverted_1 = __values(inverted), inverted_1_1 = inverted_1.next(); !inverted_1_1.done; inverted_1_1 = inverted_1.next()) {
+            var seq = inverted_1_1.value;
+            seq.seq1Range.forEach(function (idx) {
+                if (!isSpace(line1.charCodeAt(idx))) {
+                    commonNonSpaceCharCount++;
+                }
+            });
+        }
+    }
+    catch (e_15_1) { e_15 = { error: e_15_1 }; }
+    finally {
+        try {
+            if (inverted_1_1 && !inverted_1_1.done && (_a = inverted_1.return)) _a.call(inverted_1);
+        }
+        finally { if (e_15) throw e_15.error; }
+    }
+    function countNonWsChars(str) {
+        var count = 0;
+        for (var i = 0; i < line1.length; i++) {
+            if (!isSpace(str.charCodeAt(i))) {
+                count++;
+            }
+        }
+        return count;
+    }
+    var longerLineLength = countNonWsChars(line1.length > line2.length ? line1 : line2);
+    var r = commonNonSpaceCharCount / longerLineLength > 0.6 && longerLineLength > 10;
+    return r;
+}
+function joinCloseConsecutiveMoves(moves) {
+    if (moves.length === 0) {
+        return moves;
+    }
+    moves.sort(compareBy(function (m) { return m.original.startLineNumber; }, numberComparator));
+    var result = [moves[0]];
+    for (var i = 1; i < moves.length; i++) {
+        var last = result[result.length - 1];
+        var current = moves[i];
+        var originalDist = current.original.startLineNumber - last.original.endLineNumberExclusive;
+        var modifiedDist = current.modified.startLineNumber - last.modified.endLineNumberExclusive;
+        var currentMoveAfterLast = originalDist >= 0 && modifiedDist >= 0;
+        if (currentMoveAfterLast && originalDist + modifiedDist <= 2) {
+            result[result.length - 1] = last.join(current);
+            continue;
+        }
+        result.push(current);
+    }
+    return result;
+}
+function removeMovesInSameDiff(changes, moves) {
+    var changesMonotonous = new MonotonousArray(changes);
+    moves = moves.filter(function (m) {
+        var diffBeforeEndOfMoveOriginal = changesMonotonous.findLastMonotonous(function (c) { return c.original.startLineNumber < m.original.endLineNumberExclusive; }) || new LineRangeMapping(new LineRange(1, 1), new LineRange(1, 1));
+        var diffBeforeEndOfMoveModified = findLastMonotonous(changes, function (c) { return c.modified.startLineNumber < m.modified.endLineNumberExclusive; });
+        var differentDiffs = diffBeforeEndOfMoveOriginal !== diffBeforeEndOfMoveModified;
+        return differentDiffs;
+    });
+    return moves;
+}
+var TextLength = /** @class */ (function () {
+    function TextLength(lineCount, columnCount) {
+        this.lineCount = lineCount;
+        this.columnCount = columnCount;
+    }
+    return TextLength;
+}());
+_g = TextLength;
+(function () {
+    _g.zero = new _g(0, 0);
+})();
+var AbstractText = /** @class */ (function () {
+    function AbstractText() {
+    }
+    return AbstractText;
+}());
+var LineBasedText = /** @class */ (function (_super) {
+    __extends(LineBasedText, _super);
+    function LineBasedText(_getLineContent, _lineCount) {
+        var _this = this;
+        assert(_lineCount >= 1);
+        _this = _super.call(this) || this;
+        _this._getLineContent = _getLineContent;
+        _this._lineCount = _lineCount;
+        return _this;
+    }
+    LineBasedText.prototype.getValueOfRange = function (range) {
+        if (range.startLineNumber === range.endLineNumber) {
+            return this._getLineContent(range.startLineNumber).substring(range.startColumn - 1, range.endColumn - 1);
+        }
+        var result = this._getLineContent(range.startLineNumber).substring(range.startColumn - 1);
+        for (var i = range.startLineNumber + 1; i < range.endLineNumber; i++) {
+            result += "\n" + this._getLineContent(i);
+        }
+        result += "\n" + this._getLineContent(range.endLineNumber).substring(0, range.endColumn - 1);
+        return result;
+    };
+    LineBasedText.prototype.getLineLength = function (lineNumber) {
+        return this._getLineContent(lineNumber).length;
+    };
+    Object.defineProperty(LineBasedText.prototype, "length", {
+        get: function () {
+            var lastLine = this._getLineContent(this._lineCount);
+            return new TextLength(this._lineCount - 1, lastLine.length);
+        },
+        enumerable: false,
+        configurable: true
+    });
+    return LineBasedText;
+}(AbstractText));
+var ArrayText = /** @class */ (function (_super) {
+    __extends(ArrayText, _super);
+    function ArrayText(lines) {
+        return _super.call(this, function (lineNumber) { return lines[lineNumber - 1]; }, lines.length) || this;
+    }
+    return ArrayText;
+}(LineBasedText));
+var DefaultLinesDiffComputer = /** @class */ (function () {
+    function DefaultLinesDiffComputer() {
+        this.dynamicProgrammingDiffing = new DynamicProgrammingDiffing();
+        this.myersDiffingAlgorithm = new MyersDiffAlgorithm();
+    }
+    DefaultLinesDiffComputer.prototype.computeDiff = function (originalLines, modifiedLines, options) {
+        var e_16, _a;
+        var _this = this;
+        if (originalLines.length <= 1 && equals(originalLines, modifiedLines, function (a, b) { return a === b; })) {
+            return new LinesDiff([], [], false);
+        }
+        if (originalLines.length === 1 && originalLines[0].length === 0 || modifiedLines.length === 1 && modifiedLines[0].length === 0) {
+            return new LinesDiff([
+                new DetailedLineRangeMapping(new LineRange(1, originalLines.length + 1), new LineRange(1, modifiedLines.length + 1), [
+                    new RangeMapping(new Range(1, 1, originalLines.length, originalLines[originalLines.length - 1].length + 1), new Range(1, 1, modifiedLines.length, modifiedLines[modifiedLines.length - 1].length + 1))
+                ])
+            ], [], false);
+        }
+        var timeout = options.maxComputationTimeMs === 0 ? InfiniteTimeout.instance : new DateTimeout(options.maxComputationTimeMs);
+        var considerWhitespaceChanges = !options.ignoreTrimWhitespace;
+        var perfectHashes = /* @__PURE__ */ new Map();
+        function getOrCreateHash(text) {
+            var hash = perfectHashes.get(text);
+            if (hash === undefined) {
+                hash = perfectHashes.size;
+                perfectHashes.set(text, hash);
+            }
+            return hash;
+        }
+        var originalLinesHashes = originalLines.map(function (l) { return getOrCreateHash(l.trim()); });
+        var modifiedLinesHashes = modifiedLines.map(function (l) { return getOrCreateHash(l.trim()); });
+        var sequence1 = new LineSequence(originalLinesHashes, originalLines);
+        var sequence2 = new LineSequence(modifiedLinesHashes, modifiedLines);
+        var lineAlignmentResult = (function () {
+            if (sequence1.length + sequence2.length < 1700) {
+                return _this.dynamicProgrammingDiffing.compute(sequence1, sequence2, timeout, function (offset1, offset2) { return originalLines[offset1] === modifiedLines[offset2] ? modifiedLines[offset2].length === 0 ? 0.1 : 1 + Math.log(1 + modifiedLines[offset2].length) : 0.99; });
+            }
+            return _this.myersDiffingAlgorithm.compute(sequence1, sequence2, timeout);
+        })();
+        var lineAlignments = lineAlignmentResult.diffs;
+        var hitTimeout = lineAlignmentResult.hitTimeout;
+        lineAlignments = optimizeSequenceDiffs(sequence1, sequence2, lineAlignments);
+        lineAlignments = removeVeryShortMatchingLinesBetweenDiffs(sequence1, sequence2, lineAlignments);
+        var alignments = [];
+        var scanForWhitespaceChanges = function (equalLinesCount) {
+            var e_17, _a;
+            if (!considerWhitespaceChanges) {
+                return;
+            }
+            for (var i = 0; i < equalLinesCount; i++) {
+                var seq1Offset = seq1LastStart + i;
+                var seq2Offset = seq2LastStart + i;
+                if (originalLines[seq1Offset] !== modifiedLines[seq2Offset]) {
+                    var characterDiffs = _this.refineDiff(originalLines, modifiedLines, new SequenceDiff(new OffsetRange(seq1Offset, seq1Offset + 1), new OffsetRange(seq2Offset, seq2Offset + 1)), timeout, considerWhitespaceChanges, options);
+                    try {
+                        for (var _h = (e_17 = void 0, __values(characterDiffs.mappings)), _j = _h.next(); !_j.done; _j = _h.next()) {
+                            var a = _j.value;
+                            alignments.push(a);
+                        }
+                    }
+                    catch (e_17_1) { e_17 = { error: e_17_1 }; }
+                    finally {
+                        try {
+                            if (_j && !_j.done && (_a = _h.return)) _a.call(_h);
+                        }
+                        finally { if (e_17) throw e_17.error; }
+                    }
+                    if (characterDiffs.hitTimeout) {
+                        hitTimeout = true;
+                    }
+                }
+            }
+        };
+        var seq1LastStart = 0;
+        var seq2LastStart = 0;
+        var _loop_6 = function (diff) {
+            var e_18, _h;
+            assertFn(function () { return diff.seq1Range.start - seq1LastStart === diff.seq2Range.start - seq2LastStart; });
+            var equalLinesCount = diff.seq1Range.start - seq1LastStart;
+            scanForWhitespaceChanges(equalLinesCount);
+            seq1LastStart = diff.seq1Range.endExclusive;
+            seq2LastStart = diff.seq2Range.endExclusive;
+            var characterDiffs = this_1.refineDiff(originalLines, modifiedLines, diff, timeout, considerWhitespaceChanges, options);
+            if (characterDiffs.hitTimeout) {
+                hitTimeout = true;
+            }
+            try {
+                for (var _j = (e_18 = void 0, __values(characterDiffs.mappings)), _k = _j.next(); !_k.done; _k = _j.next()) {
+                    var a = _k.value;
+                    alignments.push(a);
+                }
+            }
+            catch (e_18_1) { e_18 = { error: e_18_1 }; }
+            finally {
+                try {
+                    if (_k && !_k.done && (_h = _j.return)) _h.call(_j);
+                }
+                finally { if (e_18) throw e_18.error; }
+            }
+        };
+        var this_1 = this;
+        try {
+            for (var lineAlignments_1 = __values(lineAlignments), lineAlignments_1_1 = lineAlignments_1.next(); !lineAlignments_1_1.done; lineAlignments_1_1 = lineAlignments_1.next()) {
+                var diff = lineAlignments_1_1.value;
+                _loop_6(diff);
+            }
+        }
+        catch (e_16_1) { e_16 = { error: e_16_1 }; }
+        finally {
+            try {
+                if (lineAlignments_1_1 && !lineAlignments_1_1.done && (_a = lineAlignments_1.return)) _a.call(lineAlignments_1);
+            }
+            finally { if (e_16) throw e_16.error; }
+        }
+        scanForWhitespaceChanges(originalLines.length - seq1LastStart);
+        var original = new ArrayText(originalLines);
+        var modified = new ArrayText(modifiedLines);
+        var changes = lineRangeMappingFromRangeMappings(alignments, original, modified);
+        var moves = [];
+        if (options.computeMoves) {
+            moves = this.computeMoves(changes, originalLines, modifiedLines, originalLinesHashes, modifiedLinesHashes, timeout, considerWhitespaceChanges, options);
+        }
+        assertFn(function () {
+            var e_19, _a, e_20, _h;
+            function validatePosition(pos, lines) {
+                if (pos.lineNumber < 1 || pos.lineNumber > lines.length) {
+                    return false;
+                }
+                var line = lines[pos.lineNumber - 1];
+                if (pos.column < 1 || pos.column > line.length + 1) {
+                    return false;
+                }
+                return true;
+            }
+            function validateRange(range, lines) {
+                if (range.startLineNumber < 1 || range.startLineNumber > lines.length + 1) {
+                    return false;
+                }
+                if (range.endLineNumberExclusive < 1 || range.endLineNumberExclusive > lines.length + 1) {
+                    return false;
+                }
+                return true;
+            }
+            try {
+                for (var changes_3 = __values(changes), changes_3_1 = changes_3.next(); !changes_3_1.done; changes_3_1 = changes_3.next()) {
+                    var c = changes_3_1.value;
+                    if (!c.innerChanges) {
+                        return false;
+                    }
+                    try {
+                        for (var _j = (e_20 = void 0, __values(c.innerChanges)), _k = _j.next(); !_k.done; _k = _j.next()) {
+                            var ic = _k.value;
+                            var valid = validatePosition(ic.modifiedRange.getStartPosition(), modifiedLines) && validatePosition(ic.modifiedRange.getEndPosition(), modifiedLines) && validatePosition(ic.originalRange.getStartPosition(), originalLines) && validatePosition(ic.originalRange.getEndPosition(), originalLines);
+                            if (!valid) {
+                                return false;
+                            }
+                        }
+                    }
+                    catch (e_20_1) { e_20 = { error: e_20_1 }; }
+                    finally {
+                        try {
+                            if (_k && !_k.done && (_h = _j.return)) _h.call(_j);
+                        }
+                        finally { if (e_20) throw e_20.error; }
+                    }
+                    if (!validateRange(c.modified, modifiedLines) || !validateRange(c.original, originalLines)) {
+                        return false;
+                    }
+                }
+            }
+            catch (e_19_1) { e_19 = { error: e_19_1 }; }
+            finally {
+                try {
+                    if (changes_3_1 && !changes_3_1.done && (_a = changes_3.return)) _a.call(changes_3);
+                }
+                finally { if (e_19) throw e_19.error; }
+            }
+            return true;
+        });
+        return new LinesDiff(changes, moves, hitTimeout);
+    };
+    DefaultLinesDiffComputer.prototype.computeMoves = function (changes, originalLines, modifiedLines, hashedOriginalLines, hashedModifiedLines, timeout, considerWhitespaceChanges, options) {
+        var _this = this;
+        var moves = computeMovedLines(changes, originalLines, modifiedLines, hashedOriginalLines, hashedModifiedLines, timeout);
+        var movesWithDiffs = moves.map(function (m) {
+            var moveChanges = _this.refineDiff(originalLines, modifiedLines, new SequenceDiff(m.original.toOffsetRange(), m.modified.toOffsetRange()), timeout, considerWhitespaceChanges, options);
+            var mappings = lineRangeMappingFromRangeMappings(moveChanges.mappings, new ArrayText(originalLines), new ArrayText(modifiedLines), true);
+            return new MovedText(m, mappings);
+        });
+        return movesWithDiffs;
+    };
+    DefaultLinesDiffComputer.prototype.refineDiff = function (originalLines, modifiedLines, diff, timeout, considerWhitespaceChanges, options) {
+        var lineRangeMapping = toLineRangeMapping(diff);
+        var rangeMapping = lineRangeMapping.toRangeMapping2(originalLines, modifiedLines);
+        var slice1 = new LinesSliceCharSequence(originalLines, rangeMapping.originalRange, considerWhitespaceChanges);
+        var slice2 = new LinesSliceCharSequence(modifiedLines, rangeMapping.modifiedRange, considerWhitespaceChanges);
+        var diffResult = slice1.length + slice2.length < 500 ? this.dynamicProgrammingDiffing.compute(slice1, slice2, timeout) : this.myersDiffingAlgorithm.compute(slice1, slice2, timeout);
+        var diffs = diffResult.diffs;
+        diffs = optimizeSequenceDiffs(slice1, slice2, diffs);
+        diffs = extendDiffsToEntireWordIfAppropriate(slice1, slice2, diffs, function (seq, idx) { return seq.findWordContaining(idx); });
+        if (options.extendToSubwords) {
+            diffs = extendDiffsToEntireWordIfAppropriate(slice1, slice2, diffs, function (seq, idx) { return seq.findSubWordContaining(idx); }, true);
+        }
+        diffs = removeShortMatches(slice1, slice2, diffs);
+        diffs = removeVeryShortMatchingTextBetweenLongDiffs(slice1, slice2, diffs);
+        var result = diffs.map(function (d) { return new RangeMapping(slice1.translateRange(d.seq1Range), slice2.translateRange(d.seq2Range)); });
+        return {
+            mappings: result,
+            hitTimeout: diffResult.hitTimeout
+        };
+    };
+    return DefaultLinesDiffComputer;
+}());
+function toLineRangeMapping(sequenceDiff) {
+    return new LineRangeMapping(new LineRange(sequenceDiff.seq1Range.start + 1, sequenceDiff.seq1Range.endExclusive + 1), new LineRange(sequenceDiff.seq2Range.start + 1, sequenceDiff.seq2Range.endExclusive + 1));
+}
+var DefaultLinesDiffComputerWithSeparateRefinement = /** @class */ (function (_super) {
+    __extends(DefaultLinesDiffComputerWithSeparateRefinement, _super);
+    function DefaultLinesDiffComputerWithSeparateRefinement() {
+        var _this = _super.call(this) || this;
+        _this.lineDynamicProgrammingDiffing = new DynamicProgrammingDiffing();
+        _this.lineMyersDiffingAlgorithm = new MyersDiffAlgorithm();
+        return _this;
+    }
+    DefaultLinesDiffComputerWithSeparateRefinement.prototype.computeDiff = function (originalLines, modifiedLines, options) {
+        var _this = this;
+        if (originalLines.length <= 1 && equals(originalLines, modifiedLines, function (a, b) { return a === b; })) {
+            return new LinesDiff([], [], false);
+        }
+        if (originalLines.length === 1 && originalLines[0].length === 0 || modifiedLines.length === 1 && modifiedLines[0].length === 0) {
+            return new LinesDiff([
+                new DetailedLineRangeMapping(new LineRange(1, originalLines.length + 1), new LineRange(1, modifiedLines.length + 1), undefined)
+            ], [], false);
+        }
+        var timeout = options.maxComputationTimeMs === 0 ? InfiniteTimeout.instance : new DateTimeout(options.maxComputationTimeMs);
+        var perfectHashes = /* @__PURE__ */ new Map();
+        function getOrCreateHash(text) {
+            var hash = perfectHashes.get(text);
+            if (hash === undefined) {
+                hash = perfectHashes.size;
+                perfectHashes.set(text, hash);
+            }
+            return hash;
+        }
+        var getLineKey = options.ignoreTrimWhitespace ? function (line) { return line.trim(); } : function (line) { return line; };
+        var originalLinesHashes = originalLines.map(function (l) { return getOrCreateHash(getLineKey(l)); });
+        var modifiedLinesHashes = modifiedLines.map(function (l) { return getOrCreateHash(getLineKey(l)); });
+        var sequence1 = new LineSequence(originalLinesHashes, originalLines);
+        var sequence2 = new LineSequence(modifiedLinesHashes, modifiedLines);
+        var lineAlignmentResult = (function () {
+            if (sequence1.length + sequence2.length < 1700) {
+                return _this.lineDynamicProgrammingDiffing.compute(sequence1, sequence2, timeout, function (offset1, offset2) { return originalLines[offset1] === modifiedLines[offset2] ? modifiedLines[offset2].length === 0 ? 0.1 : 1 + Math.log(1 + modifiedLines[offset2].length) : 0.99; });
+            }
+            return _this.lineMyersDiffingAlgorithm.compute(sequence1, sequence2, timeout);
+        })();
+        var lineAlignments = lineAlignmentResult.diffs;
+        lineAlignments = optimizeSequenceDiffs(sequence1, sequence2, lineAlignments);
+        lineAlignments = removeVeryShortMatchingLinesBetweenDiffs(sequence1, sequence2, lineAlignments);
+        var changes = lineAlignments.map(toDetailedLineRangeMapping);
+        var moves = [];
+        if (options.computeMoves && !lineAlignmentResult.hitTimeout) {
+            var lineMoves = computeMovedLines(changes, originalLines, modifiedLines, originalLinesHashes, modifiedLinesHashes, timeout);
+            moves = lineMoves.map(function (move) { return new MovedText(move, []); });
+        }
+        assertFn(function () {
+            var e_21, _a;
+            function validateRange(range, lines) {
+                if (range.startLineNumber < 1 || range.startLineNumber > lines.length + 1) {
+                    return false;
+                }
+                if (range.endLineNumberExclusive < 1 || range.endLineNumberExclusive > lines.length + 1) {
+                    return false;
+                }
+                return true;
+            }
+            try {
+                for (var changes_4 = __values(changes), changes_4_1 = changes_4.next(); !changes_4_1.done; changes_4_1 = changes_4.next()) {
+                    var c = changes_4_1.value;
+                    if (!validateRange(c.modified, modifiedLines) || !validateRange(c.original, originalLines)) {
+                        return false;
+                    }
+                }
+            }
+            catch (e_21_1) { e_21 = { error: e_21_1 }; }
+            finally {
+                try {
+                    if (changes_4_1 && !changes_4_1.done && (_a = changes_4.return)) _a.call(changes_4);
+                }
+                finally { if (e_21) throw e_21.error; }
+            }
+            return true;
+        });
+        return new LinesDiff(changes, moves, lineAlignmentResult.hitTimeout);
+    };
+    return DefaultLinesDiffComputerWithSeparateRefinement;
+}(DefaultLinesDiffComputer));
+function toDetailedLineRangeMapping(sequenceDiff) {
+    return new DetailedLineRangeMapping(new LineRange(sequenceDiff.seq1Range.start + 1, sequenceDiff.seq1Range.endExclusive + 1), new LineRange(sequenceDiff.seq2Range.start + 1, sequenceDiff.seq2Range.endExclusive + 1), undefined);
+}
+function rangeMappingToCharChange(mapping) {
+    return {
+        originalStartLineNumber: mapping.originalRange.startLineNumber - 1,
+        originalStartColumn: mapping.originalRange.startColumn - 1,
+        originalEndLineNumber: mapping.originalRange.endLineNumber - 1,
+        originalEndColumn: mapping.originalRange.endColumn - 1,
+        modifiedStartLineNumber: mapping.modifiedRange.startLineNumber - 1,
+        modifiedStartColumn: mapping.modifiedRange.startColumn - 1,
+        modifiedEndLineNumber: mapping.modifiedRange.endLineNumber - 1,
+        modifiedEndColumn: mapping.modifiedRange.endColumn - 1
+    };
+}
+function computeDiff(originalLines, modifiedLines, options) {
+    var diffComputer = new DefaultLinesDiffComputerWithSeparateRefinement();
+    var result = diffComputer.computeDiff(originalLines, modifiedLines, options);
+    return result.changes.map(function (change) {
+        var _a;
+        return {
+            origStart: change.original.startLineNumber - 1,
+            origEnd: change.original.endLineNumberExclusive - 1,
+            editStart: change.modified.startLineNumber - 1,
+            editEnd: change.modified.endLineNumberExclusive - 1,
+            charChanges: (_a = change.innerChanges) === null || _a === void 0 ? void 0 : _a.map(rangeMappingToCharChange),
+            inlinePending: !result.hitTimeout && change.original.length > 0 && change.modified.length > 0
+        };
+    });
+}
+exports.computeDiff = computeDiff;
+var AceRange = require("../../../range").Range;
+var DiffChunk = require("../base_diff_view").DiffChunk;
+var DiffProvider = /** @class */ (function () {
+    function DiffProvider() {
+    }
+    DiffProvider.prototype.compute = function (originalLines, modifiedLines, opts) {
+        opts = Object.assign({}, opts);
+        if (opts.maxComputationTimeMs == null)
+            opts.maxComputationTimeMs = 500;
+        var chunks = computeDiff(originalLines, modifiedLines, opts) || [];
+        return chunks.map(function (c) { return new DiffChunk(new AceRange(c.origStart, 0, c.origEnd, 0), new AceRange(c.editStart, 0, c.editEnd, 0), c.charChanges, c.inlinePending); });
+    };
+    DiffProvider.prototype.refine = function (originalLines, modifiedLines, chunk, opts) {
+        opts = Object.assign({}, opts);
+        if (opts.maxComputationTimeMs == null)
+            opts.maxComputationTimeMs = 25;
+        var timeout = opts.maxComputationTimeMs === 0
+            ? InfiniteTimeout.instance
+            : new DateTimeout(opts.maxComputationTimeMs);
+        var computer = new DefaultLinesDiffComputerWithSeparateRefinement();
+        var result = computer.refineDiff(originalLines, modifiedLines, new SequenceDiff(new OffsetRange(chunk.old.start.row, chunk.old.end.row), new OffsetRange(chunk.new.start.row, chunk.new.end.row)), timeout, !opts.ignoreTrimWhitespace, opts);
+        var charChanges = result.mappings.map(rangeMappingToCharChange);
+        var refinedChunk = new DiffChunk(chunk.old, chunk.new, charChanges);
+        return {
+            charChanges: refinedChunk.charChanges,
+            hitTimeout: result.hitTimeout
+        };
+    };
+    return DiffProvider;
+}());
+exports.DiffProvider = DiffProvider;
+
+});
+
+define("ace/ext/diff",["require","exports","module","ace/ext/diff/inline_diff_view","ace/ext/diff/split_diff_view","ace/ext/diff/providers/default"], function(require, exports, module){/**
+ * ## Diff extension
+ *
+ * Provides side-by-side and inline diff view capabilities for comparing code differences between two versions.
+ * Supports visual highlighting of additions, deletions, and modifications with customizable diff providers
+ * and rendering options. Includes features for synchronized scrolling, line number alignment, and
+ * various diff computation algorithms.
+ *
+ * **Components:**
+ * - `InlineDiffView`: Single editor view showing changes inline with markers
+ * - `SplitDiffView`: Side-by-side comparison view with two synchronized editors
+ * - `DiffProvider`: Configurable algorithms for computing differences
+ *
+ * **Usage:**
+ * ```javascript
+ * const diffView = createDiffView({
+ *   valueA: originalContent,
+ *   valueB: modifiedContent,
+ *   inline: false // or 'a'/'b' for inline view
+ * });
+ * ```
+ *
+ * @module
+ */
+var InlineDiffView = require("./diff/inline_diff_view").InlineDiffView;
+var SplitDiffView = require("./diff/split_diff_view").SplitDiffView;
+var DiffProvider = require("./diff/providers/default").DiffProvider;
+function createDiffView(diffModel, options) {
+    diffModel = diffModel || {};
+    diffModel.diffProvider = diffModel.diffProvider || new DiffProvider(); //use default diff provider;
+    var diffView;
+    if (diffModel.inline) {
+        diffView = new InlineDiffView(diffModel);
+    }
+    else {
+        diffView = new SplitDiffView(diffModel);
+    }
+    if (options) {
+        diffView.setOptions(options);
+    }
+    return diffView;
+}
+exports.InlineDiffView = InlineDiffView;
+exports.SplitDiffView = SplitDiffView;
+exports.DiffProvider = DiffProvider;
+exports.createDiffView = createDiffView;
+
+});                (function() {
+                    window.require(["ace/ext/diff"], function(m) {
                         if (typeof module == "object" && typeof exports == "object" && module) {
                             module.exports = m;
                         }

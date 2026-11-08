@@ -1,6 +1,7 @@
 <?php
 // send_signature.php
-// PRODUCTION READY - Email body uses true CID images, attachment uses Base64 for offline capability.
+// Sends signatures by email (admin only, POST + CSRF, progress via Server-Sent Events).
+// The mail body uses CID images, the attachment uses Base64 images for offline use.
 
 require_once 'includes/config.php';
 require_once 'includes/MailHelper.php';
@@ -20,10 +21,9 @@ while (ob_get_level() > 0) {
     ob_end_clean();
 }
 
-// Server-Sent Events (SSE) Headers
 header('Content-Type: text/event-stream');
 header('Cache-Control: no-cache');
-header('Connection: keep-alive');
+header('X-Accel-Buffering: no'); // disable nginx buffering
 
 // ---------------------------------------------------------
 // 2. INPUT VALIDATION
@@ -33,7 +33,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     exit;
 }
 
-if (!isset($_POST['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $_POST['csrf_token'])) {
+if (!verifyCSRFToken($_POST['csrf_token'] ?? '')) {
     sendStreamResponse('fatal_error', 'Security Error: Invalid CSRF Token. Request blocked.');
     exit;
 }
@@ -43,14 +43,23 @@ if (empty($ids) || !is_array($ids)) {
     sendStreamResponse('fatal_error', 'No signature items selected for processing.');
     exit;
 }
+// Integers only, unique, and capped to protect the SMTP server and this process.
+$ids = array_values(array_unique(array_filter(array_map('intval', $ids), function ($v) { return $v > 0; })));
+if (count($ids) > 500) {
+    sendStreamResponse('fatal_error', 'Too many items selected (maximum 500 per run).');
+    exit;
+}
 
-// Extend script execution time for bulk operations
-set_time_limit(300);
+// The mail run can take minutes. Release the session lock now, otherwise
+// every other request of this user would block until the run is finished.
+session_write_close();
+set_time_limit(600);
 
 $total = count($ids);
 $successCount = 0;
 $failCount = 0;
 $processed = 0;
+$adminId = (int)($_SESSION['user_id'] ?? 0);
 
 // ---------------------------------------------------------
 // 3. CORE HELPER FUNCTIONS
@@ -65,7 +74,7 @@ function sendStreamResponse($status, $message, $progress = null) {
         'message' => $message,
         'progress'=> $progress
     ];
-    echo "data: " . json_encode($data) . "\n\n";
+    echo "data: " . json_encode($data, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE) . "\n\n";
     flush();
 }
 
@@ -73,9 +82,9 @@ function sendStreamResponse($status, $message, $progress = null) {
  * Retrieves the email wrapper template or uses a hardcoded secure fallback.
  */
 function getEmailBodyTemplate() {
-    $path = __DIR__ . '/templates/email_notification.html';
-    if (file_exists($path)) {
-        return file_get_contents($path);
+    $path = TEMPLATES_DIR . '/email_notification.html';
+    if (is_file($path)) {
+        return sanitizeTemplateHtml((string)file_get_contents($path));
     }
     return "<p>Hello {{NAME}},</p>
             <p>Your new signature is attached as <strong>{{ATTACHMENT_NAME}}</strong>.</p>
@@ -84,26 +93,10 @@ function getEmailBodyTemplate() {
 }
 
 /**
- * Security Feature: Fetches template content preventing directory traversal.
- */
-function getSecureTemplateContent($templateName) {
-    // basename() strips any path logic (like ../../) to lock requests to the templates folder
-    $cleanName = basename($templateName);
-    if (pathinfo($cleanName, PATHINFO_EXTENSION) !== 'html') {
-        return '';
-    }
-    $path = __DIR__ . '/templates/' . $cleanName;
-    return file_exists($path) ? file_get_contents($path) : '';
-}
-
-/**
  * Security Feature: Sanitizes the generated filename.
  */
 function createSafeFilename($userName, $templateName) {
-    // Allow only alphanumeric characters, underscores, and dashes
-    $safeName = str_replace(' ', '_', $userName);
-    $safeName = preg_replace('/[^a-zA-Z0-9_\-]/', '', $safeName);
-    return $safeName . '_' . $templateName;
+    return safeFileNamePart($userName) . '_' . preg_replace('/[^A-Za-z0-9_.\-]/', '', (string)$templateName);
 }
 
 /**
@@ -119,9 +112,6 @@ function embedLocalImagesAsBase64($html, $baseDir) {
         return $html;
     }
 
-    $realBase = realpath($baseDir);
-    if ($realBase === false) return $html;
-    
     $finfo = finfo_open(FILEINFO_MIME_TYPE);
 
     foreach ($matches as $imgTag) {
@@ -134,8 +124,8 @@ function embedLocalImagesAsBase64($html, $baseDir) {
         $imagePath = realpath($baseDir . '/' . ltrim($src, '/'));
         if ($imagePath === false || !is_file($imagePath) || !is_readable($imagePath)) continue;
 
-        // Security: Prevent directory traversal outside the base directory entirely
-        if (strpos($imagePath, $realBase) !== 0) continue;
+        // Security: only files inside the image directory may be embedded
+        if (!isPathInside($imagePath, IMAGES_DIR)) continue;
 
         // Security: Validate the actual file signature (MIME-Type) via finfo
         $mimeType = finfo_file($finfo, $imagePath);
@@ -170,11 +160,6 @@ function prepareCIDImages($html, $baseDir) {
         return ['html' => $html, 'embedded' => []];
     }
 
-    $realBase = realpath($baseDir);
-    if ($realBase === false) {
-        return ['html' => $html, 'embedded' => []];
-    }
-
     $finfo = finfo_open(FILEINFO_MIME_TYPE);
 
     foreach ($matches as $imgTag) {
@@ -192,8 +177,8 @@ function prepareCIDImages($html, $baseDir) {
             continue;
         }
 
-        // Security: Strictly prevent directory traversal outside the base directory
-        if (strpos($imagePath, $realBase) !== 0) {
+        // Security: only files inside the image directory may be embedded
+        if (!isPathInside($imagePath, IMAGES_DIR)) {
             continue;
         }
 
@@ -234,7 +219,7 @@ function prepareCIDImages($html, $baseDir) {
 // 4. ENVIRONMENT PREPARATION
 // ---------------------------------------------------------
 $emailBodyTemplate = getEmailBodyTemplate();
-$baseTemplatesDir = __DIR__;
+$baseTemplatesDir = APP_ROOT;
 
 // ---------------------------------------------------------
 // 5. BATCH PROCESSING LOOP
@@ -247,12 +232,10 @@ foreach ($ids as $sig_id) {
     }
 
     $processed++;
-    $sig_id = (int)$sig_id;
 
-    $stmt = $db->prepare("SELECT name, role, email, phone, template FROM user_signatures WHERE id = ?");
+    $stmt = $db->prepare('SELECT name, role, email, phone, template FROM user_signatures WHERE id = ?');
     $stmt->bindValue(1, $sig_id, SQLITE3_INTEGER);
-    $res = $stmt->execute();
-    $data = $res->fetchArray(SQLITE3_ASSOC);
+    $data = $stmt->execute()->fetchArray(SQLITE3_ASSOC);
 
     $progData = ['current' => $processed, 'total' => $total];
 
@@ -262,76 +245,51 @@ foreach ($ids as $sig_id) {
         continue;
     }
 
-    $recipient = $data['email'];
-    if (empty($recipient) || !filter_var($recipient, FILTER_VALIDATE_EMAIL)) {
+    $recipient = (string)$data['email'];
+    if ($recipient === '' || !filter_var($recipient, FILTER_VALIDATE_EMAIL)) {
         $failCount++;
-        $msg = "ID $sig_id: Invalid Email Address provided ($recipient)";
-        $db->exec("INSERT INTO mail_logs (signature_id, recipient, status, message) VALUES ($sig_id, '" . $db->escapeString($recipient) . "', 'error', '" . $db->escapeString($msg) . "')");
+        $msg = "ID $sig_id: Invalid email address ($recipient)";
+        logMail($db, $sig_id, $recipient, 'error', $msg);
         sendStreamResponse('error', $msg, $progData);
         continue;
     }
 
-    $rawHtml = getSecureTemplateContent($data['template']);
-    if (empty($rawHtml)) {
+    // Signature HTML: template (sanitised) with escaped values.
+    $finalSigHtml = renderStoredSignature($data);
+    if (trim($finalSigHtml) === '') {
         $failCount++;
-        $msg = "ID $sig_id: Associated template file missing (" . $data['template'] . ")";
-        $db->exec("INSERT INTO mail_logs (signature_id, recipient, status, message) VALUES ($sig_id, '" . $db->escapeString($recipient) . "', 'error', '" . $db->escapeString($msg) . "')");
+        $msg = "ID $sig_id: Template file missing (" . $data['template'] . ")";
+        logMail($db, $sig_id, $recipient, 'error', $msg);
         sendStreamResponse('error', $msg, $progData);
         continue;
     }
 
-    // Replace basic dynamic placeholders within the signature
-    $finalSigHtml = str_replace(
-        ['{{NAME}}', '{{ROLE}}', '{{EMAIL}}', '{{PHONE}}'],
-        [
-            htmlspecialchars($data['name']),
-            htmlspecialchars($data['role']),
-            htmlspecialchars($data['email']),
-            htmlspecialchars($data['phone'])
-        ],
-        $rawHtml
-    );
-
-    // --- ARCHITECTURE STRATEGY: TWO-PRONGED APPROACH ---
-
-    // 1. Prepare Base64 HTML exclusively for the .html attachment (Enables offline signature setup)
+    // Attachment: all local images inlined as Base64 so the file works offline.
     $attachmentHtml = embedLocalImagesAsBase64($finalSigHtml, $baseTemplatesDir);
     $attachmentName = createSafeFilename($data['name'], $data['template']);
 
-    // 2. Prepare raw email body wrapping the signature
+    // Mail body: the wrapper template around a preview of the signature (single pass replacement).
     $previewBlock = "<div style='border:1px dashed #ccc; padding:15px; margin-top:10px; background:#fff;'>" . $finalSigHtml . "</div>";
+    $mailBodyRaw = strtr($emailBodyTemplate, [
+        '{{NAME}}'            => e($data['name']),
+        '{{ATTACHMENT_NAME}}' => e($attachmentName),
+        '{{PREVIEW}}'         => $previewBlock,
+    ]);
 
-    $mailBodyRaw = str_replace(
-        ['{{NAME}}', '{{ATTACHMENT_NAME}}', '{{PREVIEW}}'],
-        [
-            htmlspecialchars($data['name']),
-            htmlspecialchars($attachmentName),
-            $previewBlock
-        ],
-        $emailBodyTemplate
-    );
-
-    // 3. Convert all local images in the entire email body (including the template) to standard CID references
+    // Local images in the body become CID references (real inline images).
     $cidData = prepareCIDImages($mailBodyRaw, $baseTemplatesDir);
     $finalMailBody  = $cidData['html'];
     $embeddedImages = $cidData['embedded'];
 
-    $subject = "Your New Email Signature";
+    $attachments = [[
+        'content' => $attachmentHtml,
+        'name'    => $attachmentName,
+    ]];
 
-    // Setup standard attachment (The HTML file with embedded Base64 images for Outlook/Apple Mail importing)
-    $attachments = [
-        [
-            'content' => $attachmentHtml,
-            'name'    => $attachmentName
-        ]
-    ];
-
-    // DISPATCH USING MAILHELPER (Passing the $embeddedImages array to trigger native CID handling)
-    $sendResult = MailHelper::send($recipient, $subject, $finalMailBody, '', false, $attachments, $embeddedImages);
+    $sendResult = MailHelper::send($recipient, 'Your New Email Signature', $finalMailBody, '', false, $attachments, $embeddedImages);
 
     $status = $sendResult['success'] ? 'success' : 'error';
-    $logMsg = $db->escapeString($sendResult['message']);
-    $db->exec("INSERT INTO mail_logs (signature_id, recipient, status, message) VALUES ($sig_id, '" . $db->escapeString($recipient) . "', '$status', '$logMsg')");
+    logMail($db, $sig_id, $recipient, $status, (string)$sendResult['message']);
 
     if ($sendResult['success']) {
         $successCount++;
@@ -341,7 +299,7 @@ foreach ($ids as $sig_id) {
         sendStreamResponse('error', "Delivery failed for: $recipient (" . $sendResult['message'] . ")", $progData);
     }
 
-    // Anti-Spam throttling implementation
+    // Anti-spam throttling
     usleep(500000);
     if ($successCount > 0 && $successCount % 10 === 0) {
         sleep(2);
@@ -358,11 +316,12 @@ if (method_exists('MailHelper', 'closeConnection')) {
 }
 
 $summary = "Batch operation complete! Success: $successCount, Failed: $failCount";
+logSecurityEventToDB($db, 'SIGNATURE_MAIL_BATCH', $adminId, "Success: $successCount, Failed: $failCount");
 $finalData = [
     'status'   => 'finished',
     'summary'  => $summary,
     'progress' => ['current' => $total, 'total' => $total]
 ];
-echo "data: " . json_encode($finalData) . "\n\n";
+echo "data: " . json_encode($finalData, JSON_UNESCAPED_UNICODE) . "\n\n";
 flush();
 ?>

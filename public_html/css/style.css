@@ -90,7 +90,7 @@ body {
     margin-top: 1rem; /* Reduziert */
     margin-bottom: 0.25rem; /* Reduziert */
     letter-spacing: 0.05em;
-    padding-left: 0.5rem; /* Bündig mit Text der Links */
+    padding-left: 0.5rem; /* Aligned with the link text */
 }
 
 /* Compact Link Styles */

@@ -1,210 +1,244 @@
 <?php
-// includes/config.php
-// PRODUCTION READY - SECURITY PRIO 1
+/**
+ * includes/config.php
+ *
+ * Entry point included by every web page. It loads the session-less core
+ * (bootstrap.php) and then adds everything that needs a browser session:
+ * secure session handling, security headers, CSRF protection and the
+ * authentication / authorisation helpers.
+ */
+
+require_once __DIR__ . '/bootstrap.php';
+
+// Absolute session lifetime (hours) and idle timeout (seconds).
+const SESSION_ABSOLUTE_TIMEOUT = 8 * 3600;
+const SESSION_IDLE_TIMEOUT     = 900;
+
+// Fixed bcrypt hash of a random value. Verifying against it for unknown
+// usernames keeps the response time equal to a real password check.
+const DUMMY_PASSWORD_HASH = '$2y$10$vAYvzqa.wVaWw4kqHyZhCesfkeZM4ckGyj8F6WU7dBtD57HJcFyl.';
 
 // ---------------------------------------------------------------------
-// 1. PATH DEFINITIONS & DIRECTORY CHECKS
+// 1. HTTPS ENFORCEMENT (optional, see FORCE_HTTPS in config.local.php)
 // ---------------------------------------------------------------------
-define('BASE_DIR', __DIR__ . '/../../private_data');
-define('DB_PATH', BASE_DIR . '/signatures.db');
-define('LOG_DIR', BASE_DIR . '/logs');
-
-// Ensure Log Directory exists
-if (!file_exists(LOG_DIR)) {
-    if (!mkdir(LOG_DIR, 0755, true)) {
-        error_log("CRITICAL: Failed to create log directory at: " . LOG_DIR);
+if (FORCE_HTTPS && !isHttpsRequest() && PHP_SAPI !== 'cli') {
+    $host = $_SERVER['HTTP_HOST'] ?? '';
+    // Only redirect to a syntactically valid host to avoid host-header abuse.
+    if (preg_match('/^[A-Za-z0-9.\-]+(:\d+)?$/', $host)) {
+        header('Location: https://' . $host . ($_SERVER['REQUEST_URI'] ?? '/'), true, 301);
+        exit;
     }
 }
 
 // ---------------------------------------------------------------------
-// 2. SECURE SESSION SETTINGS
+// 2. SECURE SESSION
 // ---------------------------------------------------------------------
 if (session_status() === PHP_SESSION_NONE) {
+    // Keep sessions in our own private directory instead of the shared system
+    // temp directory (other sites on the same host could read those files).
+    $sessionDir = BASE_DIR . '/sessions';
+    if (!is_dir($sessionDir)) {
+        @mkdir($sessionDir, 0700, true);
+    }
+    if (is_dir($sessionDir) && is_writable($sessionDir)) {
+        session_save_path($sessionDir);
+    }
+    ini_set('session.gc_maxlifetime', (string)SESSION_ABSOLUTE_TIMEOUT);
+    session_name('SUBSIGSID');
     session_start([
-        'cookie_httponly' => true,
-        'cookie_secure' => isset($_SERVER['HTTPS']), // Secure only if HTTPS is active
-        'cookie_samesite' => 'Strict',
-        'use_strict_mode' => true,
+        'cookie_httponly'  => true,
+        'cookie_secure'    => isHttpsRequest(),
+        'cookie_samesite'  => 'Strict',
+        'use_strict_mode'  => true,
         'use_only_cookies' => true,
-        'use_trans_sid' => false
+        'use_trans_sid'    => false,
     ]);
 }
 
-// Session Timeout (15 Minutes Idle)
-$timeout_duration = 900; 
-if (isset($_SESSION['last_activity'])) {
-    if ((time() - $_SESSION['last_activity']) > $timeout_duration) {
-        session_unset();
+/**
+ * Fully terminates the current session (data, server file and cookie).
+ */
+function destroySession(): void
+{
+    $_SESSION = [];
+    if (ini_get('session.use_cookies')) {
+        $p = session_get_cookie_params();
+        setcookie(session_name(), '', time() - 42000, $p['path'], $p['domain'], $p['secure'], $p['httponly']);
+    }
+    if (session_status() === PHP_SESSION_ACTIVE) {
         session_destroy();
-        header("Location: index.php?timeout=1");
+    }
+}
+
+// Idle timeout applies to logged-in sessions only.
+if (isset($_SESSION['loggedin']) && $_SESSION['loggedin'] === true) {
+    if (isset($_SESSION['last_activity']) && (time() - (int)$_SESSION['last_activity']) > SESSION_IDLE_TIMEOUT) {
+        destroySession();
+        header('Location: index.php?timeout=1');
         exit;
     }
 }
 $_SESSION['last_activity'] = time();
 
+// A CSRF token always exists after this point.
+if (empty($_SESSION['csrf_token'])) {
+    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+}
+
 // ---------------------------------------------------------------------
 // 3. SECURITY HEADERS
 // ---------------------------------------------------------------------
-header("X-Frame-Options: DENY");
-header("X-Content-Type-Options: nosniff");
-header("X-XSS-Protection: 1; mode=block");
-header("Referrer-Policy: strict-origin-when-cross-origin");
-header("Permissions-Policy: geolocation=(), microphone=(), camera=()"); 
 
-// ---------------------------------------------------------------------
-// 4. DATABASE CONNECTION
-// ---------------------------------------------------------------------
-$db_folder = dirname(DB_PATH);
+/**
+ * Sends the standard security headers including a Content-Security-Policy.
+ *
+ * The policy still allows inline scripts/styles (the UI uses them), but it
+ * blocks foreign script sources, plugins, framing and form targets. Image
+ * sources include https:/http: because signature templates reference remote
+ * images by design. A page can define CSP_ALLOW_EVAL before including this
+ * file when a bundled editor needs it (template editor).
+ */
+function sendSecurityHeaders(): void
+{
+    if (headers_sent()) {
+        return;
+    }
+    header_remove('X-Powered-By');
+    $scriptExtra = (defined('CSP_ALLOW_EVAL') && CSP_ALLOW_EVAL) ? " 'unsafe-eval'" : '';
+    $csp = "default-src 'self'; "
+         . "script-src 'self' 'unsafe-inline'" . $scriptExtra . "; "
+         . "style-src 'self' 'unsafe-inline'; "
+         . "img-src 'self' data: blob: https: http:; "
+         . "font-src 'self' data:; "
+         . "connect-src 'self'; "
+         . "worker-src 'self' blob:; "
+         . "frame-src 'self'; "
+         . "object-src 'none'; "
+         . "base-uri 'self'; "
+         . "form-action 'self'; "
+         . "frame-ancestors 'none'";
 
-// Check Permissions
-if (!is_dir($db_folder)) {
-    if (!mkdir($db_folder, 0755, true)) {
-        die("Setup Error: The private data directory is missing.");
+    header('Content-Security-Policy: ' . $csp);
+    header('X-Frame-Options: DENY');
+    header('X-Content-Type-Options: nosniff');
+    header('X-XSS-Protection: 0'); // legacy XSS auditors are harmful; CSP is the control
+    header('Referrer-Policy: same-origin');
+    header('Permissions-Policy: geolocation=(), microphone=(), camera=(), payment=()');
+    header('Cross-Origin-Opener-Policy: same-origin');
+    header('Cache-Control: no-store, max-age=0');
+    if (isHttpsRequest()) {
+        header('Strict-Transport-Security: max-age=31536000');
     }
 }
-if (!is_writable($db_folder)) {
-    die("CRITICAL ERROR: Web server needs WRITE access to: " . htmlspecialchars($db_folder));
-}
-
-try {
-    $db = new SQLite3(DB_PATH);
-    $db->busyTimeout(5000); 
-    $db->exec('PRAGMA foreign_keys = ON');
-    $db->exec('PRAGMA journal_mode = WAL;'); // Performance Mode
-} catch (Exception $e) {
-    error_log("Database Connection Error: " . $e->getMessage());
-    die("System Error. Please check server logs.");
-}
+sendSecurityHeaders();
 
 // ---------------------------------------------------------------------
-// 5. DATABASE INITIALIZATION (SCHEMA)
+// 4. INSTALLATION CHECK
 // ---------------------------------------------------------------------
-function initDatabase($db) {
-    // 1. Users
-    $db->exec("CREATE TABLE IF NOT EXISTS users (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        username TEXT UNIQUE NOT NULL,
-        password_hash TEXT NOT NULL,
-        email TEXT,
-        full_name TEXT,
-        role TEXT DEFAULT 'user',
-        is_active BOOLEAN DEFAULT 1,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        last_login DATETIME,
-        failed_login_attempts INTEGER DEFAULT 0,
-        last_failed_login DATETIME,
-        account_locked_until DATETIME
-    )");
-    
-    // 2. Signatures
-    $db->exec("CREATE TABLE IF NOT EXISTS user_signatures (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id INTEGER NOT NULL,
-        name TEXT NOT NULL,
-        role TEXT,
-        email TEXT,
-        phone TEXT,
-        template TEXT DEFAULT 'signature_default.html',
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-    )");
-    
-    // 3. Settings (User preferences)
-    $db->exec("CREATE TABLE IF NOT EXISTS user_settings (
-        user_id INTEGER PRIMARY KEY,
-        default_template TEXT DEFAULT 'signature_default.html',
-        theme TEXT DEFAULT 'light',
-        items_per_page INTEGER DEFAULT 10,
-        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-    )");
-    
-    // 4. System Config (SMTP, Defaults)
-    $db->exec("CREATE TABLE IF NOT EXISTS system_settings (
-        setting_key TEXT PRIMARY KEY, 
-        setting_value TEXT
-    )");
-    // Default: New users inactive
-    $db->exec("INSERT OR IGNORE INTO system_settings (setting_key, setting_value) VALUES ('default_user_active', '0')");
-    
-    // 5. Logging Tables
-    $db->exec("CREATE TABLE IF NOT EXISTS login_attempts (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        ip_address TEXT NOT NULL,
-        username TEXT,
-        attempted_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        successful BOOLEAN DEFAULT 0,
-        user_agent TEXT
-    )");
-    
-    $db->exec("CREATE TABLE IF NOT EXISTS security_events (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        event_type TEXT NOT NULL,
-        user_id INTEGER,
-        ip_address TEXT NOT NULL,
-        user_agent TEXT,
-        details TEXT,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
-    )");
-
-    $db->exec("CREATE TABLE IF NOT EXISTS mail_logs (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        signature_id INTEGER,
-        recipient TEXT,
-        status TEXT,
-        message TEXT,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    )");
-}
-initDatabase($db);
-
-// ---------------------------------------------------------------------
-// 6. INSTALLATION & SYSTEM CHECK
-// ---------------------------------------------------------------------
-$currentScript = basename($_SERVER['PHP_SELF']);
+$currentScript = basename($_SERVER['PHP_SELF'] ?? '');
 if ($currentScript !== 'install.php') {
-    // Check for Users Table
     $tablesExist = $db->querySingle("SELECT name FROM sqlite_master WHERE type='table' AND name='users'");
-    if (!$tablesExist) { header('Location: install.php'); exit; }
-    
-    // Check for Admin Account
-    $adminCount = $db->querySingle("SELECT COUNT(*) FROM users WHERE role = 'admin'");
-    if ($adminCount == 0) { header('Location: install.php'); exit; }
+    $adminCount  = $tablesExist ? (int)$db->querySingle("SELECT COUNT(*) FROM users WHERE role = 'admin'") : 0;
+    if (!$tablesExist || $adminCount === 0) {
+        header('Location: install.php');
+        exit;
+    }
 }
 
 // ---------------------------------------------------------------------
-// 7. AUTH & ACCESS CONTROL HELPERS
+// 5. AUTHENTICATION & ACCESS CONTROL
 // ---------------------------------------------------------------------
 
-function isAdmin() {
+function isAdmin(): bool
+{
     return isset($_SESSION['role']) && $_SESSION['role'] === 'admin';
 }
 
-function isLoggedIn() {
+function isLoggedIn(): bool
+{
     return isset($_SESSION['loggedin']) && $_SESSION['loggedin'] === true;
 }
 
-function requireLogin() {
-    if (!isLoggedIn()) {
+/**
+ * Short fingerprint of the stored password hash. It is kept in the session so
+ * that a password change or reset invalidates all other sessions of the user.
+ */
+function passwordFingerprint(string $passwordHash): string
+{
+    return hash_hmac('sha256', $passwordHash, appSecretKey());
+}
+
+/**
+ * Establishes a fresh authenticated session for a user row.
+ */
+function startUserSession(array $user): void
+{
+    session_regenerate_id(true); // prevents session fixation
+    $_SESSION['loggedin']      = true;
+    $_SESSION['user_id']       = (int)$user['id'];
+    $_SESSION['username']      = $user['username'];
+    $_SESSION['role']          = $user['role'];
+    $_SESSION['full_name']     = $user['full_name'];
+    $_SESSION['email']         = $user['email'];
+    $_SESSION['last_activity'] = time();
+    $_SESSION['login_time']    = time();
+    $_SESSION['pw_fp']         = passwordFingerprint($user['password_hash']);
+    $_SESSION['csrf_token']    = bin2hex(random_bytes(32));
+}
+
+/**
+ * Requires a valid login. On every request the account is re-read from the
+ * database, so deactivated, deleted or demoted users lose access immediately
+ * and the role is never trusted from a stale session.
+ */
+function requireLogin(): void
+{
+    global $db;
+
+    if (!isLoggedIn() || empty($_SESSION['user_id'])) {
         header('Location: index.php');
         exit;
     }
-    // Security Prio 1: Check if account is still active immediately
-    global $db;
-    $stmt = $db->prepare("SELECT is_active FROM users WHERE id = ?");
-    $stmt->bindValue(1, $_SESSION['user_id'], SQLITE3_INTEGER);
-    $result = $stmt->execute();
-    
-    if ($user = $result->fetchArray(SQLITE3_ASSOC)) {
-        if ($user['is_active'] == 0) {
-            session_destroy();
-            header('Location: index.php?error=Account+deactivated');
-            exit;
-        }
+
+    if (isset($_SESSION['login_time']) && (time() - (int)$_SESSION['login_time']) > SESSION_ABSOLUTE_TIMEOUT) {
+        destroySession();
+        header('Location: index.php?timeout=1');
+        exit;
     }
+
+    $stmt = $db->prepare('SELECT username, password_hash, role, is_active, full_name, email FROM users WHERE id = ?');
+    $stmt->bindValue(1, (int)$_SESSION['user_id'], SQLITE3_INTEGER);
+    $user = $stmt->execute()->fetchArray(SQLITE3_ASSOC);
+
+    if (!$user) {
+        destroySession();
+        header('Location: index.php');
+        exit;
+    }
+    if ((int)$user['is_active'] === 0) {
+        destroySession();
+        header('Location: index.php?error=deactivated');
+        exit;
+    }
+
+    $fingerprint = passwordFingerprint($user['password_hash']);
+    if (empty($_SESSION['pw_fp'])) {
+        $_SESSION['pw_fp'] = $fingerprint;              // session created before this check existed
+    } elseif (!hash_equals($_SESSION['pw_fp'], $fingerprint)) {
+        destroySession();                               // password was changed elsewhere
+        header('Location: index.php?timeout=1');
+        exit;
+    }
+
+    // Keep session copies in sync with the database.
+    $_SESSION['username']  = $user['username'];
+    $_SESSION['role']      = $user['role'];
+    $_SESSION['full_name'] = $user['full_name'];
+    $_SESSION['email']     = $user['email'];
 }
 
-function requireAdmin() {
+function requireAdmin(): void
+{
     requireLogin();
     if (!isAdmin()) {
         header('Location: generator.php');
@@ -212,153 +246,119 @@ function requireAdmin() {
     }
 }
 
-// CSRF Helpers
-function generateCSRFToken() {
+// ---------------------------------------------------------------------
+// 6. CSRF PROTECTION
+// ---------------------------------------------------------------------
+
+function generateCSRFToken(): string
+{
     if (empty($_SESSION['csrf_token'])) {
         $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
     }
     return $_SESSION['csrf_token'];
 }
 
-function verifyCSRFToken($token) {
-    return isset($_SESSION['csrf_token']) && hash_equals($_SESSION['csrf_token'], $token);
+function verifyCSRFToken($token): bool
+{
+    return is_string($token)
+        && isset($_SESSION['csrf_token'])
+        && hash_equals($_SESSION['csrf_token'], $token);
+}
+
+/**
+ * Aborts with HTTP 403 unless the request carries a valid CSRF token
+ * (POST field "csrf_token" or the X-CSRF-Token header).
+ */
+function requireCsrf(): void
+{
+    $token = $_POST['csrf_token'] ?? ($_SERVER['HTTP_X_CSRF_TOKEN'] ?? '');
+    if (!verifyCSRFToken($token)) {
+        http_response_code(403);
+        die('Security error: invalid CSRF token. Please reload the page and try again.');
+    }
+}
+
+/**
+ * Hidden form field with the CSRF token.
+ */
+function csrfField(): string
+{
+    return '<input type="hidden" name="csrf_token" value="' . e(generateCSRFToken()) . '">';
+}
+
+/**
+ * <meta> tag read by js/post-action.js for button-driven POST requests.
+ */
+function csrfMeta(): string
+{
+    return '<meta name="csrf-token" content="' . e(generateCSRFToken()) . '">';
 }
 
 // ---------------------------------------------------------------------
-// 8. SECURITY & LOGGING FUNCTIONS
+// 7. FLASH MESSAGES (survive one redirect, never put in URLs)
 // ---------------------------------------------------------------------
 
-// Rate Limiting (Prevent Brute Force)
-function checkRateLimit($action, $limit = 5, $timeframe = 300) {
-    if (!isset($_SESSION['rate_limits'])) $_SESSION['rate_limits'] = [];
-    
-    $ip = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
-    $key = "{$action}_{$ip}";
-    $current_time = time();
-    
-    if (!isset($_SESSION['rate_limits'][$key])) {
-        $_SESSION['rate_limits'][$key] = ['count' => 1, 'first' => $current_time];
-        return true;
-    }
-    
-    // Reset if timeframe expired
-    if ($current_time - $_SESSION['rate_limits'][$key]['first'] > $timeframe) {
-        $_SESSION['rate_limits'][$key] = ['count' => 1, 'first' => $current_time];
-        return true;
-    }
-    
-    // Check limit
-    if ($_SESSION['rate_limits'][$key]['count'] >= $limit) {
-        global $db;
-        logSecurityEventToDB($db, 'RATE_LIMIT_EXCEEDED', null, "Action: $action, IP: $ip");
-        return false;
-    }
-    
-    $_SESSION['rate_limits'][$key]['count']++;
-    return true;
+function setFlash(string $type, string $message): void
+{
+    $_SESSION['flash'][$type] = $message;
 }
 
-// Database Logging
-function logSecurityEventToDB($db, $event_type, $user_id = null, $details = '') {
-    $ip = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
-    $ua = $_SERVER['HTTP_USER_AGENT'] ?? 'Unknown';
-    try {
-        $stmt = $db->prepare("INSERT INTO security_events (event_type, user_id, ip_address, user_agent, details) VALUES (?, ?, ?, ?, ?)");
-        $stmt->bindValue(1, $event_type, SQLITE3_TEXT);
-        $stmt->bindValue(2, $user_id, SQLITE3_INTEGER);
-        $stmt->bindValue(3, $ip, SQLITE3_TEXT);
-        $stmt->bindValue(4, $ua, SQLITE3_TEXT);
-        $stmt->bindValue(5, $details, SQLITE3_TEXT);
-        $stmt->execute();
-    } catch (Exception $e) {
-        // Silent fail or file log
-        error_log("DB Log Error: " . $e->getMessage());
-    }
+function popFlash(string $type): string
+{
+    $msg = $_SESSION['flash'][$type] ?? '';
+    unset($_SESSION['flash'][$type]);
+    return (string)$msg;
 }
 
-// Login Logic (Attempts, Locking)
-function logLoginAttempt($db, $username, $successful, $ip = null, $user_agent = null) {
-    $ip = $ip ?? ($_SERVER['REMOTE_ADDR'] ?? '0.0.0.0');
-    $ua = $user_agent ?? ($_SERVER['HTTP_USER_AGENT'] ?? 'Unknown');
-    
-    $stmt = $db->prepare("INSERT INTO login_attempts (ip_address, username, successful, user_agent) VALUES (?, ?, ?, ?)");
+// ---------------------------------------------------------------------
+// 8. LOGIN BOOKKEEPING
+// ---------------------------------------------------------------------
+
+/**
+ * Records a login attempt and updates the per-account counters.
+ */
+function logLoginAttempt($db, $username, $successful, $ip = null, $user_agent = null): void
+{
+    $ip = $ip ?? getClientIp();
+    $ua = cleanText($user_agent ?? ($_SERVER['HTTP_USER_AGENT'] ?? 'Unknown'), 255);
+    $username = cleanText($username, 64);
+
+    $stmt = $db->prepare('INSERT INTO login_attempts (ip_address, username, successful, user_agent) VALUES (?, ?, ?, ?)');
     $stmt->bindValue(1, $ip, SQLITE3_TEXT);
     $stmt->bindValue(2, $username, SQLITE3_TEXT);
     $stmt->bindValue(3, $successful ? 1 : 0, SQLITE3_INTEGER);
     $stmt->bindValue(4, $ua, SQLITE3_TEXT);
     $stmt->execute();
-    
-    if (!$successful && !empty($username)) {
+
+    if ($username === '') {
+        return;
+    }
+
+    if (!$successful) {
         $stmt = $db->prepare("UPDATE users SET failed_login_attempts = failed_login_attempts + 1, last_failed_login = datetime('now') WHERE username = ?");
         $stmt->bindValue(1, $username, SQLITE3_TEXT);
         $stmt->execute();
-        logSecurityEventToDB($db, 'LOGIN_FAILED', null, "User: $username");
+        logSecurityEventToDB($db, 'LOGIN_FAILED', null, 'User: ' . $username);
+        return;
     }
-    
-    if ($successful && !empty($username)) {
-        $stmt = $db->prepare("UPDATE users SET failed_login_attempts = 0, last_login = datetime('now'), account_locked_until = NULL WHERE username = ?");
-        $stmt->bindValue(1, $username, SQLITE3_TEXT);
-        $stmt->execute();
-        
-        $uID = $db->querySingle("SELECT id FROM users WHERE username = '" . $db->escapeString($username) . "'");
-        if($uID) logSecurityEventToDB($db, 'LOGIN_SUCCESS', $uID, "User: $username");
-    }
-}
 
-function isAccountLocked($db, $username) {
-    $stmt = $db->prepare("SELECT failed_login_attempts, account_locked_until FROM users WHERE username = ?");
+    $stmt = $db->prepare("UPDATE users SET failed_login_attempts = 0, last_login = datetime('now'), account_locked_until = NULL WHERE username = ?");
     $stmt->bindValue(1, $username, SQLITE3_TEXT);
-    $res = $stmt->execute();
-    
-    if ($user = $res->fetchArray(SQLITE3_ASSOC)) {
-        if ($user['failed_login_attempts'] >= 5) {
-            if (!empty($user['account_locked_until'])) {
-                // Check if lock expired
-                if (time() < strtotime($user['account_locked_until'])) return true; 
-                // Unlock
-                $db->exec("UPDATE users SET failed_login_attempts = 0, account_locked_until = NULL WHERE username = '" . $db->escapeString($username) . "'");
-                return false;
-            } else {
-                // Set Lock (15 Min)
-                $lock = date('Y-m-d H:i:s', time() + 900);
-                $stmt = $db->prepare("UPDATE users SET account_locked_until = ? WHERE username = ?");
-                $stmt->bindValue(1, $lock, SQLITE3_TEXT);
-                $stmt->bindValue(2, $username, SQLITE3_TEXT);
-                $stmt->execute();
-                logSecurityEventToDB($db, 'ACCOUNT_LOCKED', null, "User: $username");
-                return true;
-            }
-        }
+    $stmt->execute();
+
+    $stmt = $db->prepare('SELECT id FROM users WHERE username = ?');
+    $stmt->bindValue(1, $username, SQLITE3_TEXT);
+    $row = $stmt->execute()->fetchArray(SQLITE3_ASSOC);
+    if ($row) {
+        logSecurityEventToDB($db, 'LOGIN_SUCCESS', (int)$row['id'], 'User: ' . $username);
     }
-    return false;
 }
 
-// ---------------------------------------------------------------------
-// 9. UTILITIES & ERROR HANDLING
-// ---------------------------------------------------------------------
-
-function validatePasswordPolicy($password) {
-    $errors = [];
-    if (strlen($password) < 8) $errors[] = "Password must be at least 8 characters";
-    if (!preg_match('/[A-Z]/', $password)) $errors[] = "At least one uppercase letter";
-    if (!preg_match('/[a-z]/', $password)) $errors[] = "At least one lowercase letter";
-    if (!preg_match('/[0-9]/', $password)) $errors[] = "At least one number";
-    return $errors;
+/**
+ * True while a username is throttled after too many failed logins. The check
+ * does not depend on the account existing, so it does not reveal valid names.
+ */
+function isAccountLocked($db, $username): bool
+{
+    return rateLimitIsBlocked('login_user', 5, 900, mb_strtolower((string)$username, 'UTF-8'));
 }
-
-function sanitizeInput($input) {
-    if (is_array($input)) return array_map('sanitizeInput', $input);
-    return htmlspecialchars(trim($input), ENT_QUOTES, 'UTF-8');
-}
-
-// Disable Display Errors for Production
-ini_set('display_errors', 0);
-ini_set('log_errors', 1);
-ini_set('error_log', LOG_DIR . '/php_errors.log');
-
-// Class Autoloader
-spl_autoload_register(function ($class_name) {
-    $file = __DIR__ . '/../classes/' . $class_name . '.php';
-    if (file_exists($file)) require_once $file;
-});
-?>

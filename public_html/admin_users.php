@@ -4,83 +4,70 @@
 require_once 'includes/config.php';
 requireAdmin();
 
-// 1. Initialize Variables & CSRF
-$message = '';
-$error = '';
+// 1. Messages (flash messages survive exactly one redirect)
+$message = popFlash('success');
+$error = popFlash('error');
 
-if (empty($_SESSION['csrf_token'])) {
-    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
-}
-
-// 2. HANDLE POST REQUESTS (Secure Password Reset)
+// 2. HANDLE POST REQUESTS (all state-changing actions: POST + CSRF)
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    // Security: Verify CSRF Token
-    if (!isset($_POST['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $_POST['csrf_token'])) {
-        die("Security Error: Invalid CSRF Token.");
-    }
+    requireCsrf();
 
-    if (isset($_POST['action']) && $_POST['action'] === 'reset_password') {
-        $target_user_id = (int)$_POST['user_id'];
-        $new_password = $_POST['new_password'];
-        
-        if (empty($new_password) || strlen($new_password) < 8) {
-            $error = "Password must be at least 8 characters long.";
+    $action = $_POST['action'] ?? '';
+    $target_user_id = (int)($_POST['user_id'] ?? 0);
+    $self_id = (int)$_SESSION['user_id'];
+
+    // Name of the target for the audit log (also verifies that it exists).
+    $stmt = $db->prepare('SELECT username FROM users WHERE id = ?');
+    $stmt->bindValue(1, $target_user_id, SQLITE3_INTEGER);
+    $target = $stmt->execute()->fetchArray(SQLITE3_ASSOC);
+
+    if (!$target) {
+        setFlash('error', 'User not found.');
+    } elseif ($action === 'reset_password') {
+        $new_password = is_string($_POST['new_password'] ?? null) ? $_POST['new_password'] : '';
+        $policyErrors = validatePasswordPolicy($new_password);
+        if ($policyErrors) {
+            setFlash('error', 'Password too weak: ' . implode('; ', $policyErrors) . '.');
         } else {
-            $new_hash = password_hash($new_password, PASSWORD_DEFAULT);
-            $stmt = $db->prepare("UPDATE users SET password_hash = ? WHERE id = ?");
-            $stmt->bindValue(1, $new_hash, SQLITE3_TEXT);
+            $stmt = $db->prepare('UPDATE users SET password_hash = ?, failed_login_attempts = 0, account_locked_until = NULL WHERE id = ?');
+            $stmt->bindValue(1, password_hash($new_password, PASSWORD_DEFAULT), SQLITE3_TEXT);
             $stmt->bindValue(2, $target_user_id, SQLITE3_INTEGER);
-            
-            if ($stmt->execute()) {
-                $message = "Password successfully reset for user ID #$target_user_id.";
-            } else {
-                $error = "Database error while resetting password.";
-            }
+            $stmt->execute();
+            // Existing sessions of that user end automatically (password fingerprint changes).
+            logSecurityEventToDB($db, 'ADMIN_PASSWORD_RESET', $self_id, 'Target: ' . $target['username']);
+            setFlash('success', 'Password successfully reset for user ' . $target['username'] . '.');
         }
-    }
-}
-
-// 3. HANDLE GET ACTIONS
-if (isset($_GET['action'])) {
-    $user_id = (int)$_GET['user_id'];
-    $action = $_GET['action'];
-    
-    switch ($action) {
-        case 'activate':
-            $stmt = $db->prepare("UPDATE users SET is_active = 1 WHERE id = ? AND id != ?");
-            $stmt->bindValue(1, $user_id, SQLITE3_INTEGER);
-            $stmt->bindValue(2, $_SESSION['user_id'], SQLITE3_INTEGER); 
+    } elseif ($target_user_id === $self_id) {
+        // Admins cannot lock themselves out (deactivate / demote / delete themselves).
+        setFlash('error', 'You cannot change your own account here.');
+    } else {
+        $done = true;
+        switch ($action) {
+            case 'activate':
+                $sql = 'UPDATE users SET is_active = 1 WHERE id = ?';
+                break;
+            case 'deactivate':
+                $sql = 'UPDATE users SET is_active = 0 WHERE id = ?';
+                break;
+            case 'make_admin':
+                $sql = "UPDATE users SET role = 'admin' WHERE id = ?";
+                break;
+            case 'make_user':
+                $sql = "UPDATE users SET role = 'user' WHERE id = ?";
+                break;
+            case 'delete':
+                $sql = 'DELETE FROM users WHERE id = ?';
+                break;
+            default:
+                $done = false;
+        }
+        if ($done) {
+            $stmt = $db->prepare($sql);
+            $stmt->bindValue(1, $target_user_id, SQLITE3_INTEGER);
             $stmt->execute();
-            break;
-            
-        case 'deactivate':
-            $stmt = $db->prepare("UPDATE users SET is_active = 0 WHERE id = ? AND id != ?");
-            $stmt->bindValue(1, $user_id, SQLITE3_INTEGER);
-            $stmt->bindValue(2, $_SESSION['user_id'], SQLITE3_INTEGER);
-            $stmt->execute();
-            break;
-            
-        case 'make_admin':
-            $stmt = $db->prepare("UPDATE users SET role = 'admin' WHERE id = ? AND id != ?");
-            $stmt->bindValue(1, $user_id, SQLITE3_INTEGER);
-            $stmt->bindValue(2, $_SESSION['user_id'], SQLITE3_INTEGER);
-            $stmt->execute();
-            break;
-            
-        case 'make_user':
-            $stmt = $db->prepare("UPDATE users SET role = 'user' WHERE id = ? AND id != ?");
-            $stmt->bindValue(1, $user_id, SQLITE3_INTEGER);
-            $stmt->bindValue(2, $_SESSION['user_id'], SQLITE3_INTEGER);
-            $stmt->execute();
-            break;
-            
-        case 'delete':
-            if ($user_id != $_SESSION['user_id']) {
-                $stmt = $db->prepare("DELETE FROM users WHERE id = ?");
-                $stmt->bindValue(1, $user_id, SQLITE3_INTEGER);
-                $stmt->execute();
-            }
-            break;
+            logSecurityEventToDB($db, 'ADMIN_USER_' . strtoupper($action), $self_id, 'Target: ' . $target['username']);
+            setFlash('success', 'Action completed for user ' . $target['username'] . '.');
+        }
     }
     header('Location: admin_users.php');
     exit;
@@ -88,7 +75,7 @@ if (isset($_GET['action'])) {
 
 // 4. LOAD DATA
 $stmt = $db->prepare("SELECT id, username, email, full_name, role, is_active, 
-                     created_at, last_login FROM users ORDER BY created_at DESC");
+                     created_at, last_login, auth_source FROM users ORDER BY created_at DESC, id DESC");
 $result = $stmt->execute();
 $users = [];
 while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
@@ -97,8 +84,8 @@ while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
 
 // Statistics
 $total_users = count($users);
-$active_users = array_filter($users, fn($u) => $u['is_active'] == 1);
-$admin_users = array_filter($users, fn($u) => $u['role'] == 'admin');
+$active_users = array_filter($users, function ($u) { return $u['is_active'] == 1; });
+$admin_users = array_filter($users, function ($u) { return $u['role'] == 'admin'; });
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -107,7 +94,8 @@ $admin_users = array_filter($users, fn($u) => $u['role'] == 'admin');
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>User Management - SubSignature</title>
     <link rel="stylesheet" href="css/style.css">
-    <link rel="stylesheet" href="css/all.min.css">    
+    <link rel="stylesheet" href="css/all.min.css">
+    <?php echo csrfMeta(); ?>
     <style>
         /* --- Layout Fixes --- */
         .page-header-actions { 
@@ -170,7 +158,7 @@ $admin_users = array_filter($users, fn($u) => $u['role'] == 'admin');
             <div class="user-profile">
                 <div class="avatar"><?php echo strtoupper(substr($_SESSION['username'], 0, 1)); ?></div>
                 <div class="user-info">
-                    <div><?php echo htmlspecialchars($_SESSION['username']); ?></div>
+                    <div><?php echo e($_SESSION['username']); ?></div>
                     <span>Administrator</span>
                 </div>
             </div>
@@ -191,10 +179,10 @@ $admin_users = array_filter($users, fn($u) => $u['role'] == 'admin');
         </div>
 
         <?php if ($message): ?>
-            <div class="alert alert-success" style="padding: 1rem; background: #dcfce7; color: #166534; border-radius: 8px; margin-bottom: 1.5rem;"><i class="fas fa-check-circle"></i> <?php echo htmlspecialchars($message); ?></div>
+            <div class="alert alert-success" style="padding: 1rem; background: #dcfce7; color: #166534; border-radius: 8px; margin-bottom: 1.5rem;"><i class="fas fa-check-circle"></i> <?php echo e($message); ?></div>
         <?php endif; ?>
         <?php if ($error): ?>
-            <div class="alert alert-error" style="padding: 1rem; background: #fee2e2; color: #991b1b; border-radius: 8px; margin-bottom: 1.5rem;"><i class="fas fa-exclamation-circle"></i> <?php echo htmlspecialchars($error); ?></div>
+            <div class="alert alert-error" style="padding: 1rem; background: #fee2e2; color: #991b1b; border-radius: 8px; margin-bottom: 1.5rem;"><i class="fas fa-exclamation-circle"></i> <?php echo e($error); ?></div>
         <?php endif; ?>
 
         <div class="stats-grid">
@@ -240,19 +228,22 @@ $admin_users = array_filter($users, fn($u) => $u['role'] == 'admin');
                         <tr>
                             <td>#<?php echo $user['id']; ?></td>
                             <td>
-                                <a href="profile.php?user_id=<?php echo $user['id']; ?>" class="username-link" title="Edit Profile">
-                                    <?php echo htmlspecialchars($user['username']); ?>
+                                <a href="profile.php?user_id=<?php echo (int)$user['id']; ?>" class="username-link" title="Edit Profile">
+                                    <?php echo e($user['username']); ?>
                                     <i class="fas fa-pen"></i>
                                 </a>
                                 <?php if ($user['id'] == $_SESSION['user_id']): ?>
                                     <span class="badge-self">YOU</span>
                                 <?php endif; ?>
+                                <?php if (($user['auth_source'] ?? 'local') === 'ldap'): ?>
+                                    <span class="badge badge-user" title="Imported from LDAP / Active Directory">LDAP</span>
+                                <?php endif; ?>
                                 <div style="font-size:0.85rem; color:var(--text-muted); margin-top:2px;">
-                                    <?php echo htmlspecialchars($user['email'] ?: 'No email'); ?>
+                                    <?php echo e($user['email'] ?: 'No email'); ?>
                                 </div>
                             </td>
                             <td>
-                                <?php echo htmlspecialchars($user['full_name'] ?: '-'); ?>
+                                <?php echo e($user['full_name'] ?: '-'); ?>
                             </td>
                             <td>
                                 <?php if ($user['role'] == 'admin'): ?>
@@ -269,33 +260,33 @@ $admin_users = array_filter($users, fn($u) => $u['role'] == 'admin');
                                 <?php endif; ?>
                             </td>
                             <td style="color:var(--text-muted); font-size:0.9rem;">
-                                <?php echo date('M d, Y', strtotime($user['created_at'])); ?>
+                                <?php echo e(date('M d, Y', strtotime($user['created_at']) ?: time())); ?>
                             </td>
                             <td style="color:var(--text-muted); font-size:0.9rem;">
-                                <?php echo $user['last_login'] ? date('M d, H:i', strtotime($user['last_login'])) : 'Never'; ?>
+                                <?php echo $user['last_login'] ? e(date('M d, H:i', strtotime($user['last_login']) ?: time())) : 'Never'; ?>
                             </td>
                             <td style="text-align:right;">
                                 <div style="display:inline-flex; gap:0.25rem;">
                                     <?php if ($user['id'] != $_SESSION['user_id']): ?>
                                         <button type="button" class="btn-icon warning" 
-                                                onclick="openResetModal(<?php echo $user['id']; ?>, '<?php echo htmlspecialchars($user['username'], ENT_QUOTES); ?>')"
+                                                data-reset-id="<?php echo (int)$user['id']; ?>" data-reset-name="<?php echo e($user['username']); ?>"
                                                 title="Reset Password">
                                             <i class="fas fa-key"></i>
                                         </button>
 
                                         <?php if ($user['is_active']): ?>
-                                            <a href="admin_users.php?action=deactivate&user_id=<?php echo $user['id']; ?>" class="btn-icon warning" onclick="return confirm('Deactivate this user?')" title="Deactivate"><i class="fas fa-user-slash"></i></a>
+                                            <button type="button" data-post="admin_users.php" data-params='{"action":"deactivate","user_id":"<?php echo (int)$user['id']; ?>"}' class="btn-icon warning" data-confirm="Deactivate this user?" title="Deactivate"><i class="fas fa-user-slash"></i></button>
                                         <?php else: ?>
-                                            <a href="admin_users.php?action=activate&user_id=<?php echo $user['id']; ?>" class="btn-icon success" onclick="return confirm('Activate this user?')" title="Activate"><i class="fas fa-user-check"></i></a>
+                                            <button type="button" data-post="admin_users.php" data-params='{"action":"activate","user_id":"<?php echo (int)$user['id']; ?>"}' class="btn-icon success" data-confirm="Activate this user?" title="Activate"><i class="fas fa-user-check"></i></button>
                                         <?php endif; ?>
                                         
                                         <?php if ($user['role'] == 'user'): ?>
-                                            <a href="admin_users.php?action=make_admin&user_id=<?php echo $user['id']; ?>" class="btn-icon" onclick="return confirm('Promote to Admin?')" title="Promote"><i class="fas fa-arrow-up"></i></a>
+                                            <button type="button" data-post="admin_users.php" data-params='{"action":"make_admin","user_id":"<?php echo (int)$user['id']; ?>"}' class="btn-icon" data-confirm="Promote to Admin?" title="Promote"><i class="fas fa-arrow-up"></i></button>
                                         <?php else: ?>
-                                            <a href="admin_users.php?action=make_user&user_id=<?php echo $user['id']; ?>" class="btn-icon" onclick="return confirm('Demote to User?')" title="Demote"><i class="fas fa-arrow-down"></i></a>
+                                            <button type="button" data-post="admin_users.php" data-params='{"action":"make_user","user_id":"<?php echo (int)$user['id']; ?>"}' class="btn-icon" data-confirm="Demote to User?" title="Demote"><i class="fas fa-arrow-down"></i></button>
                                         <?php endif; ?>
                                         
-                                        <a href="admin_users.php?action=delete&user_id=<?php echo $user['id']; ?>" class="btn-icon danger" onclick="return confirm('Permanently delete?')" title="Delete"><i class="fas fa-trash"></i></a>
+                                        <button type="button" data-post="admin_users.php" data-params='{"action":"delete","user_id":"<?php echo (int)$user['id']; ?>"}' class="btn-icon danger" data-confirm="Permanently delete?" title="Delete"><i class="fas fa-trash"></i></button>
                                     <?php else: ?>
                                         <a href="profile.php" class="btn-icon" title="Edit My Profile"><i class="fas fa-user-edit"></i></a>
                                     <?php endif; ?>
@@ -311,7 +302,7 @@ $admin_users = array_filter($users, fn($u) => $u['role'] == 'admin');
 
     <div id="resetModal" class="modal-overlay">
         <div class="modal-box">
-            <span class="modal-close" onclick="closeResetModal()">&times;</span>
+            <span class="modal-close" id="resetModalClose">&times;</span>
             <div class="modal-header">
                 <h3><i class="fas fa-key warning" style="color:#d97706;"></i> Reset Password</h3>
                 <p style="color:var(--text-muted); font-size:0.9rem; margin-top:0.5rem;">
@@ -320,24 +311,25 @@ $admin_users = array_filter($users, fn($u) => $u['role'] == 'admin');
             </div>
             
             <form method="POST" action="admin_users.php">
-                <input type="hidden" name="csrf_token" value="<?php echo $_SESSION['csrf_token']; ?>">
+                <?php echo csrfField(); ?>
                 <input type="hidden" name="action" value="reset_password">
                 <input type="hidden" name="user_id" id="modalUserId">
                 
                 <div class="form-group" style="margin-bottom:1.5rem;">
                     <label for="new_password" style="display:block; margin-bottom:0.5rem; font-weight:500;">New Password</label>
-                    <input type="text" id="new_password" name="new_password" required placeholder="Enter new password..." style="width:100%; padding:0.75rem; border:1px solid var(--border); border-radius:6px; font-size:1rem;">
-                    <small style="color:var(--text-muted); display:block; margin-top:0.25rem;">Min. 8 characters</small>
+                    <input type="text" id="new_password" name="new_password" required autocomplete="off" maxlength="200" placeholder="Enter new password..." style="width:100%; padding:0.75rem; border:1px solid var(--border); border-radius:6px; font-size:1rem;">
+                    <small style="color:var(--text-muted); display:block; margin-top:0.25rem;">Min. 8 characters, upper and lower case letters and a number</small>
                 </div>
                 
                 <div style="display:flex; justify-content:flex-end; gap:0.5rem;">
-                    <button type="button" class="btn btn-danger" style="background:white; color:var(--text-main); border:1px solid var(--border);" onclick="closeResetModal()">Cancel</button>
+                    <button type="button" class="btn btn-danger" style="background:white; color:var(--text-main); border:1px solid var(--border);" id="resetModalCancel">Cancel</button>
                     <button type="submit" class="btn btn-primary">Set Password</button>
                 </div>
             </form>
         </div>
     </div>
 
+    <script src="js/post-action.js"></script>
     <script>
         const modal = document.getElementById('resetModal');
         const modalUserSpan = document.getElementById('modalUsername');
@@ -350,6 +342,13 @@ $admin_users = array_filter($users, fn($u) => $u['role'] == 'admin');
         }
         function closeResetModal() { modal.style.display = 'none'; }
         window.onclick = function(event) { if (event.target == modal) closeResetModal(); }
+        document.querySelectorAll('[data-reset-id]').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                openResetModal(btn.getAttribute('data-reset-id'), btn.getAttribute('data-reset-name'));
+            });
+        });
+        document.getElementById('resetModalClose').addEventListener('click', closeResetModal);
+        document.getElementById('resetModalCancel').addEventListener('click', closeResetModal);
     </script>
 </body>
 </html>

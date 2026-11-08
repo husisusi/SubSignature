@@ -8,57 +8,41 @@ requireLogin();
 // 1. HELPER: RENDER ITEM
 // ---------------------------------------------------------
 function renderSignatureItem($sig, $target_user_id, $search, $show_owner_name = false) {
-    $tplPath = 'templates/' . basename($sig['template']);
-    $encodedHtml = "";
-
-    if (file_exists($tplPath)) {
-        $rawTpl = file_get_contents($tplPath);
-        $previewHtml = str_replace(
-            ['{{NAME}}', '{{ROLE}}', '{{EMAIL}}', '{{PHONE}}'],
-            [
-                htmlspecialchars($sig['name'], ENT_QUOTES, 'UTF-8'),
-                htmlspecialchars($sig['role'], ENT_QUOTES, 'UTF-8'),
-                htmlspecialchars($sig['email'], ENT_QUOTES, 'UTF-8'),
-                htmlspecialchars($sig['phone'], ENT_QUOTES, 'UTF-8')
-            ],
-            $rawTpl
-        );
-        $encodedHtml = htmlspecialchars($previewHtml, ENT_QUOTES, 'UTF-8');
-    }
-
-    $csrf = $_SESSION['csrf_token'];
+    // Final, sanitised HTML of the signature for the preview textarea.
+    $encodedHtml = e(renderStoredSignature($sig));
+    $deleteUrl = 'all_signatures.php?user_id=' . rawurlencode((string)$target_user_id) . '&search=' . rawurlencode($search);
     ?>
     <div class="signature-item" style="flex-wrap: nowrap; gap: 15px;">
         <div style="display:flex; align-items:center; padding-left:5px;">
-            <input type="checkbox" class="sig-checkbox" value="<?php echo $sig['id']; ?>" onchange="updateBulkButtons()">
+            <input type="checkbox" class="sig-checkbox" value="<?php echo (int)$sig['id']; ?>" onchange="updateBulkButtons()">
         </div>
 
         <div style="flex-grow: 1;">
             <div style="display:flex; justify-content:space-between; width:100%; align-items:center; flex-wrap:wrap;">
                 <div class="sig-details">
                     <div style="display:flex; align-items:center; gap:8px;">
-                        <h4><?php echo htmlspecialchars($sig['name'], ENT_QUOTES, 'UTF-8'); ?></h4>
+                        <h4><?php echo e($sig['name']); ?></h4>
                         <?php if ($show_owner_name && !empty($sig['username'])): ?>
                         <span style="background:#e0f2fe; color:#0369a1; font-size:0.7rem; padding:2px 6px; border-radius:4px; border:1px solid #bae6fd;">
-                            <i class="fas fa-user"></i> <?php echo htmlspecialchars($sig['username'], ENT_QUOTES, 'UTF-8'); ?>
+                            <i class="fas fa-user"></i> <?php echo e($sig['username']); ?>
                         </span>
                         <?php endif; ?>
                     </div>
-                    <p><?php echo htmlspecialchars($sig['role'], ENT_QUOTES, 'UTF-8'); ?> &bull; <?php echo htmlspecialchars($sig['email'], ENT_QUOTES, 'UTF-8'); ?></p>
+                    <p><?php echo e($sig['role']); ?> &bull; <?php echo e($sig['email']); ?></p>
                     <p style="font-size:0.75rem; color:#94a3b8; margin-top:0.25rem">
-                        <i class="far fa-clock"></i> <?php echo date('M d, Y', strtotime($sig['created_at'])); ?>
-                        &bull; <span style="background:#f1f5f9; padding:2px 6px; border-radius:4px; font-family:monospace;"><?php echo htmlspecialchars($sig['template'], ENT_QUOTES, 'UTF-8'); ?></span>
+                        <i class="far fa-clock"></i> <?php echo e(date('M d, Y', strtotime($sig['created_at']) ?: time())); ?>
+                        &bull; <span style="background:#f1f5f9; padding:2px 6px; border-radius:4px; font-family:monospace;"><?php echo e($sig['template']); ?></span>
                     </p>
                 </div>
 
                 <div class="sig-actions" style="display:flex; gap:0.5rem; align-items:center;">
-                    <?php if($encodedHtml): ?>
-                    <textarea id="source-<?php echo $sig['id']; ?>" class="visually-hidden"><?php echo $encodedHtml; ?></textarea>
-                    <button onclick="openModal(<?php echo $sig['id']; ?>)" class="btn btn-sm btn-secondary" style="background:white; border:1px solid #cbd5e1;" title="Preview"><i class="fas fa-eye"></i></button>
+                    <?php if ($encodedHtml !== ''): ?>
+                    <textarea id="source-<?php echo (int)$sig['id']; ?>" class="visually-hidden"><?php echo $encodedHtml; ?></textarea>
+                    <button type="button" onclick="openModal(<?php echo (int)$sig['id']; ?>)" class="btn btn-sm btn-secondary" style="background:white; border:1px solid #cbd5e1;" title="Preview"><i class="fas fa-eye"></i></button>
                     <?php endif; ?>
-                    <a href="download.php?id=<?php echo $sig['id']; ?>" class="btn btn-sm btn-primary" title="Download"><i class="fas fa-download"></i></a>
-                    <a href="all_signatures.php?delete=<?php echo $sig['id']; ?>&user_id=<?php echo $target_user_id; ?>&search=<?php echo urlencode($search); ?>&csrf_token=<?php echo $csrf; ?>"
-                       class="btn btn-sm btn-danger" onclick="return confirm('Delete?')" title="Delete"><i class="fas fa-trash"></i></a>
+                    <a href="download.php?id=<?php echo (int)$sig['id']; ?>" class="btn btn-sm btn-primary" title="Download"><i class="fas fa-download"></i></a>
+                    <button type="button" data-post="<?php echo e($deleteUrl); ?>" data-params='{"action":"delete_one","id":"<?php echo (int)$sig['id']; ?>"}'
+                       data-confirm="Delete?" class="btn btn-sm btn-danger" title="Delete"><i class="fas fa-trash"></i></button>
                 </div>
             </div>
         </div>
@@ -69,8 +53,7 @@ function renderSignatureItem($sig, $target_user_id, $search, $show_owner_name = 
 // ---------------------------------------------------------
 // 2. LOGIC & DATA FETCHING
 // ---------------------------------------------------------
-if (empty($_SESSION['csrf_token'])) $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
-$current_user_id = $_SESSION['user_id'];
+$current_user_id = (int)$_SESSION['user_id'];
 $is_admin = isAdmin(); 
 $message = '';
 
@@ -91,16 +74,15 @@ if ($is_admin) {
 }
 
 // Search & Query
-$search = trim($_GET['search'] ?? '');
-$page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
-if ($page < 1) $page = 1;
+$search = cleanText($_GET['search'] ?? '', 100);
+$page = max(1, min(100000, (int)($_GET['page'] ?? 1)));
 $limit = 10;
 $offset = ($page - 1) * $limit;
 
 $params = [];
 $whereClauses = [];
 if ($target_user_id !== 'all') { $whereClauses[] = "s.user_id = :uid"; $params[':uid'] = $target_user_id; }
-if (!empty($search)) { $whereClauses[] = "(s.name LIKE :search OR s.email LIKE :search OR s.role LIKE :search)"; $params[':search'] = '%' . $search . '%'; }
+if (!empty($search)) { $whereClauses[] = "(s.name LIKE :search ESCAPE '\\' OR s.email LIKE :search ESCAPE '\\' OR s.role LIKE :search ESCAPE '\\')"; $params[':search'] = '%' . addcslashes($search, '%_\\') . '%'; }
 $whereSQL = !empty($whereClauses) ? "WHERE " . implode(' AND ', $whereClauses) : "";
 
 // Count
@@ -109,7 +91,7 @@ foreach ($params as $k => $v) $stmtCount->bindValue($k, $v, is_int($v) ? SQLITE3
 $totalSignatures = $stmtCount->execute()->fetchArray(SQLITE3_ASSOC)['total'];
 
 // Fetch
-$stmt = $db->prepare("SELECT s.*, u.username FROM user_signatures s LEFT JOIN users u ON s.user_id = u.id $whereSQL ORDER BY s.created_at DESC LIMIT :limit OFFSET :offset");
+$stmt = $db->prepare("SELECT s.*, u.username FROM user_signatures s LEFT JOIN users u ON s.user_id = u.id $whereSQL ORDER BY s.created_at DESC, s.id DESC LIMIT :limit OFFSET :offset");
 foreach ($params as $k => $v) $stmt->bindValue($k, $v, is_int($v) ? SQLITE3_INTEGER : SQLITE3_TEXT);
 $stmt->bindValue(':limit', $limit, SQLITE3_INTEGER);
 $stmt->bindValue(':offset', $offset, SQLITE3_INTEGER);
@@ -127,56 +109,64 @@ if (isset($_GET['ajax'])) {
 // ---------------------------------------------------------
 // 3. ACTION HANDLERS
 // ---------------------------------------------------------
-if ($_SERVER['REQUEST_METHOD'] === 'POST' || isset($_GET['delete'])) {
-    $token = $_POST['csrf_token'] ?? $_GET['csrf_token'] ?? '';
-    if (!hash_equals($_SESSION['csrf_token'], $token)) die("Security Error: Invalid CSRF Token");
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    requireCsrf();
+    $action = $_POST['action'] ?? '';
+    $redirect = 'all_signatures.php?user_id=' . rawurlencode((string)$target_user_id) . '&search=' . rawurlencode($search);
 
-    // DELETE SINGLE
-    if (isset($_GET['delete'])) {
-        $del_id = (int)$_GET['delete'];
-        $sql = "DELETE FROM user_signatures WHERE id = :id";
-        if ($target_user_id !== 'all') $sql .= " AND user_id = :uid";
+    // DELETE SINGLE (admins may delete any signature of the selected scope, users only their own)
+    if ($action === 'delete_one') {
+        $sql = 'DELETE FROM user_signatures WHERE id = :id';
+        if ($target_user_id !== 'all') $sql .= ' AND user_id = :uid';
         $stmtDel = $db->prepare($sql);
-        $stmtDel->bindValue(':id', $del_id, SQLITE3_INTEGER);
+        $stmtDel->bindValue(':id', (int)($_POST['id'] ?? 0), SQLITE3_INTEGER);
         if ($target_user_id !== 'all') $stmtDel->bindValue(':uid', $target_user_id, SQLITE3_INTEGER);
         $stmtDel->execute();
-        header("Location: all_signatures.php?user_id=$target_user_id&search=" . urlencode($search) . "&success=deleted_one");
+        setFlash('success', 'Signature deleted.');
+        header('Location: ' . $redirect);
         exit;
     }
 
-    // DELETE ALL
-    if (isset($_POST['action']) && $_POST['action'] === 'delete_all') {
-        if ($target_user_id === 'all') { if (!$is_admin) die("Unauthorized"); $db->exec("DELETE FROM user_signatures"); }
-        else { $s=$db->prepare("DELETE FROM user_signatures WHERE user_id=?"); $s->bindValue(1, $target_user_id, SQLITE3_INTEGER); $s->execute(); }
-        header("Location: all_signatures.php?user_id=$target_user_id&success=deleted_all");
-        exit;
-    }
-
-    // DELETE SELECTED (BULK)
-    if (isset($_POST['action']) && $_POST['action'] === 'delete_selected') {
-        $ids = is_array($_POST['ids']) ? $_POST['ids'] : explode(',', $_POST['ids']);
-        $count = 0;
-        foreach($ids as $id) {
-            $id = (int)$id; // Security: Force Integer
-            if($id > 0) {
-                $sql = "DELETE FROM user_signatures WHERE id = :id";
-                if (!$is_admin) $sql .= " AND user_id = :uid";
-                $stmt = $db->prepare($sql);
-                $stmt->bindValue(':id', $id, SQLITE3_INTEGER);
-                if (!$is_admin) $stmt->bindValue(':uid', $current_user_id, SQLITE3_INTEGER);
-                if($stmt->execute()) $count++;
-            }
+    // DELETE ALL of the selected scope
+    if ($action === 'delete_all') {
+        if ($target_user_id === 'all') {
+            // $target_user_id can only be 'all' for administrators (see above).
+            $db->exec('DELETE FROM user_signatures');
+            logSecurityEventToDB($db, 'SIGNATURES_DELETED_ALL', $current_user_id, 'Scope: all users');
+        } else {
+            $s = $db->prepare('DELETE FROM user_signatures WHERE user_id = ?');
+            $s->bindValue(1, $target_user_id, SQLITE3_INTEGER);
+            $s->execute();
         }
-        header("Location: all_signatures.php?user_id=$target_user_id&success=deleted_batch&count=$count");
+        setFlash('success', 'All signatures deleted!');
+        header('Location: ' . $redirect);
+        exit;
+    }
+
+    // DELETE SELECTED (bulk, capped)
+    if ($action === 'delete_selected') {
+        $rawIds = $_POST['ids'] ?? [];
+        $ids = is_array($rawIds) ? $rawIds : explode(',', (string)$rawIds);
+        $ids = array_slice(array_unique(array_filter(array_map('intval', $ids), function ($v) { return $v > 0; })), 0, 1000);
+        $count = 0;
+        $db->exec('BEGIN');
+        foreach ($ids as $id) {
+            $sql = 'DELETE FROM user_signatures WHERE id = :id';
+            if (!$is_admin) $sql .= ' AND user_id = :uid';
+            $st = $db->prepare($sql);
+            $st->bindValue(':id', $id, SQLITE3_INTEGER);
+            if (!$is_admin) $st->bindValue(':uid', $current_user_id, SQLITE3_INTEGER);
+            $st->execute();
+            $count += $db->changes();
+        }
+        $db->exec('COMMIT');
+        setFlash('success', $count . ' signatures deleted.');
+        header('Location: ' . $redirect);
         exit;
     }
 }
 
-if (isset($_GET['success'])) {
-    if ($_GET['success'] == 'deleted_all') $message = "All signatures deleted!";
-    if ($_GET['success'] == 'deleted_one') $message = "Signature deleted.";
-    if ($_GET['success'] == 'deleted_batch') $message = (int)$_GET['count'] . " signatures deleted.";
-}
+$message = popFlash('success');
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -186,6 +176,7 @@ if (isset($_GET['success'])) {
 <title>All Signatures - SubSignature</title>
 <link rel="stylesheet" href="css/style.css">
 <link rel="stylesheet" href="css/all.min.css">
+<?php echo csrfMeta(); ?>
 <style>
     .visually-hidden { position: absolute; left: -9999px; opacity: 0; }
     .alert { padding: 1rem; border-radius: 8px; margin-bottom: 1.5rem; display: flex; gap: 0.75rem; align-items: center; }
@@ -273,7 +264,7 @@ if (isset($_GET['success'])) {
     <div class="sidebar-footer">
         <div class="user-profile">
             <div class="avatar"><?php echo strtoupper(substr($_SESSION['username'], 0, 1)); ?></div>
-            <div class="user-info"><div><?php echo htmlspecialchars($_SESSION['username']); ?></div><span>Administrator</span></div>
+            <div class="user-info"><div><?php echo e($_SESSION['username']); ?></div><span><?php echo $is_admin ? 'Administrator' : 'User'; ?></span></div>
         </div>
         <a href="logout.php" class="btn-logout"><i class="fas fa-sign-out-alt"></i> <span>Sign Out</span></a>
     </div>
@@ -286,7 +277,7 @@ if (isset($_GET['success'])) {
     </header>
 
     <?php if ($message): ?>
-    <div class="alert alert-success"><i class="fas fa-check-circle"></i> <?php echo htmlspecialchars($message); ?></div>
+    <div class="alert alert-success"><i class="fas fa-check-circle"></i> <?php echo e($message); ?></div>
     <?php endif; ?>
 
     <section class="card">
@@ -325,16 +316,16 @@ if (isset($_GET['success'])) {
                     <select name="user_id" class="user-select" onchange="this.form.submit()">
                         <option value="all" <?php echo ($target_user_id === 'all') ? 'selected' : ''; ?>>All Users</option>
                         <?php foreach ($users_list as $u): ?>
-                        <option value="<?php echo $u['id']; ?>" <?php echo ($u['id'] == $target_user_id) ? 'selected' : ''; ?>>
-                            <?php echo htmlspecialchars($u['username']); ?>
+                        <option value="<?php echo (int)$u['id']; ?>" <?php echo ($u['id'] == $target_user_id) ? 'selected' : ''; ?>>
+                            <?php echo e($u['username']); ?>
                         </option>
                         <?php endforeach; ?>
                     </select>
                 </div>
                 <?php endif; ?>
-                <input type="text" name="search" class="search-input" placeholder="Search..." value="<?php echo htmlspecialchars($search); ?>">
+                <input type="text" name="search" class="search-input" placeholder="Search..." value="<?php echo e($search); ?>">
                 <button type="submit" class="btn btn-primary">Search</button>
-                <?php if (!empty($search)): ?><a href="all_signatures.php?user_id=<?php echo $target_user_id; ?>" class="btn btn-secondary">Clear</a><?php endif; ?>
+                <?php if (!empty($search)): ?><a href="all_signatures.php?user_id=<?php echo e((string)$target_user_id); ?>" class="btn btn-secondary">Clear</a><?php endif; ?>
             </form>
         </div>
 
@@ -360,7 +351,7 @@ if (isset($_GET['success'])) {
 <div id="previewModal" class="modal-overlay">
     <div class="modal-box">
         <div class="modal-header"><h3 style="margin:0">Preview</h3><button class="close-modal-btn" onclick="closeModal()">&times;</button></div>
-        <div class="modal-body"><iframe id="modalFrame" class="modal-iframe" sandbox="allow-same-origin"></iframe></div>
+        <div class="modal-body"><iframe id="modalFrame" class="modal-iframe" sandbox=""></iframe></div>
         <div class="modal-footer"><button class="btn btn-sm btn-secondary" onclick="closeModal()">Close</button></div>
     </div>
 </div>
@@ -393,18 +384,20 @@ if (isset($_GET['success'])) {
     </div>
 </div>
 
-<form id="deleteAllForm" method="POST" action="all_signatures.php?user_id=<?php echo $target_user_id; ?>" style="display:none;">
+<form id="deleteAllForm" method="POST" action="all_signatures.php?user_id=<?php echo e(rawurlencode((string)$target_user_id)); ?>&amp;search=<?php echo e(rawurlencode($search)); ?>" style="display:none;">
     <input type="hidden" name="action" value="delete_all">
-    <input type="hidden" name="csrf_token" value="<?php echo $_SESSION['csrf_token']; ?>">
+    <?php echo csrfField(); ?>
 </form>
 
-<form id="deleteSelectedForm" method="POST" action="all_signatures.php?user_id=<?php echo $target_user_id; ?>" style="display:none;">
+<form id="deleteSelectedForm" method="POST" action="all_signatures.php?user_id=<?php echo e(rawurlencode((string)$target_user_id)); ?>&amp;search=<?php echo e(rawurlencode($search)); ?>" style="display:none;">
     <input type="hidden" name="action" value="delete_selected">
-    <input type="hidden" name="csrf_token" value="<?php echo $_SESSION['csrf_token']; ?>">
+    <?php echo csrfField(); ?>
 </form>
 
+<script src="js/post-action.js"></script>
+<script src="js/safe-html.js"></script>
 <script>
-const CSRF_TOKEN = "<?php echo $_SESSION['csrf_token']; ?>";
+const CSRF_TOKEN = <?php echo json_encode(generateCSRFToken()); ?>;
 let abortController = null; // Global variable to handle cancellation
 
 // --- BUTTON ENABLE/DISABLE LOGIC ---
@@ -542,7 +535,7 @@ async function sendBulkEmail() {
                         const data = JSON.parse(jsonStr);
                         
                         if (data.status === 'finished') {
-                            logMessage(`<b>DONE:</b> ${data.summary}`, '#166534'); // Dark Green
+                            logMessage(`DONE: ${data.summary}`, '#166534'); // Dark Green
                             finishProcess(true);
                         } else if (data.status === 'fatal_error') {
                             logMessage(`ERROR: ${data.message}`, '#dc2626'); // Red
@@ -567,9 +560,9 @@ async function sendBulkEmail() {
     } catch (e) {
         if (e.name === 'AbortError') {
             // EXECUTES ON CANCELLATION
-            logMessage('🛑 <b>ABORTED BY USER!</b> Stopping immediately...', '#dc2626');
+            logMessage('🛑 ABORTED BY USER! Stopping immediately...', '#dc2626');
             pBar.style.backgroundColor = '#ef4444'; // Bar turns red
-            pLog.innerHTML += '<div>> Connection closed. Server will stop processing.</div>';
+            logMessage('Connection closed. Server will stop processing.', '#334155');
         } else {
             logMessage(`System Error: ${e.message}`, '#dc2626');
         }
@@ -592,7 +585,7 @@ function cancelBulkEmail() {
 function logMessage(msg, color) {
     const pLog = document.getElementById('progressLog');
     const div = document.createElement('div');
-    div.innerHTML = `> ${msg}`;
+    div.textContent = '> ' + msg; // textContent: server messages may contain user data
     div.style.color = color;
     div.style.borderBottom = "1px solid #f1f5f9"; 
     div.style.padding = "2px 0";
@@ -632,7 +625,7 @@ function openModal(id) {
                 a { text-decoration: none; color: inherit; }
             </style>
         `;
-        modalFrame.srcdoc = styleReset + source.value;
+        modalFrame.srcdoc = styleReset + SafeHtml.sanitize(source.value);
         modal.style.display = 'flex';
     }
 }
@@ -648,8 +641,8 @@ function confirmDeleteAll() {
 // --- SCROLLING ---
 document.addEventListener('DOMContentLoaded', function() {
     let page = 1; let loading = false; let more = true;
-    const uid = "<?php echo $target_user_id; ?>";
-    const search = "<?php echo urlencode($search); ?>";
+    const uid = <?php echo json_encode((string)$target_user_id); ?>;
+    const search = <?php echo json_encode(rawurlencode($search)); ?>;
     const loader = document.getElementById('infiniteLoader');
     const cont = document.getElementById('signatureListContainer');
     const sentinel = document.getElementById('sentinel');
@@ -659,7 +652,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const loadMore = () => {
         if (loading || !more) return;
         loading = true; loader.style.display = 'block'; page++;
-        fetch(`all_signatures.php?ajax=1&page=${page}&user_id=${uid}&search=${search}`)
+        fetch(`all_signatures.php?ajax=1&page=${page}&user_id=${encodeURIComponent(uid)}&search=${search}`, {credentials: 'same-origin'})
         .then(r => r.text())
         .then(html => {
             loader.style.display = 'none';

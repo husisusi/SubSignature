@@ -5,15 +5,10 @@
 require_once 'includes/config.php';
 requireLogin();
 
-// 2. CSRF Protection
-if (empty($_SESSION['csrf_token'])) {
-    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
-}
-
 // ---------------------------------------------------------
 // 3. DETERMINE TARGET USER (Security Critical)
 // ---------------------------------------------------------
-$current_user_id = $_SESSION['user_id']; // The person logged in
+$current_user_id = (int)$_SESSION['user_id']; // The person logged in
 $target_user_id = $current_user_id;       // Default: Edit self
 
 $is_admin_editing_others = false;
@@ -41,35 +36,40 @@ $success = '';
 // 4. Update Profile Logic
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_profile'])) {
     
-    // CSRF Check
-    if (!isset($_POST['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $_POST['csrf_token'])) {
-        die('Error: Invalid CSRF token. Please refresh the page and try again.');
-    }
+    requireCsrf();
 
-    $full_name = trim($_POST['full_name'] ?? '');
-    $email = trim($_POST['email'] ?? '');
-    
-    // Basic Validation
-    if (!empty($email) && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
-        $error = "Invalid email address!";
+    $full_name = cleanText($_POST['full_name'] ?? '', 100);
+    $email = cleanText($_POST['email'] ?? '', 254);
+
+    if ($email !== '' && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        $error = 'Invalid email address!';
     } else {
-        // Secure Update
-        $stmt = $db->prepare("UPDATE users SET full_name = ?, email = ? WHERE id = ?");
-        $stmt->bindValue(1, $full_name, SQLITE3_TEXT);
-        $stmt->bindValue(2, $email, SQLITE3_TEXT);
-        $stmt->bindValue(3, $target_user_id, SQLITE3_INTEGER); // Use target_user_id
-        
-        if ($stmt->execute()) {
-            // Only update SESSION vars if editing SELF
+        // The email address must stay unique (it is also checked at registration).
+        $dup = 0;
+        if ($email !== '') {
+            $chk = $db->prepare('SELECT COUNT(*) FROM users WHERE email = ? AND id != ?');
+            $chk->bindValue(1, $email, SQLITE3_TEXT);
+            $chk->bindValue(2, $target_user_id, SQLITE3_INTEGER);
+            $dup = (int)$chk->execute()->fetchArray(SQLITE3_NUM)[0];
+        }
+
+        if ($dup > 0) {
+            $error = 'This email address is already used by another account.';
+        } else {
+            $stmt = $db->prepare('UPDATE users SET full_name = ?, email = ? WHERE id = ?');
+            $stmt->bindValue(1, $full_name, SQLITE3_TEXT);
+            $stmt->bindValue(2, $email, SQLITE3_TEXT);
+            $stmt->bindValue(3, $target_user_id, SQLITE3_INTEGER);
+            $stmt->execute();
+
             if (!$is_admin_editing_others) {
                 $_SESSION['full_name'] = $full_name;
                 $_SESSION['email'] = $email;
-                $success = "✅ Profile updated successfully!";
+                $success = '✅ Profile updated successfully!';
             } else {
-                $success = "✅ User profile updated successfully (Admin Mode).";
+                logSecurityEventToDB($db, 'ADMIN_PROFILE_EDIT', $current_user_id, "Target ID: $target_user_id");
+                $success = '✅ User profile updated successfully (Admin Mode).';
             }
-        } else {
-            $error = "❌ Failed to update profile!";
         }
     }
 }
@@ -83,7 +83,8 @@ $user = $result->fetchArray(SQLITE3_ASSOC);
 
 if (!$user) {
     if ($is_admin_editing_others) {
-        header('Location: admin_users.php?error=UserNotFound'); // Admin fallback
+        setFlash('error', 'User not found.');
+        header('Location: admin_users.php'); // Admin fallback
     } else {
         header('Location: logout.php'); // Self fallback
     }
@@ -147,7 +148,7 @@ $sig_count = $sig_result->fetchArray(SQLITE3_ASSOC)['count'];
             <div class="user-profile">
                 <div class="avatar"><?php echo strtoupper(substr($_SESSION['username'], 0, 1)); ?></div>
                 <div class="user-info">
-                    <div><?php echo htmlspecialchars($_SESSION['username'], ENT_QUOTES, 'UTF-8'); ?></div>
+                    <div><?php echo e($_SESSION['username']); ?></div>
                     <span><?php echo isAdmin() ? 'Administrator' : 'User'; ?></span>
                 </div>
             </div>
@@ -159,7 +160,7 @@ $sig_count = $sig_result->fetchArray(SQLITE3_ASSOC)['count'];
         
         <header class="page-header">
             <?php if ($is_admin_editing_others): ?>
-                <h2>Edit User: <?php echo htmlspecialchars($user['username']); ?></h2>
+                <h2>Edit User: <?php echo e($user['username']); ?></h2>
                 <p>Administrator Mode: Editing another user's profile.</p>
             <?php else: ?>
                 <h2>My Profile</h2>
@@ -174,7 +175,7 @@ $sig_count = $sig_result->fetchArray(SQLITE3_ASSOC)['count'];
                 <i class="fas fa-exclamation-triangle"></i>
                 <div>
                     <strong>Admin Mode Active:</strong> You are editing the profile of 
-                    <u><?php echo htmlspecialchars($user['username']); ?></u> (ID: <?php echo $target_user_id; ?>).
+                    <u><?php echo e($user['username']); ?></u> (ID: <?php echo (int)$target_user_id; ?>).
                     <a href="admin_users.php" style="color:inherit; font-weight:700; margin-left:10px;">Back to List</a>
                 </div>
             </div>
@@ -186,19 +187,19 @@ $sig_count = $sig_result->fetchArray(SQLITE3_ASSOC)['count'];
                 </h3>
 
                 <?php if ($success): ?>
-                    <div class="alert alert-success"><i class="fas fa-check-circle"></i> <?php echo htmlspecialchars($success); ?></div>
+                    <div class="alert alert-success"><i class="fas fa-check-circle"></i> <?php echo e($success); ?></div>
                 <?php endif; ?>
                 <?php if ($error): ?>
-                    <div class="alert alert-error"><i class="fas fa-exclamation-circle"></i> <?php echo htmlspecialchars($error); ?></div>
+                    <div class="alert alert-error"><i class="fas fa-exclamation-circle"></i> <?php echo e($error); ?></div>
                 <?php endif; ?>
 
                 <form method="POST">
-                    <input type="hidden" name="csrf_token" value="<?php echo $_SESSION['csrf_token']; ?>">
+                    <?php echo csrfField(); ?>
 
                     <div class="form-group">
                         <label for="username">Username</label>
                         <input type="text" id="username" 
-                               value="<?php echo htmlspecialchars($user['username'], ENT_QUOTES, 'UTF-8'); ?>" 
+                               value="<?php echo e($user['username']); ?>" 
                                disabled style="background: #f3f4f6; color: var(--text-muted);">
                         <small style="color: var(--text-muted);">Username cannot be changed.</small>
                     </div>
@@ -206,20 +207,20 @@ $sig_count = $sig_result->fetchArray(SQLITE3_ASSOC)['count'];
                     <div class="form-group">
                         <label for="full_name">Full Name</label>
                         <input type="text" id="full_name" name="full_name" 
-                               value="<?php echo htmlspecialchars($user['full_name'] ?? '', ENT_QUOTES, 'UTF-8'); ?>"
+                               value="<?php echo e($user['full_name'] ?? ''); ?>"
                                placeholder="e.g. John Doe">
                     </div>
 
                     <div class="form-group">
                         <label for="email">Email Address</label>
                         <input type="email" id="email" name="email" 
-                               value="<?php echo htmlspecialchars($user['email'] ?? '', ENT_QUOTES, 'UTF-8'); ?>"
+                               value="<?php echo e($user['email'] ?? ''); ?>"
                                placeholder="john@example.com">
                     </div>
 
                     <div class="form-group">
                         <label>Role</label>
-                        <input type="text" value="<?php echo htmlspecialchars(ucfirst($user['role']), ENT_QUOTES, 'UTF-8'); ?>" 
+                        <input type="text" value="<?php echo e(ucfirst($user['role'])); ?>" 
                                disabled style="background: #f3f4f6; color: var(--text-muted);">
                     </div>
 
@@ -234,18 +235,18 @@ $sig_count = $sig_result->fetchArray(SQLITE3_ASSOC)['count'];
             <div class="profile-card">
                 <div class="profile-header">
                     <div class="profile-avatar"><?php echo strtoupper(substr($user['username'], 0, 1)); ?></div>
-                    <div class="profile-name"><?php echo htmlspecialchars($user['full_name'] ?: $user['username']); ?></div>
-                    <div class="profile-role"><?php echo htmlspecialchars($user['role']); ?></div>
+                    <div class="profile-name"><?php echo e($user['full_name'] ?: $user['username']); ?></div>
+                    <div class="profile-role"><?php echo e($user['role']); ?></div>
                 </div>
 
                 <div class="stats-list">
                     <div class="stat-row">
                         <span class="stat-key"><i class="fas fa-calendar-alt"></i> Joined</span>
-                        <span class="stat-val"><?php echo date('M Y', strtotime($user['created_at'])); ?></span>
+                        <span class="stat-val"><?php echo e(date('M Y', strtotime($user['created_at']) ?: time())); ?></span>
                     </div>
                     <div class="stat-row">
                         <span class="stat-key"><i class="fas fa-clock"></i> Last Login</span>
-                        <span class="stat-val"><?php echo $user['last_login'] ? date('d.m.Y', strtotime($user['last_login'])) : 'Never'; ?></span>
+                        <span class="stat-val"><?php echo $user['last_login'] ? e(date('d.m.Y', strtotime($user['last_login']) ?: time())) : 'Never'; ?></span>
                     </div>
                     <div class="stat-row">
                         <span class="stat-key"><i class="fas fa-signature"></i> Signatures</span>

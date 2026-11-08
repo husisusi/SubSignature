@@ -1,23 +1,14 @@
 <?php
-// admin_images.php
+// admin_images.php - upload, list and delete images used by signature templates.
 
 require_once 'includes/config.php';
-requireAdmin(); // Maintains your authentication
+requireAdmin();
 
-$message = '';
-$error = '';
+$message = popFlash('success');
+$error = popFlash('error');
+$csrf_token = generateCSRFToken();
 
-// ---------------------------------------------------------
-// SECURITY: CSRF Token Generation
-// ---------------------------------------------------------
-if (empty($_SESSION['csrf_token'])) {
-    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
-}
-$csrf_token = $_SESSION['csrf_token'];
-
-$upload_dir = __DIR__ . '/img/';
-
-// Ensure the directory exists
+$upload_dir = IMAGES_DIR . '/';
 if (!is_dir($upload_dir)) {
     mkdir($upload_dir, 0755, true);
 }
@@ -25,19 +16,16 @@ if (!is_dir($upload_dir)) {
 // Allowed configurations
 $allowed_extensions = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
 $allowed_mimes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
-$max_file_size = 5 * 1024 * 1024; // SECURITY: Max 5MB file size limit
+$max_file_size = 5 * 1024 * 1024; // max 5 MB per file
+$max_files_per_upload = 20;
 
 // ---------------------------------------------------------
 // 1. ACTION: UPLOAD IMAGES
 // ---------------------------------------------------------
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['upload_images'])) {
     
-    // Security: CSRF Check
-    if (!isset($_POST['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $_POST['csrf_token'])) {
-        $error = "Security Error: Invalid CSRF Token.";
-    } 
-    // Check if files exist
-    elseif (isset($_FILES['image_files'])) {
+    requireCsrf();
+    if (isset($_FILES['image_files']) && is_array($_FILES['image_files']['name'])) {
         $uploaded_files = $_FILES['image_files'];
         $success_count = 0;
         $error_details = [];
@@ -45,8 +33,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['upload_images'])) {
         // Finfo for real MIME-Type check (crucial for security)
         $finfo = finfo_open(FILEINFO_MIME_TYPE);
 
-        for ($i = 0; $i < count($uploaded_files['name']); $i++) {
-            $filename = $uploaded_files['name'][$i];
+        for ($i = 0; $i < min(count($uploaded_files['name']), $max_files_per_upload); $i++) {
+            $filename = cleanText(basename((string)$uploaded_files['name'][$i]), 120);
             $tmp_name = $uploaded_files['tmp_name'][$i];
             $file_error = $uploaded_files['error'][$i];
             $file_size = $uploaded_files['size'][$i];
@@ -87,7 +75,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['upload_images'])) {
 
                 // 6. Security: Sanitize filename (Only a-z, 0-9, - and _)
                 $raw_name = pathinfo($filename, PATHINFO_FILENAME);
-                $safe_name = preg_replace('/[^a-z0-9_-]/', '', strtolower($raw_name));
+                $safe_name = substr(preg_replace('/[^a-z0-9_-]/', '', strtolower($raw_name)), 0, 60);
                 if (empty($safe_name)) {
                     $safe_name = 'img_' . bin2hex(random_bytes(4));
                 }
@@ -97,26 +85,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['upload_images'])) {
 
                 // Prevent overwriting existing images
                 if (file_exists($target_path)) {
-                    $final_name = $safe_name . '_' . time() . '.' . $ext;
+                    $final_name = $safe_name . '_' . bin2hex(random_bytes(3)) . '.' . $ext;
                     $target_path = $upload_dir . $final_name;
                 }
 
                 // Move file
                 if (move_uploaded_file($tmp_name, $target_path)) {
+                    @chmod($target_path, 0644);
                     $success_count++;
                 } else {
                     $error_details[] = "$filename: Error saving the file.";
                 }
+            } elseif ($file_error !== UPLOAD_ERR_NO_FILE) {
+                $error_details[] = "$filename: Upload failed (error code $file_error).";
             }
         }
-        
+
         finfo_close($finfo);
 
         if ($success_count > 0) {
             $message = "Successfully uploaded $success_count image(s).";
+            logSecurityEventToDB($db, 'IMAGES_UPLOADED', (int)$_SESSION['user_id'], "Count: $success_count");
         }
         if (!empty($error_details)) {
-            $error = implode('<br>', $error_details);
+            $error = implode("\n", $error_details); // escaped and line-broken in the view
         }
     }
 }
@@ -124,27 +116,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['upload_images'])) {
 // ---------------------------------------------------------
 // 2. ACTION: DELETE IMAGE
 // ---------------------------------------------------------
-if (isset($_GET['delete'])) {
-    if (!isset($_GET['token']) || !hash_equals($_SESSION['csrf_token'], $_GET['token'])) {
-        $error = "Security Error: Invalid Token.";
-    } else {
-        // Security: basename() prevents Path Traversal (e.g. delete=../../config.php)
-        $image = basename($_GET['delete']);
-        $image_path = $upload_dir . $image;
-        
-        if (file_exists($image_path) && is_file($image_path)) {
-            if (unlink($image_path)) {
-                $message = "Image deleted successfully.";
-            } else {
-                $error = "Error deleting file. Check permissions.";
-            }
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'delete_image') {
+    requireCsrf();
+    // basename() blocks path traversal; the extension whitelist protects non-raster assets (logo.svg etc.).
+    $image = basename((string)($_POST['image'] ?? ''));
+    $ext = strtolower(pathinfo($image, PATHINFO_EXTENSION));
+    $image_path = $upload_dir . $image;
+
+    if (in_array($ext, $allowed_extensions, true) && is_file($image_path) && isPathInside($image_path, IMAGES_DIR)) {
+        if (unlink($image_path)) {
+            logSecurityEventToDB($db, 'IMAGE_DELETED', (int)$_SESSION['user_id'], $image);
+            setFlash('success', 'Image deleted successfully.');
         } else {
-            $error = "Image not found!";
+            setFlash('error', 'Error deleting file. Check permissions.');
         }
+    } else {
+        setFlash('error', 'Image not found!');
     }
-    // Clean Redirect
-    $param = $error ? 'error='.urlencode($error) : 'message='.urlencode($message);
-    header('Location: admin_images.php?' . $param);
+    header('Location: admin_images.php');
     exit;
 }
 
@@ -191,6 +180,7 @@ if (isset($_GET['error'])) $error = $_GET['error'];
     <title>Image Management - SubSignature</title>
     <link rel="stylesheet" href="css/style.css">
     <link rel="stylesheet" href="css/all.min.css">
+    <?php echo csrfMeta(); ?>
     
     <style>
         .image-preview { 
@@ -235,7 +225,7 @@ if (isset($_GET['error'])) $error = $_GET['error'];
             <div class="user-profile">
                 <div class="avatar"><?php echo strtoupper(substr($_SESSION['username'] ?? 'A', 0, 1)); ?></div>
                 <div class="user-info">
-                    <div><?php echo htmlspecialchars($_SESSION['username'] ?? 'Admin'); ?></div>
+                    <div><?php echo e($_SESSION['username'] ?? 'Admin'); ?></div>
                     <span>Administrator</span>
                 </div>
             </div>
@@ -251,10 +241,10 @@ if (isset($_GET['error'])) $error = $_GET['error'];
         </header>
 
         <?php if ($message): ?>
-            <div class="alert alert-success"><i class="fas fa-check-circle"></i> <?php echo htmlspecialchars($message); ?></div>
+            <div class="alert alert-success"><i class="fas fa-check-circle"></i> <?php echo e($message); ?></div>
         <?php endif; ?>
         <?php if ($error): ?>
-            <div class="alert alert-error"><i class="fas fa-exclamation-circle"></i> <?php echo $error; ?></div>
+            <div class="alert alert-error"><i class="fas fa-exclamation-circle"></i> <?php echo nl2br(e($error)); ?></div>
         <?php endif; ?>
 
         <div class="form-grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); margin-bottom: 2rem;">
@@ -298,14 +288,14 @@ if (isset($_GET['error'])) $error = $_GET['error'];
                             
                             <td style="padding: 0.5rem 1rem;">
                                 <!-- Enhanced Clickable Preview -->
-                                <img src="img/<?php echo htmlspecialchars($img['filename']); ?>" 
+                                <img src="img/<?php echo e($img['filename']); ?>" 
                                      class="image-preview" 
                                      alt="Preview"
-                                     onclick="openLightbox('img/<?php echo rawurlencode($img['filename']); ?>', '<?php echo htmlspecialchars($img['filename'], ENT_QUOTES); ?>')">
+                                     onclick="openLightbox('img/<?php echo rawurlencode($img['filename']); ?>', '<?php echo e($img['filename']); ?>')">
                             </td>
 
                             <td style="padding: 1rem;">
-                                <code><?php echo htmlspecialchars($img['filename']); ?></code>
+                                <code><?php echo e($img['filename']); ?></code>
                             </td>
                             
                             <td style="padding: 1rem; color: #64748b;"><?php echo $img['size']; ?></td>
@@ -316,9 +306,9 @@ if (isset($_GET['error'])) $error = $_GET['error'];
                             
                             <td style="padding: 1rem; text-align: right;">
                                 <div style="display: inline-flex; gap: 0.5rem;">
-                                    <button onclick="openLightbox('img/<?php echo rawurlencode($img['filename']); ?>', '<?php echo htmlspecialchars($img['filename'], ENT_QUOTES); ?>')" class="btn btn-sm btn-secondary" title="View Full Image"><i class="fas fa-eye"></i></button>
+                                    <button onclick="openLightbox('img/<?php echo rawurlencode($img['filename']); ?>', '<?php echo e($img['filename']); ?>')" class="btn btn-sm btn-secondary" title="View Full Image"><i class="fas fa-eye"></i></button>
                                     
-                                    <a href="admin_images.php?delete=<?php echo urlencode($img['filename']); ?>&token=<?php echo $csrf_token; ?>" class="btn btn-sm btn-danger" onclick="return confirm('Really delete image?')" title="Delete"><i class="fas fa-trash"></i></a>
+                                    <button type="button" data-post="admin_images.php" data-params='{"action":"delete_image","image":"<?php echo e($img['filename']); ?>"}' data-confirm="Really delete image?" class="btn btn-sm btn-danger" title="Delete"><i class="fas fa-trash"></i></button>
                                 </div>
                             </td>
                         </tr>
@@ -342,7 +332,7 @@ if (isset($_GET['error'])) $error = $_GET['error'];
             </div>
             
             <form method="POST" enctype="multipart/form-data">
-                <input type="hidden" name="csrf_token" value="<?php echo $csrf_token; ?>">
+                <?php echo csrfField(); ?>
                 <input type="hidden" name="upload_images" value="1">
                 
                 <div class="upload-area" id="dropZone">
@@ -371,6 +361,7 @@ if (isset($_GET['error'])) $error = $_GET['error'];
         <div id="lightboxCaption" class="lightbox-caption"></div>
     </div>
 
+    <script src="js/post-action.js"></script>
     <script>
     // --- JS: Upload Modal Logic ---
     const modal = document.getElementById('importModal');

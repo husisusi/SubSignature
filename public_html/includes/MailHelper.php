@@ -1,6 +1,6 @@
 <?php
 // includes/MailHelper.php
-// PRODUCTION READY - SMTP Keep-Alive, Bulk Sending & CID Embedding
+// SMTP mail sender: keep-alive for bulk sending, CID embedding, encrypted SMTP password.
 
 use PHPMailer\PHPMailer\PHPMailer;
 use PHPMailer\PHPMailer\Exception;
@@ -8,7 +8,7 @@ use PHPMailer\PHPMailer\SMTP;
 
 require_once __DIR__ . '/config.php';
 
-// Include PHPMailer (covers both possible paths for maximum compatibility)
+// Include PHPMailer (both known directory layouts are supported)
 if (file_exists(__DIR__ . '/PHPMailer/src/PHPMailer.php')) {
     require_once __DIR__ . '/PHPMailer/src/Exception.php';
     require_once __DIR__ . '/PHPMailer/src/PHPMailer.php';
@@ -70,8 +70,9 @@ class MailHelper
                 $mail->SMTPAuth   = (!isset($settings['smtp_auth']) || $settings['smtp_auth'] == '1');
 
                 if ($mail->SMTPAuth) {
-                    $mail->Username = $settings['smtp_user'];
-                    $mail->Password = $settings['smtp_pass'] ?? '';
+                    $mail->Username = $settings['smtp_user'] ?? '';
+                    // The password is stored encrypted (see includes/crypto.php).
+                    $mail->Password = decryptSecret($settings['smtp_pass'] ?? '');
                 }
 
                 $secureMode = $settings['smtp_secure'] ?? 'tls';
@@ -87,7 +88,7 @@ class MailHelper
                 $mail->Timeout        = 15;
                 $mail->SMTPKeepAlive  = true; // Enable Keep-Alive for bulk sending efficiency
 
-                $fromEmail = $settings['smtp_from_email'] ?? $settings['smtp_user'];
+                $fromEmail = $settings['smtp_from_email'] ?? ($settings['smtp_user'] ?? '');
                 if (empty($fromEmail)) {
                     $fromEmail = 'noreply@' . ($_SERVER['SERVER_NAME'] ?? 'localhost');
                 }

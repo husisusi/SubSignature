@@ -1,11 +1,7 @@
 <?php
 /**
- * CSV Import Script
- * Security Prio 1:
- * - Admin checks
- * - CSRF Protection
- * - Input Sanitization
- * - File Validation
+ * CSV import: upload + preview. The confirmed rows are written by process_import.php.
+ * Protections: login, CSRF, target user check, upload size/type/row limits, per-row validation.
  */
 
 require_once 'includes/config.php';
@@ -21,7 +17,7 @@ if (isset($_GET['cancel'])) {
 
 // Access Control
 $is_admin = isAdmin();
-$user_id = $_SESSION['user_id'];
+$user_id = (int)$_SESSION['user_id'];
 
 // Load Users (Admin only)
 $users = [];
@@ -33,144 +29,139 @@ if ($is_admin) {
     }
 }
 
-// Load Templates (Secure Glob - preventing path traversal)
+// Signature templates (only signature_*.html, never the mail wrapper)
 $templates = [];
-$template_files = glob('templates/*.html');
-foreach ($template_files as $file) {
-    // Only load files from the templates directory to prevent traversal
-    if (dirname($file) === 'templates') {
-        $templates[basename($file)] = ucfirst(str_replace(['signature_', '.html', '_'], ['', '', ' '], basename($file)));
-    }
+foreach (listSignatureTemplates() as $file) {
+    $templates[$file] = templateDisplayName($file);
 }
 
 // Initialize Variables
-$error = '';
+$error = popFlash('error');
 $success = '';
 $preview_data = [];
 $total_rows = 0;
 $valid_rows = 0;
 $form_user_id = $user_id;
-$form_template = 'signature_default.html';
+$form_template = getDefaultTemplateName();
+
+const CSV_MAX_FILE_BYTES = 2097152;  // 2 MB
+const CSV_MAX_ROWS       = 2000;
+
+/**
+ * True if the user id exists and is active.
+ */
+function importTargetExists($db, int $id): bool
+{
+    $st = $db->prepare('SELECT COUNT(*) FROM users WHERE id = ? AND is_active = 1');
+    $st->bindValue(1, $id, SQLITE3_INTEGER);
+    return (int)$st->execute()->fetchArray(SQLITE3_NUM)[0] > 0;
+}
 
 // ---------------------------------------------------------
 // PROCESS POST REQUEST
 // ---------------------------------------------------------
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    
-    // 1. CSRF Protection
-    if (!isset($_POST['csrf_token']) || !verifyCSRFToken($_POST['csrf_token'])) {
-        die("Security Error: Invalid CSRF Token. Please refresh the page.");
-    }
+    requireCsrf();
 
-    $target_user_id = $_POST['user_id'] ?? $user_id;
-    $template = $_POST['template'] ?? 'signature_default.html';
+    $target_user_id = (int)($_POST['user_id'] ?? $user_id);
+    $template = resolveTemplateName($_POST['template'] ?? '');
     $action = $_POST['action'] ?? 'preview';
-    
+
     $form_user_id = $target_user_id;
     $form_template = $template;
-    
-    // 2. Permission Check
-    if (!$is_admin && $target_user_id != $user_id) {
-        $error = "Access Denied: You can only import for yourself.";
-    } 
-    // 3. Action: Import
+
+    if (!$is_admin && $target_user_id !== (int)$user_id) {
+        // Permission check: users can only import for themselves.
+        $error = 'Access Denied: You can only import for yourself.';
+    } elseif (!importTargetExists($db, $target_user_id)) {
+        $error = 'The selected user does not exist or is not active.';
+    }
+    // Action: confirm the import of the previewed rows
     elseif ($action === 'import' && isset($_SESSION['preview_data'])) {
         $preview_data = $_SESSION['preview_data'];
-        $valid_data = array_filter($preview_data, fn($row) => $row['is_valid']);
-        
+        $valid_data = array_filter($preview_data, function ($row) { return !empty($row['is_valid']); });
+
         if (count($valid_data) > 0) {
             $_SESSION['import_data'] = [
-                'user_id' => $target_user_id,
+                'user_id'  => $target_user_id,
                 'template' => $template,
-                'rows' => $valid_data
+                'rows'     => array_values($valid_data),
             ];
-            unset($_SESSION['preview_data']);
+            unset($_SESSION['preview_data'], $_SESSION['import_params']);
             header('Location: process_import.php');
             exit;
-        } else {
-            $error = "No valid data to import.";
         }
+        $error = 'No valid data to import.';
     }
-    // 4. Action: Preview (File Upload)
+    // Action: upload + preview
     elseif ($action === 'preview' && isset($_FILES['csv_file'])) {
-        if (empty($_FILES['csv_file']['tmp_name'])) {
-            $error = "No file selected.";
+        $upload = $_FILES['csv_file'];
+        if (empty($upload['tmp_name']) || !is_uploaded_file($upload['tmp_name']) || ($upload['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
+            $error = 'No file selected or upload failed.';
+        } elseif ($upload['size'] > CSV_MAX_FILE_BYTES) {
+            $error = 'File too large (Max 2MB).';
         } else {
-            $file_tmp = $_FILES['csv_file']['tmp_name'];
-            $file_size = $_FILES['csv_file']['size'];
-            $file_name = $_FILES['csv_file']['name'];
-            $file_type = mime_content_type($file_tmp); // Server-side MIME check
-            
-            // Security: Size Limit (2MB)
-            if ($file_size > 2 * 1024 * 1024) {
-                $error = "File too large (Max 2MB).";
-            }
-            // Security: Type Check
-            elseif (!in_array($file_type, ['text/plain', 'text/csv', 'application/vnd.ms-excel']) && !preg_match('/\.csv$/i', $file_name)) {
-                $error = "Invalid file type. Please upload a CSV file.";
+            $file_type = function_exists('mime_content_type') ? mime_content_type($upload['tmp_name']) : 'text/plain';
+            if (!in_array($file_type, ['text/plain', 'text/csv', 'application/csv', 'application/vnd.ms-excel', 'inode/x-empty'], true)
+                || !preg_match('/\.csv$/i', (string)$upload['name'])) {
+                $error = 'Invalid file type. Please upload a CSV file.';
+            } elseif (($handle = fopen($upload['tmp_name'], 'r')) === false) {
+                $error = 'The file could not be read.';
             } else {
-                if (($handle = fopen($file_tmp, 'r')) !== FALSE) {
-                    // Check for BOM
-                    $bom = fread($handle, 3);
-                    if ($bom !== "\xEF\xBB\xBF") rewind($handle);
-                    
-                    $headers = fgetcsv($handle, 1000, ',');
-                    
-                    if (!$headers) {
-                        $error = "Empty or invalid CSV file.";
+                // Skip a UTF-8 BOM and detect the delimiter (Excel in German locales writes ";")
+                $bom = fread($handle, 3);
+                if ($bom !== "\xEF\xBB\xBF") rewind($handle);
+                $firstLine = (string)fgets($handle);
+                rewind($handle);
+                if ($bom === "\xEF\xBB\xBF") fread($handle, 3);
+                $delimiter = substr_count($firstLine, ';') > substr_count($firstLine, ',') ? ';' : ',';
+
+                $headers = fgetcsv($handle, 4096, $delimiter);
+                if (!$headers) {
+                    $error = 'Empty or invalid CSV file.';
+                } else {
+                    $expected_columns = ['name', 'role', 'email', 'phone'];
+                    $column_map = [];
+                    foreach ($headers as $index => $header) {
+                        $h = mb_strtolower(trim((string)$header), 'UTF-8');
+                        if (in_array($h, $expected_columns, true)) $column_map[$h] = $index;
+                    }
+                    $missing = array_diff($expected_columns, array_keys($column_map));
+                    if ($missing) {
+                        $error = 'Missing required columns: ' . implode(', ', $missing);
                     } else {
-                        // Normalize Headers
-                        $expected_columns = ['name', 'role', 'email', 'phone'];
-                        $column_map = [];
-                        foreach ($headers as $index => $header) {
-                            $h = mb_strtolower(trim($header), 'UTF-8');
-                            if (in_array($h, $expected_columns)) $column_map[$h] = $index;
-                        }
-                        
-                        $missing = array_diff($expected_columns, array_keys($column_map));
-                        if (!empty($missing)) {
-                            $error = "Missing required columns: " . implode(', ', $missing);
-                        } else {
-                            $row_num = 1;
-                            // Sanitizer Closure
-                            $sanitizeCSV = function($str) {
-                                $str = trim($str ?? '');
-                                // Prevent Formula Injection (CSV Injection)
-                                if (preg_match('/^[=\+\-@]/', $str)) return "'" . $str;
-                                return htmlspecialchars($str, ENT_QUOTES, 'UTF-8');
-                            };
-                            
-                            while (($data = fgetcsv($handle, 1000, ',')) !== FALSE) {
-                                $row_num++;
-                                if (count(array_filter($data)) === 0) continue; // Skip empty lines
-                                
-                                $name = $sanitizeCSV($data[$column_map['name']] ?? '');
-                                $role = $sanitizeCSV($data[$column_map['role']] ?? '');
-                                $email = $sanitizeCSV($data[$column_map['email']] ?? '');
-                                $phone = trim($data[$column_map['phone']] ?? '');
-                                
-                                $row_errors = [];
-                                if (!$name) $row_errors[] = "Name missing";
-                                if (!$role) $row_errors[] = "Role missing";
-                                if (!$email || !filter_var($email, FILTER_VALIDATE_EMAIL)) $row_errors[] = "Invalid Email";
-                                if (!$phone) $row_errors[] = "Phone missing";
-                                
-                                $is_valid = empty($row_errors);
-                                if ($is_valid) $valid_rows++;
-                                
-                                $preview_data[] = [
-                                    'row' => $row_num - 1,
-                                    'name' => $name, 'role' => $role,
-                                    'email' => $email, 'phone' => $phone,
-                                    'errors' => $row_errors, 'is_valid' => $is_valid
-                                ];
+                        $row_num = 1;
+                        while (($data = fgetcsv($handle, 4096, $delimiter)) !== false) {
+                            $row_num++;
+                            if (count(array_filter($data, function ($v) { return trim((string)$v) !== ''; })) === 0) continue; // skip empty lines
+                            if (count($preview_data) >= CSV_MAX_ROWS) {
+                                $error = 'Only the first ' . CSV_MAX_ROWS . ' rows are processed per import.';
+                                break;
                             }
-                            fclose($handle);
-                            
-                            $_SESSION['preview_data'] = $preview_data;
-                            $_SESSION['import_params'] = ['user_id' => $target_user_id, 'template' => $template];
-                            $total_rows = count($preview_data);
+
+                            // Values are stored raw (output is escaped when rendered).
+                            [$clean, $row_errors] = validateSignatureFields([
+                                'name'  => $data[$column_map['name']]  ?? '',
+                                'role'  => $data[$column_map['role']]  ?? '',
+                                'email' => $data[$column_map['email']] ?? '',
+                                'phone' => $data[$column_map['phone']] ?? '',
+                            ], true);
+
+                            $is_valid = empty($row_errors);
+                            if ($is_valid) $valid_rows++;
+
+                            $preview_data[] = [
+                                'row' => $row_num - 1,
+                                'name' => $clean['name'], 'role' => $clean['role'],
+                                'email' => $clean['email'], 'phone' => $clean['phone'],
+                                'errors' => $row_errors, 'is_valid' => $is_valid,
+                            ];
                         }
+                        fclose($handle);
+
+                        $_SESSION['preview_data'] = $preview_data;
+                        $_SESSION['import_params'] = ['user_id' => $target_user_id, 'template' => $template];
+                        $total_rows = count($preview_data);
                     }
                 }
             }
@@ -280,7 +271,7 @@ $csrf_token = generateCSRFToken();
             <div class="user-profile">
                 <div class="avatar"><?php echo strtoupper(substr($_SESSION['username'], 0, 1)); ?></div>
                 <div class="user-info">
-                    <div><?php echo htmlspecialchars($_SESSION['username']); ?></div>
+                    <div><?php echo e($_SESSION['username']); ?></div>
                     <span><?php echo isAdmin() ? 'Administrator' : 'User'; ?></span>
                 </div>
             </div>
@@ -296,11 +287,11 @@ $csrf_token = generateCSRFToken();
         </header>
 
         <?php if ($error): ?>
-            <div class="alert alert-error"><i class="fas fa-exclamation-circle"></i> <?php echo htmlspecialchars($error); ?></div>
+            <div class="alert alert-error"><i class="fas fa-exclamation-circle"></i> <?php echo e($error); ?></div>
         <?php endif; ?>
         
         <?php if (isset($_GET['success'])): ?>
-            <div class="alert alert-success"><i class="fas fa-check-circle"></i> Successfully imported <?php echo htmlspecialchars($_GET['success']); ?> signatures!</div>
+            <div class="alert alert-success"><i class="fas fa-check-circle"></i> Successfully imported <?php echo (int)$_GET['success']; ?> signatures!</div>
         <?php endif; ?>
 
         <section class="card">
@@ -309,7 +300,7 @@ $csrf_token = generateCSRFToken();
             </div>
             
             <form method="POST" enctype="multipart/form-data" id="uploadForm">
-                <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
+                <input type="hidden" name="csrf_token" value="<?php echo e($csrf_token); ?>">
                 
                 <div class="form-grid">
                     <div class="form-group" style="grid-column: 1 / -1;">
@@ -337,8 +328,8 @@ $csrf_token = generateCSRFToken();
                         <label for="template">Signature Template</label>
                         <select id="template" name="template" required>
                             <?php foreach ($templates as $filename => $display_name): ?>
-                                <option value="<?php echo htmlspecialchars($filename); ?>" <?php echo ($filename == $form_template) ? 'selected' : ''; ?>>
-                                    <?php echo htmlspecialchars($display_name); ?>
+                                <option value="<?php echo e($filename); ?>" <?php echo ($filename == $form_template) ? 'selected' : ''; ?>>
+                                    <?php echo e($display_name); ?>
                                 </option>
                             <?php endforeach; ?>
                         </select>
@@ -349,14 +340,14 @@ $csrf_token = generateCSRFToken();
                         <label for="user_id">Assign to User</label>
                         <select id="user_id" name="user_id">
                             <?php foreach ($users as $user): ?>
-                                <option value="<?php echo $user['id']; ?>" <?php echo ($user['id'] == $form_user_id) ? 'selected' : ''; ?>>
-                                    <?php echo htmlspecialchars($user['full_name'] ?: $user['username']); ?> (<?php echo htmlspecialchars($user['username']); ?>)
+                                <option value="<?php echo (int)$user['id']; ?>" <?php echo ($user['id'] == $form_user_id) ? 'selected' : ''; ?>>
+                                    <?php echo e($user['full_name'] ?: $user['username']); ?> (<?php echo e($user['username']); ?>)
                                 </option>
                             <?php endforeach; ?>
                         </select>
                     </div>
                     <?php else: ?>
-                        <input type="hidden" name="user_id" value="<?php echo $user_id; ?>">
+                        <input type="hidden" name="user_id" value="<?php echo (int)$user_id; ?>">
                     <?php endif; ?>
                 </div>
                 
@@ -375,9 +366,9 @@ $csrf_token = generateCSRFToken();
                 
                 <?php if ($valid_rows > 0): ?>
                 <form method="POST" style="margin:0;">
-                    <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
-                    <input type="hidden" name="user_id" value="<?php echo htmlspecialchars($form_user_id); ?>">
-                    <input type="hidden" name="template" value="<?php echo htmlspecialchars($form_template); ?>">
+                    <input type="hidden" name="csrf_token" value="<?php echo e($csrf_token); ?>">
+                    <input type="hidden" name="user_id" value="<?php echo e($form_user_id); ?>">
+                    <input type="hidden" name="template" value="<?php echo e($form_template); ?>">
                     <input type="hidden" name="action" value="import">
                     
                     <button type="submit" class="btn btn-success btn-sm" style="font-size: 0.9rem;">
@@ -409,11 +400,11 @@ $csrf_token = generateCSRFToken();
                     <tbody>
                         <?php foreach ($preview_data as $row): ?>
                         <tr class="<?php echo $row['is_valid'] ? 'row-valid' : 'row-error'; ?>">
-                            <td><b><?php echo $row['row']; ?></b></td>
-                            <td><?php echo htmlspecialchars($row['name']); ?></td>
-                            <td><?php echo htmlspecialchars($row['role']); ?></td>
-                            <td><?php echo htmlspecialchars($row['email']); ?></td>
-                            <td><?php echo htmlspecialchars($row['phone']); ?></td>
+                            <td><b><?php echo (int)$row['row']; ?></b></td>
+                            <td><?php echo e($row['name']); ?></td>
+                            <td><?php echo e($row['role']); ?></td>
+                            <td><?php echo e($row['email']); ?></td>
+                            <td><?php echo e($row['phone']); ?></td>
                             <td>
                                 <?php echo $row['is_valid'] ? 
                                     '<span style="color:#166534; font-weight:700; font-size:0.8rem;">VALID</span>' : 
@@ -423,7 +414,7 @@ $csrf_token = generateCSRFToken();
                                 <?php if (!empty($row['errors'])): ?>
                                     <ul class="error-list">
                                         <?php foreach ($row['errors'] as $err): ?>
-                                            <li><?php echo htmlspecialchars($err); ?></li>
+                                            <li><?php echo e($err); ?></li>
                                         <?php endforeach; ?>
                                     </ul>
                                 <?php else: ?>
@@ -439,9 +430,9 @@ $csrf_token = generateCSRFToken();
             <?php if ($valid_rows > 0): ?>
                 <div class="form-actions-centered">
                     <form method="POST">
-                        <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
-                        <input type="hidden" name="user_id" value="<?php echo htmlspecialchars($form_user_id); ?>">
-                        <input type="hidden" name="template" value="<?php echo htmlspecialchars($form_template); ?>">
+                        <input type="hidden" name="csrf_token" value="<?php echo e($csrf_token); ?>">
+                        <input type="hidden" name="user_id" value="<?php echo e($form_user_id); ?>">
+                        <input type="hidden" name="template" value="<?php echo e($form_template); ?>">
                         <input type="hidden" name="action" value="import">
                         
                         <button type="button" onclick="window.location.href='csv_import.php?cancel=1'" class="btn btn-danger"><i class="fas fa-times"></i> Cancel</button>

@@ -1,76 +1,57 @@
 <?php
-// change_password.php
+// change_password.php - lets a logged-in user change their own password.
 
-// 1. Include Configuration & Security
 require_once 'includes/config.php';
 requireLogin();
 
-// 2. Security Headers
-// Prevent this page from being loaded in an iframe (Clickjacking protection)
-header('X-Frame-Options: DENY');
-
 $message = '';
 $error = '';
-
-// 3. CSRF Protection Initialization
-// Ensure a token exists for the session
-if (empty($_SESSION['csrf_token'])) {
-    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
-}
+$user_id = (int)$_SESSION['user_id'];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    // 4. Verify CSRF Token
-    // This prevents attackers from forging a password change request from another site.
-    if (!isset($_POST['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $_POST['csrf_token'])) {
-        die("Security Error: Invalid CSRF Token. Please refresh the page.");
-    }
+    requireCsrf();
 
-    // Get inputs (do not trim passwords as spaces can be valid characters in phrases)
-    $current_password = $_POST['current_password'] ?? '';
-    $new_password = $_POST['new_password'] ?? '';
-    $confirm_password = $_POST['confirm_password'] ?? '';
-    
-    // 5. Enforce Password Complexity Policies
-    if (empty($current_password) || empty($new_password) || empty($confirm_password)) {
-        $error = "All fields are required!";
+    // Passwords are not trimmed: spaces are valid characters.
+    $current_password = is_string($_POST['current_password'] ?? null) ? $_POST['current_password'] : '';
+    $new_password = is_string($_POST['new_password'] ?? null) ? $_POST['new_password'] : '';
+    $confirm_password = is_string($_POST['confirm_password'] ?? null) ? $_POST['confirm_password'] : '';
+    $policyErrors = validatePasswordPolicy($new_password);
+
+    if (rateLimitIsBlocked('change_password', 5, 900, 'uid:' . $user_id)) {
+        // Guessing the current password is throttled per account (not per session).
+        $error = 'Too many attempts. Please try again in 15 minutes.';
+    } elseif ($current_password === '' || $new_password === '' || $confirm_password === '') {
+        $error = 'All fields are required!';
     } elseif ($new_password !== $confirm_password) {
-        $error = "New passwords do not match!";
-    } elseif (strlen($new_password) < 8) {
-        $error = "Password must be at least 8 characters long!";
-    } elseif (!preg_match("/[A-Z]/", $new_password) || !preg_match("/[a-z]/", $new_password) || !preg_match("/[0-9]/", $new_password)) {
-        $error = "Password must contain uppercase, lowercase letters, and numbers!";
+        $error = 'New passwords do not match!';
+    } elseif ($policyErrors) {
+        $error = 'Password too weak: ' . implode('; ', $policyErrors) . '.';
+    } elseif ($new_password === $current_password) {
+        $error = 'The new password must differ from the current one!';
     } else {
-        // 6. Verify Current Password
-        $stmt = $db->prepare("SELECT id, password_hash FROM users WHERE id = ?");
-        $stmt->bindValue(1, $_SESSION['user_id'], SQLITE3_INTEGER);
-        $result = $stmt->execute();
-        $user = $result->fetchArray(SQLITE3_ASSOC);
-        
+        $stmt = $db->prepare('SELECT id, password_hash FROM users WHERE id = ?');
+        $stmt->bindValue(1, $user_id, SQLITE3_INTEGER);
+        $user = $stmt->execute()->fetchArray(SQLITE3_ASSOC);
+
         if ($user && password_verify($current_password, $user['password_hash'])) {
-            // Hash new password securely
             $new_hash = password_hash($new_password, PASSWORD_DEFAULT);
-            
-            // Update database
-            $update_stmt = $db->prepare("UPDATE users SET password_hash = ? WHERE id = ?");
+
+            $update_stmt = $db->prepare('UPDATE users SET password_hash = ? WHERE id = ?');
             $update_stmt->bindValue(1, $new_hash, SQLITE3_TEXT);
-            $update_stmt->bindValue(2, $_SESSION['user_id'], SQLITE3_INTEGER);
-            
-            if ($update_stmt->execute()) {
-                $message = "✅ Password successfully changed!";
-                
-                // 7. CRITICAL: Prevent Session Fixation
-                // Regenerate session ID after privilege level change.
-                session_regenerate_id(true);
-            } else {
-                $error = "❌ Database error! Could not update password.";
-            }
+            $update_stmt->bindValue(2, $user_id, SQLITE3_INTEGER);
+            $update_stmt->execute();
+
+            // Other sessions of this user become invalid (fingerprint changes);
+            // this session stays valid with a fresh ID and the new fingerprint.
+            session_regenerate_id(true);
+            $_SESSION['pw_fp'] = passwordFingerprint($new_hash);
+            rateLimitReset('change_password', 'uid:' . $user_id);
+            logSecurityEventToDB($db, 'PASSWORD_CHANGED', $user_id, 'Self-service');
+            $message = '✅ Password successfully changed!';
         } else {
-            // 8. Rate Limiting (Anti-Brute-Force)
-            // If the current password was wrong, sleep for ~1 second.
-            // This prevents automated tools from guessing the current password rapidly.
-            usleep(rand(500000, 1500000));
-            
-            $error = "❌ Current password is incorrect!";
+            rateLimitHit('change_password', 900, 'uid:' . $user_id);
+            usleep(random_int(500000, 1000000));
+            $error = '❌ Current password is incorrect!';
         }
     }
 }
@@ -86,7 +67,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <link rel="stylesheet" href="css/all.min.css">    
     
     <style>
-        /* CSS remains exactly as original */
+        /* Page styles (unchanged UI) */
         .password-strength-container {
             margin-top: 0.5rem;
             background: #f1f5f9;
@@ -179,7 +160,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <?php echo strtoupper(substr($_SESSION['username'], 0, 1)); ?>
                 </div>
                 <div class="user-info">
-                    <div><?php echo htmlspecialchars($_SESSION['username'], ENT_QUOTES, 'UTF-8'); ?></div>
+                    <div><?php echo e($_SESSION['username']); ?></div>
                     <span><?php echo isAdmin() ? 'Administrator' : 'User'; ?></span>
                 </div>
             </div>
@@ -198,13 +179,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         <?php if ($message): ?>
             <div class="alert alert-success">
-                <i class="fas fa-check-circle"></i> <?php echo htmlspecialchars($message, ENT_QUOTES, 'UTF-8'); ?>
+                <i class="fas fa-check-circle"></i> <?php echo e($message); ?>
             </div>
         <?php endif; ?>
         
         <?php if ($error): ?>
             <div class="alert alert-error">
-                <i class="fas fa-exclamation-circle"></i> <?php echo htmlspecialchars($error, ENT_QUOTES, 'UTF-8'); ?>
+                <i class="fas fa-exclamation-circle"></i> <?php echo e($error); ?>
             </div>
         <?php endif; ?>
 
@@ -216,7 +197,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 </div>
 
                 <form method="POST">
-                    <input type="hidden" name="csrf_token" value="<?php echo $_SESSION['csrf_token']; ?>">
+                    <?php echo csrfField(); ?>
 
                     <div class="form-group">
                         <label for="current_password">Current Password</label>

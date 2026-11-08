@@ -1,35 +1,39 @@
 <?php
-// process_import.php
-
-// 1. Include Configuration & Security
+/**
+ * process_import.php - writes the previewed CSV rows to the database.
+ * The data comes from the session (set by csv_import.php) and is validated again here.
+ */
 require_once 'includes/config.php';
 requireLogin();
 
-// 2. Session Data Check
-// Ensure import data exists. If not, redirect (prevents direct access).
+// Direct access without a prepared import: back to the upload page.
 if (!isset($_SESSION['import_data'])) {
     header('Location: csv_import.php');
     exit;
 }
 
-// Retrieve data
 $import_data = $_SESSION['import_data'];
-
-// 3. Prevent Double Submission
-// CRITICAL: Unset the session data immediately.
-// This prevents the user from refreshing the page and importing the same duplicates again.
+// Remove immediately so a page refresh cannot import the same rows twice.
 unset($_SESSION['import_data']);
 
-$user_id = (int)$import_data['user_id'];
-$template = $import_data['template'];
-$rows = $import_data['rows'];
+$user_id  = (int)$import_data['user_id'];
+$template = resolveTemplateName($import_data['template'] ?? '');
+$rows     = array_slice((array)($import_data['rows'] ?? []), 0, 2000);
 
-// 4. Authorization Check
-// Ensure the user has permission to import for the target user ID.
-// Admin can import for anyone; Users can only import for themselves.
-if (!isAdmin() && $user_id !== $_SESSION['user_id']) {
-    // Log this security event if you have a logger
-    header('Location: csv_import.php?error=Access+Denied');
+// Authorization: admins may import for any user, everybody else only for themselves.
+if (!isAdmin() && $user_id !== (int)$_SESSION['user_id']) {
+    logSecurityEventToDB($db, 'IMPORT_DENIED', (int)$_SESSION['user_id'], 'Target user: ' . $user_id);
+    setFlash('error', 'Access denied.');
+    header('Location: csv_import.php');
+    exit;
+}
+
+// The target must still exist (it may have been deleted since the preview).
+$stmt = $db->prepare('SELECT username, full_name FROM users WHERE id = ?');
+$stmt->bindValue(1, $user_id, SQLITE3_INTEGER);
+$user_info = $stmt->execute()->fetchArray(SQLITE3_ASSOC);
+if (!$user_info) {
+    header('Location: csv_import.php');
     exit;
 }
 
@@ -37,69 +41,40 @@ $success_count = 0;
 $error_count = 0;
 $errors = [];
 
-// 5. Processing Loop with Validation
-foreach ($rows as $index => $row) {
-    // Sanitize inputs (trim whitespace)
-    $name = trim($row['name'] ?? '');
-    $role = trim($row['role'] ?? '');
-    $email = trim($row['email'] ?? '');
-    $phone = trim($row['phone'] ?? '');
-    $row_num = $row['row'] ?? ($index + 1);
-
-    // Validation: Check required fields
-    if (empty($name)) {
-        $error_count++;
-        $errors[] = "Row {$row_num}: Name is required.";
-        continue;
-    }
-
-    // Validation: Check Email Format
-    // This prevents garbage data from polluting the database.
-    if (!empty($email) && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
-        $error_count++;
-        $errors[] = "Row {$row_num}: Invalid email format '{$email}'.";
-        continue;
-    }
-
-    try {
-        // Secure Insert
-        $stmt = $db->prepare("INSERT INTO user_signatures (user_id, name, role, email, phone, template) 
-                             VALUES (?, ?, ?, ?, ?, ?)");
-        $stmt->bindValue(1, $user_id, SQLITE3_INTEGER);
-        $stmt->bindValue(2, $name, SQLITE3_TEXT);
-        $stmt->bindValue(3, $role, SQLITE3_TEXT);
-        $stmt->bindValue(4, $email, SQLITE3_TEXT);
-        $stmt->bindValue(5, $phone, SQLITE3_TEXT);
-        // Ensure template filename is safe (basename check was done in previous step, but good to be sure)
-        $stmt->bindValue(6, basename($template), SQLITE3_TEXT);
-        
-        if ($stmt->execute()) {
-            $success_count++;
-        } else {
+// All rows or none: a failure in the middle must not leave a half import behind.
+$db->exec('BEGIN IMMEDIATE');
+try {
+    $insert = $db->prepare("INSERT INTO user_signatures (user_id, name, role, email, phone, template, source) VALUES (?, ?, ?, ?, ?, ?, 'csv')");
+    foreach ($rows as $index => $row) {
+        $row_num = (int)($row['row'] ?? ($index + 1));
+        [$clean, $rowErrors] = validateSignatureFields((array)$row, true);
+        if ($rowErrors) {
             $error_count++;
-            $errors[] = "Row {$row_num}: Database insertion failed.";
+            $errors[] = 'Row ' . $row_num . ': ' . implode(' ', $rowErrors);
+            continue;
         }
-    } catch (Exception $e) {
-        $error_count++;
-        // Do not output raw SQL errors to UI, mostly for security, but kept generic here.
-        $errors[] = "Row {$row_num}: System error during save.";
+        $insert->reset();
+        $insert->bindValue(1, $user_id, SQLITE3_INTEGER);
+        $insert->bindValue(2, $clean['name'], SQLITE3_TEXT);
+        $insert->bindValue(3, $clean['role'], SQLITE3_TEXT);
+        $insert->bindValue(4, $clean['email'], SQLITE3_TEXT);
+        $insert->bindValue(5, $clean['phone'], SQLITE3_TEXT);
+        $insert->bindValue(6, $template, SQLITE3_TEXT);
+        $insert->execute();
+        $success_count++;
     }
+    $db->exec('COMMIT');
+} catch (Exception $e) {
+    $db->exec('ROLLBACK');
+    error_log('CSV import failed: ' . $e->getMessage());
+    $errors[] = 'The import failed and was rolled back. No rows were saved.';
+    $error_count += $success_count;
+    $success_count = 0;
 }
 
-// 6. Fetch User Info for Display
-// Use prepared statement to prevent injection if $user_id was manipulated
-$stmt = $db->prepare("SELECT username, full_name FROM users WHERE id = ?");
-$stmt->bindValue(1, $user_id, SQLITE3_INTEGER);
-$result = $stmt->execute();
-$user_info = $result->fetchArray(SQLITE3_ASSOC);
+logSecurityEventToDB($db, 'CSV_IMPORT', (int)$_SESSION['user_id'], "Target user: $user_id, imported: $success_count, failed: $error_count");
 
-if (!$user_info) {
-    // Fallback if user was deleted during process
-    $user_info = ['username' => 'Unknown', 'full_name' => 'Unknown'];
-}
-
-// Prepare template name for display (Sanitized later in HTML)
-$template_display = ucfirst(str_replace(['signature_', '.html', '_'], ['', '', ' '], $template));
+$template_display = templateDisplayName($template);
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -209,7 +184,7 @@ $template_display = ucfirst(str_replace(['signature_', '.html', '_'], ['', '', '
                     <?php echo strtoupper(substr($_SESSION['username'], 0, 1)); ?>
                 </div>
                 <div class="user-info">
-                    <div><?php echo htmlspecialchars($_SESSION['username'], ENT_QUOTES, 'UTF-8'); ?></div>
+                    <div><?php echo e($_SESSION['username']); ?></div>
                     <span><?php echo isAdmin() ? 'Administrator' : 'User'; ?></span>
                 </div>
             </div>
@@ -256,12 +231,12 @@ $template_display = ucfirst(str_replace(['signature_', '.html', '_'], ['', '', '
                     <li>
                         <span><strong>Assigned User:</strong></span>
                         <span>
-                            <?php echo htmlspecialchars($user_info['full_name'] ?: $user_info['username'], ENT_QUOTES, 'UTF-8'); ?>
+                            <?php echo e($user_info['full_name'] ?: $user_info['username']); ?>
                         </span>
                     </li>
                     <li>
                         <span><strong>Template Used:</strong></span>
-                        <span><?php echo htmlspecialchars($template_display, ENT_QUOTES, 'UTF-8'); ?></span>
+                        <span><?php echo e($template_display); ?></span>
                     </li>
                     <li>
                         <span><strong>Timestamp:</strong></span>
@@ -275,7 +250,7 @@ $template_display = ucfirst(str_replace(['signature_', '.html', '_'], ['', '', '
                     <h4 style="color:#991b1b; margin-bottom:1rem;"><i class="fas fa-exclamation-triangle"></i> Import Errors</h4>
                     <?php foreach ($errors as $error): ?>
                         <div class="error-item">
-                            <?php echo htmlspecialchars($error, ENT_QUOTES, 'UTF-8'); ?>
+                            <?php echo e($error); ?>
                         </div>
                     <?php endforeach; ?>
                 </div>

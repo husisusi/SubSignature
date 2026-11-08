@@ -1,163 +1,113 @@
 <?php
-// generator.php
-
+/**
+ * generator.php - create, preview and manage the user's own signatures.
+ */
 require_once 'includes/config.php';
 requireLogin();
 
-// ---------------------------------------------------------------------
-// 1. SECURITY & BACKEND LOGIC
-// ---------------------------------------------------------------------
-
-// Generate CSRF Token if not exists (Prevention against Cross-Site Request Forgery)
-if (empty($_SESSION['csrf_token'])) {
-    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
-}
-
-$user_id = $_SESSION['user_id'];
-$message = '';
-
-// Load form data from session (if available) to repopulate fields on reload
-$formData = $_SESSION['form_data'] ?? [];
+$user_id = (int)$_SESSION['user_id'];
 
 // ---------------------------------------------------------------------
-// DEFAULT TEMPLATE LOGIC
+// 1. FORM ACTIONS (POST + CSRF)
 // ---------------------------------------------------------------------
-// 1. Determine System Default (set by Admin via file)
-$configFile = __DIR__ . '/templates/default_config.txt';
-$systemDefault = file_exists($configFile) ? trim(file_get_contents($configFile)) : 'signature_default.html';
-
-// 2. Determine which template to show
-// If POST (User clicked Save): Use the user's selection
-// If GET (Page Load): FORCE the system default to ensure Admin setting applies
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $defaultTemplate = $formData['template'] ?? $systemDefault;
-} else {
-    $defaultTemplate = $systemDefault;
-    
-    // Reset session template to avoid confusion later
-    if (isset($_SESSION['form_data'])) {
-        $_SESSION['form_data']['template'] = $systemDefault;
+    requireCsrf();
+    $action = $_POST['action'] ?? '';
+
+    if ($action === 'save') {
+        [$fields, $errors] = validateSignatureFields($_POST, true);
+        $template = resolveTemplateName($_POST['template'] ?? '');
+        $_SESSION['form_data'] = $fields + ['template' => $template];
+
+        if ($errors) {
+            setFlash('error', implode(' ', $errors));
+        } else {
+            $stmt = $db->prepare('INSERT INTO user_signatures (user_id, name, role, email, phone, template) VALUES (?, ?, ?, ?, ?, ?)');
+            $stmt->bindValue(1, $user_id, SQLITE3_INTEGER);
+            $stmt->bindValue(2, $fields['name'], SQLITE3_TEXT);
+            $stmt->bindValue(3, $fields['role'], SQLITE3_TEXT);
+            $stmt->bindValue(4, $fields['email'], SQLITE3_TEXT);
+            $stmt->bindValue(5, $fields['phone'], SQLITE3_TEXT);
+            $stmt->bindValue(6, $template, SQLITE3_TEXT);
+            $stmt->execute();
+            setFlash('success', 'Signature saved successfully!');
+        }
+        header('Location: generator.php');
+        exit;
     }
+
+    if ($action === 'delete_all') {
+        $stmt = $db->prepare('DELETE FROM user_signatures WHERE user_id = ?');
+        $stmt->bindValue(1, $user_id, SQLITE3_INTEGER);
+        $stmt->execute();
+        setFlash('success', 'All signatures deleted successfully!');
+        header('Location: generator.php');
+        exit;
+    }
+
+    header('Location: generator.php');
+    exit;
 }
 
-// Load other default user values
-$defaultName = $formData['name'] ?? $_SESSION['full_name'] ?? '';
-$defaultEmail = $formData['email'] ?? $_SESSION['email'] ?? '';
-$defaultRole = $formData['role'] ?? '';
+$message = popFlash('success') ?: (string)($_SESSION['success'] ?? '');
+$errorMessage = popFlash('error') ?: (string)($_SESSION['error'] ?? '');
+unset($_SESSION['success'], $_SESSION['error']);
+
+// ---------------------------------------------------------------------
+// 2. FORM DEFAULTS
+// ---------------------------------------------------------------------
+$formData = $_SESSION['form_data'] ?? [];
+unset($_SESSION['form_data']);
+
+// On a fresh page load the administrator's default template is preselected.
+$defaultTemplate = getDefaultTemplateName();
+$defaultName  = $formData['name']  ?? ($_SESSION['full_name'] ?? '');
+$defaultEmail = $formData['email'] ?? ($_SESSION['email'] ?? '');
+$defaultRole  = $formData['role']  ?? '';
 $defaultPhone = $formData['phone'] ?? '';
 
-// Load HTML Templates for JavaScript (Live Preview functionality)
+// Templates for the dropdown and for the JavaScript live preview. The HTML
+// is passed through the server-side sanitiser and again client-side.
+$templates = [];
 $templatesJS = [];
-$templatesDir = __DIR__ . '/templates';
-$template_files_glob = glob($templatesDir . '/*.html');
-if ($template_files_glob) {
-    foreach ($template_files_glob as $file) {
-        $basename = basename($file);
-        // Security Note: We trust these local files. Do not allow user upload of templates here without sanitization.
-        $templatesJS[$basename] = file_get_contents($file);
-    }
+foreach (listSignatureTemplates() as $file) {
+    $templates[$file] = $file;
+    $templatesJS[$file] = sanitizeTemplateHtml(loadSignatureTemplate($file));
 }
 
 // ---------------------------------------------------------------------
-// SEARCH & PAGINATION
+// 3. SEARCH & PAGINATION
 // ---------------------------------------------------------------------
-$search = trim($_GET['search'] ?? '');
-$page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
-if ($page < 1) $page = 1;
-$limit = 25; 
+$search = cleanText($_GET['search'] ?? '', 100);
+$page = max(1, min(100000, (int)($_GET['page'] ?? 1)));
+$limit = 25;
 $offset = ($page - 1) * $limit;
 
-// Prepare SQL Query with Secure Parameters
-$whereSQL = "WHERE user_id = :uid";
+$whereSQL = 'WHERE user_id = :uid';
 $params = [':uid' => $user_id];
-
-if (!empty($search)) {
-    // Search logic: matches name, email, or role
-    $whereSQL .= " AND (name LIKE :search OR email LIKE :search OR role LIKE :search)";
-    $params[':search'] = '%' . $search . '%';
+if ($search !== '') {
+    $whereSQL .= ' AND (name LIKE :search ESCAPE \'\\\' OR email LIKE :search ESCAPE \'\\\' OR role LIKE :search ESCAPE \'\\\')';
+    // Escape LIKE wildcards in the user's search text.
+    $params[':search'] = '%' . addcslashes($search, '%_\\') . '%';
 }
 
-// Count total records for pagination
-$countSql = "SELECT COUNT(*) as total FROM user_signatures $whereSQL";
-$stmt = $db->prepare($countSql);
+$stmt = $db->prepare("SELECT COUNT(*) FROM user_signatures $whereSQL");
 foreach ($params as $key => $val) {
     $stmt->bindValue($key, $val, is_int($val) ? SQLITE3_INTEGER : SQLITE3_TEXT);
 }
-$totalResult = $stmt->execute();
-$totalSignatures = $totalResult->fetchArray(SQLITE3_ASSOC)['total'];
-$totalPages = ceil($totalSignatures / $limit);
+$totalSignatures = (int)$stmt->execute()->fetchArray(SQLITE3_NUM)[0];
+$totalPages = (int)ceil($totalSignatures / $limit);
 
-// Fetch records securely
-$dataSql = "SELECT * FROM user_signatures $whereSQL ORDER BY created_at DESC LIMIT :limit OFFSET :offset";
-$stmt = $db->prepare($dataSql);
+$stmt = $db->prepare("SELECT * FROM user_signatures $whereSQL ORDER BY created_at DESC, id DESC LIMIT :limit OFFSET :offset");
 foreach ($params as $key => $val) {
     $stmt->bindValue($key, $val, is_int($val) ? SQLITE3_INTEGER : SQLITE3_TEXT);
 }
 $stmt->bindValue(':limit', $limit, SQLITE3_INTEGER);
 $stmt->bindValue(':offset', $offset, SQLITE3_INTEGER);
-
 $result = $stmt->execute();
 $signatures = [];
 while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
     $signatures[] = $row;
-}
-
-// ---------------------------------------------------------------------
-// HANDLE FORM ACTIONS (SAVE / DELETE)
-// ---------------------------------------------------------------------
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    // Security: Validate CSRF Token to prevent unauthorized form submissions
-    if (!isset($_POST['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $_POST['csrf_token'])) {
-        die("Security Error: Invalid CSRF Token");
-    }
-
-    // Action: Save Signature
-    if (isset($_POST['action']) && $_POST['action'] === 'save') {
-        // Sanitize inputs
-        $name = trim($_POST['name'] ?? '');
-        $role = trim($_POST['role'] ?? '');
-        $email = trim($_POST['email'] ?? '');
-        $phone = trim($_POST['phone'] ?? '');
-        $template = trim($_POST['template'] ?? '');
-
-        // Security: Use Prepared Statements to prevent SQL Injection
-        $stmt = $db->prepare("INSERT INTO user_signatures (user_id, name, role, email, phone, template) VALUES (?, ?, ?, ?, ?, ?)");
-        $stmt->bindValue(1, $user_id, SQLITE3_INTEGER);
-        $stmt->bindValue(2, $name, SQLITE3_TEXT);
-        $stmt->bindValue(3, $role, SQLITE3_TEXT);
-        $stmt->bindValue(4, $email, SQLITE3_TEXT);
-        $stmt->bindValue(5, $phone, SQLITE3_TEXT);
-        $stmt->bindValue(6, $template, SQLITE3_TEXT);
-        $stmt->execute();
-
-        $_SESSION['form_data'] = $_POST;
-        header("Location: generator.php?success=1");
-        exit;
-    }
-    
-    // Action: Delete All
-    if (isset($_POST['action']) && $_POST['action'] === 'delete_all') {
-        $stmt = $db->prepare("DELETE FROM user_signatures WHERE user_id = ?");
-        $stmt->bindValue(1, $user_id, SQLITE3_INTEGER);
-        $stmt->execute();
-        header("Location: generator.php?success=deleted");
-        exit;
-    }
-}
-
-// Handle Success Messages
-if (isset($_GET['success'])) {
-    if ($_GET['success'] == 'deleted') $message = "All signatures deleted successfully!";
-    else $message = "Signature saved successfully!";
-}
-
-// Load Templates List for PHP Dropdown
-$templates = [];
-$template_files = glob('templates/*.html');
-if ($template_files) {
-    foreach ($template_files as $file) {
-        $templates[basename($file)] = basename($file);
-    }
 }
 ?>
 <!DOCTYPE html>
@@ -168,12 +118,14 @@ if ($template_files) {
     <title>Signature Generator</title>
     <link rel="stylesheet" href="css/style.css">
     <link rel="stylesheet" href="css/all.min.css">
+    <?php echo csrfMeta(); ?>
     
     <style>
         /* --- GENERAL --- */
         .visually-hidden { position: absolute; left: -9999px; opacity: 0; }
         .alert { padding: 1rem; border-radius: 8px; margin-bottom: 1.5rem; display: flex; gap: 0.75rem; align-items: center; }
         .alert-success { background: #dcfce7; color: #166534; border: 1px solid #bbf7d0; }
+        .alert-error { background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }
 
         /* --- SPLIT EDITOR STYLES --- */
         .split-editor-container {
@@ -273,7 +225,7 @@ if ($template_files) {
             <div class="user-profile">
                 <div class="avatar"><?php echo strtoupper(substr($_SESSION['username'], 0, 1)); ?></div>
                 <div class="user-info">
-                    <div><?php echo htmlspecialchars($_SESSION['username']); ?></div>
+                    <div><?php echo e($_SESSION['username']); ?></div>
                     <span><?php echo isAdmin() ? 'Administrator' : 'User'; ?></span>
                 </div>
             </div>
@@ -289,7 +241,10 @@ if ($template_files) {
         </header>
 
         <?php if ($message): ?>
-            <div class="alert alert-success"><i class="fas fa-check-circle"></i> <?php echo htmlspecialchars($message); ?></div>
+            <div class="alert alert-success"><i class="fas fa-check-circle"></i> <?php echo e($message); ?></div>
+        <?php endif; ?>
+        <?php if ($errorMessage): ?>
+            <div class="alert alert-error"><i class="fas fa-exclamation-circle"></i> <?php echo e($errorMessage); ?></div>
         <?php endif; ?>
 
         <section class="card" id="create-form">
@@ -298,7 +253,7 @@ if ($template_files) {
             </div>
             
             <form action="generator.php" method="POST" id="signatureForm">
-                <input type="hidden" name="csrf_token" value="<?php echo $_SESSION['csrf_token']; ?>">
+                <?php echo csrfField(); ?>
 
                 <div class="split-editor-container">
                     
@@ -307,12 +262,12 @@ if ($template_files) {
                             <label>Template</label>
                             <select name="template" id="inp_template" required>
                                 <?php foreach ($templates as $template): ?>
-                                    <?php 
-                                    $cleanName = ucfirst(str_replace(['signature_', '.html', '_'], ['','',' '], $template));
-                                    $selected = ($template == $defaultTemplate) ? 'selected' : '';
+                                    <?php
+                                    $cleanName = templateDisplayName($template);
+                                    $selected = ($template === $defaultTemplate) ? 'selected' : '';
                                     ?>
-                                    <option value="<?php echo htmlspecialchars($template); ?>" <?php echo $selected; ?>>
-                                        <?php echo htmlspecialchars($cleanName); ?>
+                                    <option value="<?php echo e($template); ?>" <?php echo $selected; ?>>
+                                        <?php echo e($cleanName); ?>
                                     </option>
                                 <?php endforeach; ?>
                             </select>
@@ -320,26 +275,26 @@ if ($template_files) {
 
                         <div class="form-group">
                             <label>Full Name</label>
-                            <input type="text" id="inp_name" name="name" required 
-                                   value="<?php echo htmlspecialchars($defaultName); ?>" placeholder="e.g. Sarah Smith">
+                            <input type="text" id="inp_name" name="name" required maxlength="100" 
+                                   value="<?php echo e($defaultName); ?>" placeholder="e.g. Sarah Smith">
                         </div>
 
                         <div class="form-group">
                             <label>Job Title / Position</label>
-                            <input type="text" id="inp_role" name="role" required 
-                                   value="<?php echo htmlspecialchars($defaultRole); ?>" placeholder="e.g. CEO">
+                            <input type="text" id="inp_role" name="role" required maxlength="100" 
+                                   value="<?php echo e($defaultRole); ?>" placeholder="e.g. CEO">
                         </div>
 
                         <div class="form-group">
                             <label>Email Address</label>
-                            <input type="email" id="inp_email" name="email" required 
-                                   value="<?php echo htmlspecialchars($defaultEmail); ?>" placeholder="sarah@company.com">
+                            <input type="email" id="inp_email" name="email" required maxlength="254" 
+                                   value="<?php echo e($defaultEmail); ?>" placeholder="sarah@company.com">
                         </div>
 
                         <div class="form-group">
                             <label>Phone Number</label>
-                            <input type="tel" id="inp_phone" name="phone" required 
-                                   value="<?php echo htmlspecialchars($defaultPhone); ?>" placeholder="+49 123 456789">
+                            <input type="tel" id="inp_phone" name="phone" required maxlength="30" 
+                                   value="<?php echo e($defaultPhone); ?>" placeholder="+49 123 456789">
                         </div>
 
                         <div class="form-actions">
@@ -377,9 +332,9 @@ if ($template_files) {
                 <h3>My Signatures (<?php echo $totalSignatures; ?>)</h3>
                 <div style="display:flex; gap:0.5rem">
                 <?php if ($totalSignatures > 0): ?>
-                    <button onclick="downloadAllSignatures()" class="btn btn-sm btn-success"><i class="fas fa-file-archive"></i> ZIP</button>
+                    <a href="download_all.php" class="btn btn-sm btn-success"><i class="fas fa-file-archive"></i> ZIP</a>
                     <?php if (empty($search)): ?>
-                    <button onclick="confirmDeleteAll()" class="btn btn-sm btn-danger"><i class="fas fa-trash-alt"></i> Delete All</button>
+                    <button type="button" data-post="generator.php" data-params='{"action":"delete_all"}' data-confirm="Delete ALL signatures?" class="btn btn-sm btn-danger"><i class="fas fa-trash-alt"></i> Delete All</button>
                     <?php endif; ?>
                 <?php endif; ?>
                 </div>
@@ -387,7 +342,7 @@ if ($template_files) {
 
             <div class="search-bar-container">
                 <form method="GET" action="generator.php" style="width:100%; display:flex; gap:10px;">
-                    <input type="text" name="search" class="search-input" placeholder="Search..." value="<?php echo htmlspecialchars($search); ?>">
+                    <input type="text" name="search" class="search-input" placeholder="Search..." value="<?php echo e($search); ?>">
                     <button type="submit" class="btn btn-primary"><i class="fas fa-search"></i></button>
                     <?php if (!empty($search)): ?><a href="generator.php" class="btn btn-secondary">Clear</a><?php endif; ?>
                 </form>
@@ -401,37 +356,24 @@ if ($template_files) {
                     </div>
                 <?php else: ?>
                     <?php foreach ($signatures as $sig): ?>
-                    <?php 
-                        // HTML PREPARE FOR MODAL PREVIEW
-                        $tplPath = 'templates/' . basename($sig['template']);
-                        $encodedHtml = "";
-                        if (file_exists($tplPath)) {
-                            $rawTpl = file_get_contents($tplPath);
-                            $previewHtml = str_replace(
-                                ['{{NAME}}', '{{ROLE}}', '{{EMAIL}}', '{{PHONE}}'],
-                                [htmlspecialchars($sig['name']), htmlspecialchars($sig['role']), htmlspecialchars($sig['email']), htmlspecialchars($sig['phone'])],
-                                $rawTpl
-                            );
-                            $encodedHtml = htmlspecialchars($previewHtml, ENT_QUOTES, 'UTF-8');
-                        }
-                    ?>
+                    <?php $encodedHtml = e(renderStoredSignature($sig)); ?>
                     <div class="signature-item" style="flex-wrap: wrap;">
                         <div style="display:flex; justify-content:space-between; width:100%; align-items:center;">
                             <div class="sig-details">
-                                <h4><?php echo htmlspecialchars($sig['name']); ?></h4>
-                                <p style="font-size:0.85rem; color:#64748b; margin-top:0.25rem"><?php echo htmlspecialchars($sig['role']); ?> &bull; <?php echo htmlspecialchars($sig['email']); ?></p>
+                                <h4><?php echo e($sig['name']); ?></h4>
+                                <p style="font-size:0.85rem; color:#64748b; margin-top:0.25rem"><?php echo e($sig['role']); ?> &bull; <?php echo e($sig['email']); ?></p>
                             </div>
                             
                             <div class="sig-actions" style="display:flex; gap:0.5rem;">
-                                <?php if($encodedHtml): ?>
-                                    <textarea id="source-<?php echo $sig['id']; ?>" class="visually-hidden"><?php echo $encodedHtml; ?></textarea>
-                                    <button onclick="openModal(<?php echo $sig['id']; ?>)" class="btn btn-sm btn-secondary" style="background:white; border:1px solid #cbd5e1;" title="Preview">
+                                <?php if ($encodedHtml !== ''): ?>
+                                    <textarea id="source-<?php echo (int)$sig['id']; ?>" class="visually-hidden"><?php echo $encodedHtml; ?></textarea>
+                                    <button data-preview-id="<?php echo (int)$sig['id']; ?>" class="btn btn-sm btn-secondary" style="background:white; border:1px solid #cbd5e1;" title="Preview">
                                         <i class="fas fa-eye"></i>
                                     </button>
                                 <?php endif; ?>
 
-                                <a href="download.php?id=<?php echo $sig['id']; ?>" class="btn btn-sm btn-primary"><i class="fas fa-download"></i></a>
-                                <a href="generate.php?delete=<?php echo $sig['id']; ?>&csrf_token=<?php echo $_SESSION['csrf_token']; ?>" class="btn btn-sm btn-danger" onclick="return confirm('Delete?')"><i class="fas fa-trash"></i></a>
+                                <a href="download.php?id=<?php echo (int)$sig['id']; ?>" class="btn btn-sm btn-primary"><i class="fas fa-download"></i></a>
+                                <button type="button" data-post="generate.php" data-params='{"action":"delete","id":"<?php echo (int)$sig['id']; ?>"}' data-confirm="Delete?" class="btn btn-sm btn-danger"><i class="fas fa-trash"></i></button>
                             </div>
                         </div>
                     </div>
@@ -442,7 +384,7 @@ if ($template_files) {
             <?php if ($totalPages > 1): ?>
             <div class="pagination">
                 <?php 
-                    $urlPattern = "generator.php?search=" . urlencode($search) . "&page=";
+                    $urlPattern = "generator.php?search=" . urlencode($search) . "&amp;page=";
                     if ($page > 1) echo '<a href="' . $urlPattern . ($page - 1) . '" class="page-link">&laquo;</a>';
                     else echo '<span class="page-link disabled">&laquo;</span>';
                     
@@ -465,28 +407,25 @@ if ($template_files) {
         <div class="modal-box">
             <div class="modal-header">
                 <h3 style="margin:0">Signature Preview</h3>
-                <button class="close-modal-btn" onclick="closeModal()">&times;</button>
+                <button class="close-modal-btn" id="modalCloseX" type="button">&times;</button>
             </div>
             <div class="modal-body">
-                <iframe id="modalFrame" class="modal-iframe" sandbox="allow-same-origin"></iframe>
+                <iframe id="modalFrame" class="modal-iframe" sandbox=""></iframe>
             </div>
             <div class="modal-footer">
-                <button class="btn btn-sm btn-secondary" onclick="closeModal()">Close</button>
+                <button class="btn btn-sm btn-secondary" id="modalCloseBtn" type="button">Close</button>
             </div>
         </div>
     </div>
     
-    <form id="deleteAllForm" method="POST" action="generator.php" style="display:none;">
-        <input type="hidden" name="action" value="delete_all">
-        <input type="hidden" name="csrf_token" value="<?php echo $_SESSION['csrf_token']; ?>">
-    </form>
-
+    <script src="js/post-action.js"></script>
+    <script src="js/safe-html.js"></script>
     <script>
         // ---------------------------------------------------------
         // 1. LIVE PREVIEW LOGIC
         // ---------------------------------------------------------
         // Inject Templates from PHP
-        const rawTemplates = <?php echo json_encode($templatesJS); ?>;
+        const rawTemplates = <?php echo json_encode($templatesJS, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE); ?>;
 
         const inputs = {
             name: document.getElementById('inp_name'),
@@ -499,19 +438,23 @@ if ($template_files) {
 
         function renderSignature() {
             const selectedFile = inputs.template.value;
-            let html = rawTemplates[selectedFile] || '<p style="color:#cbd5e1; text-align:center; padding:20px;">Template not found</p>';
+            const template = rawTemplates[selectedFile];
+            if (!template) {
+                renderArea.innerHTML = '<p style="color:#cbd5e1; text-align:center; padding:20px;">Template not found</p>';
+                return;
+            }
 
-            // Replace Placeholders with current input values
-            html = html.replace(/{{NAME}}/g, inputs.name.value || 'Your Name');
-            html = html.replace(/{{ROLE}}/g, inputs.role.value || 'Job Title');
-            html = html.replace(/{{EMAIL}}/g, inputs.email.value || 'email@example.com');
-            html = html.replace(/{{PHONE}}/g, inputs.phone.value || '+1 234 567 890');
-            
-            // Clean phone for tel: links (numbers only)
-            const cleanPhone = inputs.phone.value.replace(/[^0-9+]/g, '');
-            html = html.replace(/{{PHONE_CLEAN}}/g, cleanPhone);
-
-            renderArea.innerHTML = html;
+            // Values are HTML-escaped by SafeHtml.fill (no XSS through the form fields);
+            // the result is sanitised once more before it is inserted into the page.
+            const phone = inputs.phone.value || '+1 234 567 890';
+            const html = SafeHtml.fill(template, {
+                NAME: inputs.name.value || 'Your Name',
+                ROLE: inputs.role.value || 'Job Title',
+                EMAIL: inputs.email.value || 'email@example.com',
+                PHONE: phone,
+                PHONE_CLEAN: (inputs.phone.value || phone).replace(/[^0-9+]/g, '')
+            });
+            renderArea.innerHTML = SafeHtml.sanitize(html);
         }
 
         // Add Event Listeners for Live Updates
@@ -576,7 +519,7 @@ if ($template_files) {
                     </style>
                 `;
                 
-                modalFrame.srcdoc = styleReset + source.value;
+                modalFrame.srcdoc = styleReset + SafeHtml.sanitize(source.value);
                 modal.style.display = 'flex';
             }
         }
@@ -595,8 +538,11 @@ if ($template_files) {
         // ---------------------------------------------------------
         // 4. HELPERS
         // ---------------------------------------------------------
-        function confirmDeleteAll() { if(confirm('Delete ALL signatures?')) document.getElementById('deleteAllForm').submit(); }
-        function downloadAllSignatures() { window.location.href = 'download_all.php'; }
+        document.querySelectorAll('[data-preview-id]').forEach(function (btn) {
+            btn.addEventListener('click', function () { openModal(btn.getAttribute('data-preview-id')); });
+        });
+        document.getElementById('modalCloseX').addEventListener('click', closeModal);
+        document.getElementById('modalCloseBtn').addEventListener('click', closeModal);
 
         // ---------------------------------------------------------
         // 5. COPY HTML SOURCE CODE FUNCTIONALITY

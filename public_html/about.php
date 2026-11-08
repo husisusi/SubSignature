@@ -4,7 +4,7 @@ require_once 'includes/config.php';
 requireLogin(); // Security Prio 1: Only logged-in users can see this
 
 // Application Meta Data
-$appVersion = '1.3.0';
+$appVersion = APP_VERSION;
 $phpVersion = phpversion();
 $serverSoftware = $_SERVER['SERVER_SOFTWARE'] ?? 'Unknown';
 ?>
@@ -80,7 +80,7 @@ $serverSoftware = $_SERVER['SERVER_SOFTWARE'] ?? 'Unknown';
                     <?php echo strtoupper(substr($_SESSION['username'], 0, 1)); ?>
                 </div>
                 <div class="user-info">
-                    <div><?php echo htmlspecialchars($_SESSION['username']); ?></div>
+                    <div><?php echo e($_SESSION['username']); ?></div>
                     <span><?php echo isAdmin() ? 'Administrator' : 'User'; ?></span>
                 </div>
             </div>
@@ -141,7 +141,7 @@ $serverSoftware = $_SERVER['SERVER_SOFTWARE'] ?? 'Unknown';
                         </tr>
                         <tr>
                             <td>PHP Version</td>
-                            <td><?php echo htmlspecialchars($phpVersion); ?></td>
+                            <td><?php echo e($phpVersion); ?></td>
                         </tr>
                         <tr>
                             <td>Database</td>
@@ -149,7 +149,7 @@ $serverSoftware = $_SERVER['SERVER_SOFTWARE'] ?? 'Unknown';
                         </tr>
                         <tr>
                             <td>Server API</td>
-                            <td><?php echo htmlspecialchars(php_sapi_name()); ?></td>
+                            <td><?php echo e(php_sapi_name()); ?></td>
                         </tr>
                     </table>
                 </div>

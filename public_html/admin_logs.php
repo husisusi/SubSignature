@@ -1,5 +1,5 @@
 <?php
-// admin_logs.php
+// admin_logs.php - audit view: security events, mail log and login attempts (admin only).
 require_once 'includes/config.php';
 requireAdmin(); // Security Prio 1
 
@@ -17,7 +17,7 @@ $stats = [];
 $stats['security_issues'] = $db->querySingle("SELECT COUNT(*) FROM security_events WHERE (event_type LIKE '%FAILED%' OR event_type LIKE '%LOCKED%') AND created_at > datetime('now', '-1 day')");
 $stats['failed_logins']   = $db->querySingle("SELECT COUNT(*) FROM login_attempts WHERE successful = 0 AND attempted_at > datetime('now', '-1 day')");
 
-// Check if Mail Tabelle exist for Stats
+// The mail log table is optional (statistics only if it exists)
 $mailLogsExist = $db->querySingle("SELECT name FROM sqlite_master WHERE type='table' AND name='mail_logs'");
 if ($mailLogsExist) {
     $stats['mails_sent'] = $db->querySingle("SELECT COUNT(*) FROM mail_logs WHERE status = 'success' AND created_at > datetime('now', '-1 day')");
@@ -124,7 +124,7 @@ $loginResult = $db->query("SELECT * FROM login_attempts ORDER BY attempted_at DE
         <div class="user-profile">
             <div class="avatar"><?php echo strtoupper(substr($_SESSION['username'], 0, 1)); ?></div>
             <div class="user-info">
-                <div><?php echo htmlspecialchars($_SESSION['username']); ?></div>
+                <div><?php echo e($_SESSION['username']); ?></div>
                 <span>Administrator</span>
             </div>
         </div>
@@ -210,11 +210,11 @@ $loginResult = $db->query("SELECT * FROM login_attempts ORDER BY attempted_at DE
                                 if(strpos($row['event_type'], 'RATE') !== false) { $cls = 'badge-warning'; $icon = 'exclamation-triangle'; }
                             ?>
                             <tr>
-                                <td style="color:var(--text-muted);"><?php echo date('d.m.Y H:i', strtotime($row['created_at'])); ?></td>
-                                <td><span class="badge <?php echo $cls; ?>"><i class="fas fa-<?php echo $icon; ?>"></i> <?php echo htmlspecialchars($row['event_type']); ?></span></td>
-                                <td><?php echo $row['real_username'] ? '<strong>'.htmlspecialchars($row['real_username']).'</strong>' : '<span style="color:#cbd5e1">-</span>'; ?></td>
-                                <td><?php echo htmlspecialchars($row['details']); ?></td>
-                                <td><span class="ip-addr"><?php echo htmlspecialchars($row['ip_address']); ?></span></td>
+                                <td style="color:var(--text-muted);"><?php echo e(date('d.m.Y H:i', strtotime($row['created_at']) ?: time())); ?></td>
+                                <td><span class="badge <?php echo $cls; ?>"><i class="fas fa-<?php echo $icon; ?>"></i> <?php echo e($row['event_type']); ?></span></td>
+                                <td><?php echo $row['real_username'] ? '<strong>'.e($row['real_username']).'</strong>' : '<span style="color:#cbd5e1">-</span>'; ?></td>
+                                <td><?php echo e($row['details']); ?></td>
+                                <td><span class="ip-addr"><?php echo e($row['ip_address']); ?></span></td>
                             </tr>
                         <?php endwhile; ?>
                     </tbody>
@@ -239,7 +239,7 @@ $loginResult = $db->query("SELECT * FROM login_attempts ORDER BY attempted_at DE
                         <?php if ($mailResult): ?>
                             <?php while($row = $mailResult->fetchArray(SQLITE3_ASSOC)): ?>
                                 <tr>
-                                    <td style="color:var(--text-muted);"><?php echo date('d.m.Y H:i', strtotime($row['created_at'])); ?></td>
+                                    <td style="color:var(--text-muted);"><?php echo e(date('d.m.Y H:i', strtotime($row['created_at']) ?: time())); ?></td>
                                     <td>
                                         <?php if($row['status'] === 'success'): ?>
                                             <span class="badge badge-success"><i class="fas fa-check"></i> Sent</span>
@@ -247,9 +247,9 @@ $loginResult = $db->query("SELECT * FROM login_attempts ORDER BY attempted_at DE
                                             <span class="badge badge-danger"><i class="fas fa-exclamation-triangle"></i> Error</span>
                                         <?php endif; ?>
                                     </td>
-                                    <td><strong><?php echo htmlspecialchars($row['recipient']); ?></strong></td>
+                                    <td><strong><?php echo e($row['recipient']); ?></strong></td>
                                     <td style="<?php echo ($row['status'] === 'error') ? 'color:#dc2626;font-weight:500;' : ''; ?>">
-                                        <?php echo htmlspecialchars($row['message']); ?>
+                                        <?php echo e($row['message']); ?>
                                     </td>
                                 </tr>
                             <?php endwhile; ?>
@@ -278,7 +278,7 @@ $loginResult = $db->query("SELECT * FROM login_attempts ORDER BY attempted_at DE
                     <tbody>
                         <?php while($row = $loginResult->fetchArray(SQLITE3_ASSOC)): ?>
                             <tr>
-                                <td style="color:var(--text-muted);"><?php echo date('d.m.Y H:i', strtotime($row['attempted_at'])); ?></td>
+                                <td style="color:var(--text-muted);"><?php echo e(date('d.m.Y H:i', strtotime($row['attempted_at']) ?: time())); ?></td>
                                 <td>
                                     <?php if($row['successful']): ?>
                                         <span class="badge badge-success"><i class="fas fa-check"></i> Success</span>
@@ -286,10 +286,10 @@ $loginResult = $db->query("SELECT * FROM login_attempts ORDER BY attempted_at DE
                                         <span class="badge badge-danger"><i class="fas fa-times"></i> Failed</span>
                                     <?php endif; ?>
                                 </td>
-                                <td><?php echo htmlspecialchars($row['username']); ?></td>
-                                <td><span class="ip-addr"><?php echo htmlspecialchars($row['ip_address']); ?></span></td>
+                                <td><?php echo e($row['username']); ?></td>
+                                <td><span class="ip-addr"><?php echo e($row['ip_address']); ?></span></td>
                                 <td style="font-size:0.8rem; color:var(--text-muted); max-width: 300px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
-                                    <?php echo htmlspecialchars($row['user_agent']); ?>
+                                    <?php echo e($row['user_agent']); ?>
                                 </td>
                             </tr>
                         <?php endwhile; ?>

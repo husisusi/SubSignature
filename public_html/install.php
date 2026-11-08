@@ -1,182 +1,125 @@
 <?php
-// install.php - Secure Installation Script (Standalone / No External Dependencies)
-
-// 1. SESSION START
-if (session_status() === PHP_SESSION_NONE) {
-    session_start([
-        'cookie_httponly' => true,
-        'cookie_secure' => isset($_SERVER['HTTPS']),
-        'cookie_samesite' => 'Strict',
-        'use_strict_mode' => true
-    ]);
-}
-
-// Security Headers
-header("X-Frame-Options: DENY");
-header("X-Content-Type-Options: nosniff");
-header("X-XSS-Protection: 1; mode=block");
+/**
+ * install.php - one-time installer that creates the first administrator.
+ *
+ * The installer locks itself as soon as an administrator exists. Run it right
+ * after deployment (or restrict access to it until you have done so).
+ */
 
 $error = '';
 $success = '';
-$redirect_target = ''; 
+$redirect_target = '';
 
 // -----------------------------------------------------------
-// 2. PRE-FLIGHT CHECKS
+// 1. PRE-FLIGHT CHECKS (before the application core is loaded)
 // -----------------------------------------------------------
-$php_ok      = version_compare(PHP_VERSION, '7.4.0', '>=');
-$sqlite_ok   = extension_loaded('sqlite3');
-$mbstring_ok = extension_loaded('mbstring');
-$zip_ok      = extension_loaded('zip');
-$json_ok     = extension_loaded('json');
-
-// Directories
-// 1. Private Data (Database & Logs) - Outside webroot ideally, or protected via .htaccess
-$data_dir = __DIR__ . '/../private_data';
-$logs_dir = __DIR__ . '/../private_data/logs';
-
-// 2. Templates Directory (Must be writable for uploads/renaming)
+$data_dir = getenv('SUBSIG_DATA_DIR') ?: (__DIR__ . '/../private_data');
 $tpl_dir  = __DIR__ . '/templates';
 
-function checkWritable($path) {
-    // If it exists, check if writable. If not, check if parent is writable (to create it).
-    if (file_exists($path)) return is_writable($path);
+function checkWritable($path)
+{
+    // Existing path: must be writable. Otherwise its parent must be (so it can be created).
+    if (file_exists($path)) {
+        return is_writable($path);
+    }
     return is_writable(dirname($path));
 }
 
-$data_ok = checkWritable($data_dir);
-$logs_ok = checkWritable($logs_dir);
-$tpl_ok  = checkWritable($tpl_dir); // NEW CHECK
-
 $requirements = [
-    'PHP Version >= 7.4' => $php_ok,
-    'SQLite3 Extension' => $sqlite_ok,
-    'MBString Extension' => $mbstring_ok,
-    'ZIP Extension' => $zip_ok,
-    'JSON Extension' => $json_ok,
-    'Data Directory Writable' => $data_ok,
-    'Logs Directory Writable' => $logs_ok,
-    'Templates Directory Writable' => $tpl_ok, // NEW CHECK
+    'PHP Version >= 7.4'           => version_compare(PHP_VERSION, '7.4.0', '>='),
+    'SQLite3 Extension'            => extension_loaded('sqlite3'),
+    'MBString Extension'           => extension_loaded('mbstring'),
+    'ZIP Extension'                => extension_loaded('zip'),
+    'JSON Extension'               => extension_loaded('json'),
+    'Data Directory Writable'      => checkWritable($data_dir),
+    'Templates Directory Writable' => checkWritable($tpl_dir),
 ];
-
-$allRequirementsMet = !in_array(false, $requirements);
+$allRequirementsMet = !in_array(false, $requirements, true);
 
 // -----------------------------------------------------------
-// 3. LOAD CONFIG & LOGIC
+// 2. LOAD THE APPLICATION CORE
 // -----------------------------------------------------------
+$csrf_token = '';
 if ($allRequirementsMet) {
     try {
-        // Only include config if requirements are met to avoid fatal errors
-        if (file_exists('includes/config.php')) {
-            require_once 'includes/config.php';
-            
-            // Check if already installed
-            if (isset($db)) {
-                // Determine if Admin exists
-                $adminCount = $db->querySingle("SELECT COUNT(*) FROM users WHERE role = 'admin'");
-                if ($adminCount > 0) {
-                    die('<div style="font-family:sans-serif; text-align:center; padding:50px;"><h1>System already installed</h1><p>Admin account exists. Please delete the database file in private_data if you want to reinstall.</p><p><a href="index.php">Go to Login</a></p></div>');
-                }
-            }
+        require_once 'includes/config.php';
+
+        $adminCount = (int)$db->querySingle("SELECT COUNT(*) FROM users WHERE role = 'admin'");
+        if ($adminCount > 0) {
+            http_response_code(403);
+            die('<div style="font-family:sans-serif; text-align:center; padding:50px;"><h1>System already installed</h1><p>An administrator account exists. Delete the database file in private_data if you really want to reinstall.</p><p><a href="index.php">Go to Login</a></p></div>');
         }
+        $csrf_token = generateCSRFToken();
     } catch (Exception $e) {
-        $error = "Critical Database Error: " . htmlspecialchars($e->getMessage());
+        error_log('Installer error: ' . $e->getMessage());
+        $error = 'Critical database error. Check the PHP error log.';
         $allRequirementsMet = false;
     }
-} else {
-    // Mock CSRF/Sanitize functions if config not loaded
-    $csrf_token = ''; 
-    function sanitizeInput($i){ return $i; }
 }
 
 // -----------------------------------------------------------
-// 4. INSTALLATION PROCESS
+// 3. INSTALLATION PROCESS
 // -----------------------------------------------------------
 if ($allRequirementsMet && $_SERVER['REQUEST_METHOD'] === 'POST') {
-    
-    if (empty($_SESSION['csrf_token'])) {
-        $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
-    }
-    $csrf_token = $_SESSION['csrf_token'];
-
-    // CSRF Check
-    if (!isset($_POST['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $_POST['csrf_token'])) {
-        $error = "Security violation: Invalid CSRF Token.";
+    if (!verifyCSRFToken($_POST['csrf_token'] ?? '')) {
+        $error = 'Security violation: invalid CSRF token. Please reload the page.';
     } else {
-        $username = trim($_POST['username'] ?? '');
-        $password = $_POST['password'] ?? '';
-        $confirm = $_POST['confirm_password'] ?? '';
-        $email = trim($_POST['email'] ?? '');
-        
-        if (empty($username) || empty($password) || empty($confirm)) {
-            $error = "All fields are required.";
+        $username = cleanText($_POST['username'] ?? '', 64);
+        $password = is_string($_POST['password'] ?? null) ? $_POST['password'] : '';
+        $confirm  = is_string($_POST['confirm_password'] ?? null) ? $_POST['confirm_password'] : '';
+        $email    = cleanText($_POST['email'] ?? '', 254);
+        $policyErrors = validatePasswordPolicy($password);
+
+        if ($username === '' || $password === '' || $confirm === '') {
+            $error = 'All fields are required.';
+        } elseif (!isValidUsername($username)) {
+            $error = 'Username must be 3-64 characters (letters, numbers, . _ - @ only).';
+        } elseif ($email !== '' && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            $error = 'Invalid email address format.';
         } elseif ($password !== $confirm) {
-            $error = "Passwords do not match.";
+            $error = 'Passwords do not match.';
+        } elseif ($policyErrors) {
+            $error = implode("\n", $policyErrors);
         } else {
-            // Password Policy check (Function from config.php)
-            $policyErrors = [];
-            if (function_exists('validatePasswordPolicy')) {
-                $policyErrors = validatePasswordPolicy($password);
-            } elseif (strlen($password) < 8) {
-                // Fallback policy if config not fully loaded
-                $policyErrors[] = "Password must be at least 8 characters.";
-            }
+            try {
+                $db->exec('BEGIN IMMEDIATE');
+                // Re-check inside the transaction: two simultaneous installs must not both succeed.
+                if ((int)$db->querySingle("SELECT COUNT(*) FROM users WHERE role = 'admin'") > 0) {
+                    $db->exec('ROLLBACK');
+                    $error = 'System already installed.';
+                } else {
+                    $stmt = $db->prepare("INSERT INTO users (username, password_hash, email, full_name, role, is_active)
+                                          VALUES (?, ?, ?, 'System Administrator', 'admin', 1)");
+                    $stmt->bindValue(1, $username, SQLITE3_TEXT);
+                    $stmt->bindValue(2, password_hash($password, PASSWORD_DEFAULT), SQLITE3_TEXT);
+                    $stmt->bindValue(3, $email, SQLITE3_TEXT);
+                    $stmt->execute();
+                    $user_id = (int)$db->lastInsertRowID();
 
-            if (!empty($policyErrors)) {
-                $error = implode("<br>", $policyErrors);
-            } else {
-                try {
-                    // Create Templates directory if missing
-                    if (!file_exists($tpl_dir)) {
-                        mkdir($tpl_dir, 0755, true);
-                    }
+                    $stmt = $db->prepare('INSERT INTO user_settings (user_id) VALUES (?)');
+                    $stmt->bindValue(1, $user_id, SQLITE3_INTEGER);
+                    $stmt->execute();
+                    $db->exec('COMMIT');
 
-                    $hash = password_hash($password, PASSWORD_DEFAULT);
-                    
-                    // Insert Admin User
-                    $stmt = $db->prepare("INSERT INTO users (username, password_hash, email, full_name, role, is_active) 
-                                         VALUES (?, ?, ?, 'System Administrator', 'admin', 1)");
-                    $stmt->bindValue(1, htmlspecialchars($username, ENT_QUOTES, 'UTF-8'), SQLITE3_TEXT);
-                    $stmt->bindValue(2, $hash, SQLITE3_TEXT);
-                    $stmt->bindValue(3, filter_var($email, FILTER_SANITIZE_EMAIL), SQLITE3_TEXT);
-                    
-                    if ($stmt->execute()) {
-                        $user_id = $db->lastInsertRowID();
-                        $db->exec("INSERT INTO user_settings (user_id) VALUES ($user_id)");
-                        
-                        if(function_exists('logSecurityEventToDB')) {
-                            logSecurityEventToDB($db, 'INSTALLATION_SUCCESS', $user_id, "Admin created: {$username}");
-                        }
-                        
-                        // AUTO LOGIN
-                        $_SESSION['loggedin'] = true;
-                        $_SESSION['user_id'] = $user_id;
-                        $_SESSION['username'] = $username;
-                        $_SESSION['role'] = 'admin';
-                        $_SESSION['full_name'] = 'System Administrator';
-                        $_SESSION['email'] = $email;
-                        $_SESSION['last_activity'] = time();
-                        session_regenerate_id(true);
+                    logSecurityEventToDB($db, 'INSTALLATION_SUCCESS', $user_id, 'Admin created: ' . $username);
 
-                        // SUCCESS MESSAGE SETUP
-                        $success = "Installation successful!";
-                        $redirect_target = "generator.php";
-                        
-                    } else {
-                        $error = "Database error: Could not create user.";
-                    }
-                } catch (Exception $e) {
-                    $error = "System error: " . $e->getMessage();
+                    // Sign the new administrator in.
+                    $stmt = $db->prepare('SELECT * FROM users WHERE id = ?');
+                    $stmt->bindValue(1, $user_id, SQLITE3_INTEGER);
+                    startUserSession($stmt->execute()->fetchArray(SQLITE3_ASSOC));
+
+                    $success = 'Installation successful!';
+                    $redirect_target = 'generator.php';
                 }
+            } catch (Exception $e) {
+                @$db->exec('ROLLBACK');
+                error_log('Installer error: ' . $e->getMessage());
+                $error = 'System error. Check the PHP error log.';
             }
         }
     }
+    $csrf_token = generateCSRFToken();
 }
-
-// Generate new token for the form
-if ($allRequirementsMet && empty($_SESSION['csrf_token'])) {
-    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
-}
-$csrf_token = $_SESSION['csrf_token'] ?? '';
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -287,7 +230,7 @@ $csrf_token = $_SESSION['csrf_token'] ?? '';
             <ul class="req-list">
                 <?php foreach ($requirements as $label => $met): ?>
                 <li class="req-item">
-                    <span><?php echo htmlspecialchars($label); ?></span>
+                    <span><?php echo e($label); ?></span>
                     <span class="status <?php echo $met ? 'ok' : 'fail'; ?>">
                         <?php if ($met): ?>
                             <svg class="icon" viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg> OK
@@ -302,7 +245,7 @@ $csrf_token = $_SESSION['csrf_token'] ?? '';
 
         <?php if ($allRequirementsMet): ?>
             <form method="POST">
-                <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
+                <input type="hidden" name="csrf_token" value="<?php echo e($csrf_token); ?>">
                 
                 <div class="section">
                     <div class="section-title">
@@ -313,18 +256,18 @@ $csrf_token = $_SESSION['csrf_token'] ?? '';
                     <?php if ($error): ?>
                         <div class="alert alert-error">
                             <svg class="icon" viewBox="0 0 24 24" style="margin-right:5px"><path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/></svg>
-                            <?php echo $error; ?>
+                            <?php echo nl2br(e($error)); ?>
                         </div>
                     <?php endif; ?>
 
                     <div class="input-group">
                         <label class="label">Username</label>
-                        <input type="text" name="username" class="input" required placeholder="admin" value="<?php echo isset($_POST['username']) ? htmlspecialchars($_POST['username']) : ''; ?>">
+                        <input type="text" name="username" class="input" required placeholder="admin" value="<?php echo isset($_POST['username']) && is_string($_POST['username']) ? e($_POST['username']) : ''; ?>">
                     </div>
                     
                     <div class="input-group">
                         <label class="label">Email Address</label>
-                        <input type="email" name="email" class="input" placeholder="admin@example.com" value="<?php echo isset($_POST['email']) ? htmlspecialchars($_POST['email']) : ''; ?>">
+                        <input type="email" name="email" class="input" placeholder="admin@example.com" value="<?php echo isset($_POST['email']) && is_string($_POST['email']) ? e($_POST['email']) : ''; ?>">
                     </div>
 
                     <div class="input-group">

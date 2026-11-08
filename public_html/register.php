@@ -1,49 +1,27 @@
 <?php
-// register.php
-
-// 1. Include Configuration
+/**
+ * register.php - self registration and admin-side user creation.
+ */
 require_once 'includes/config.php';
 
-// 2. Determine Context: Is this an Admin creating a user?
-$is_admin_session = (isset($_SESSION['role']) && $_SESSION['role'] === 'admin');
-$admin_create_mode = (isset($_GET['admin']) && $_GET['admin'] == 1);
-$admin_create = $is_admin_session && $admin_create_mode;
-
-// 3. Security: Access Control
-if (isLoggedIn() && !$is_admin_session) {
+// Admin creation mode requires a verified admin session (role re-read from DB).
+$admin_create = false;
+if (isLoggedIn() && isset($_GET['admin']) && $_GET['admin'] === '1') {
+    requireAdmin();
+    $admin_create = true;
+} elseif (isLoggedIn()) {
     header('Location: generator.php');
     exit;
 }
 
-// 4. Rate Limiting (Public Registration Only)
-if (!$is_admin_session) {
-    if (function_exists('checkRateLimit')) {
-        if (!checkRateLimit('registration', 5, 900)) {  
-            http_response_code(429);  
-            die("Security Warning: Too many registration attempts. Please try again later.");
-        }
-    }
+// Public registration can be switched off in the admin configuration.
+if (!$admin_create && getSetting($db, 'allow_registration', '1') !== '1') {
+    header('Location: index.php');
+    exit;
 }
 
-// Security Headers
-header('X-Frame-Options: DENY');
-header('X-Content-Type-Options: nosniff');
-
-// --- LOAD SYSTEM CONFIGURATION ---
-// Default: 1 (Active) if nothing is set in DB yet
-$config_default_active = 1; 
-
-// Check if table exists (safe fallback)
-$checkTable = $db->query("SELECT name FROM sqlite_master WHERE type='table' AND name='system_settings'");
-if ($checkTable->fetchArray()) {
-    $stmtCfg = $db->prepare("SELECT setting_value FROM system_settings WHERE setting_key = 'default_user_active'");
-    $resCfg = $stmtCfg->execute();
-    $rowCfg = $resCfg->fetchArray(SQLITE3_ASSOC);
-    if ($rowCfg) {
-        $config_default_active = (int)$rowCfg['setting_value'];
-    }
-}
-// --------------------------------
+// Default status for new accounts (configurable): 1 = active, 0 = needs approval.
+$config_default_active = getSetting($db, 'default_user_active', '1') === '1' ? 1 : 0;
 
 $error = '';
 $success = '';
@@ -51,113 +29,98 @@ $username = '';
 $email = '';
 $full_name = '';
 
-// 5. Form Processing
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    // CSRF Protection (Security Prio 1)
-    if (empty($_POST['csrf_token']) || empty($_SESSION['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $_POST['csrf_token'])) {
-        die("Security Error: Invalid CSRF token. Please refresh the page.");
+    requireCsrf();
+
+    // Throttle only real submissions (a plain page view must not count).
+    if (!$admin_create && !checkRateLimit('registration', 5, 900)) {
+        http_response_code(429);
+        die('Too many registration attempts. Please try again later.');
     }
 
-    // Input Sanitization
-    $username = trim($_POST['username'] ?? '');
-    $password = $_POST['password'] ?? ''; 
-    $confirm_password = $_POST['confirm_password'] ?? '';
-    $email = trim($_POST['email'] ?? '');
-    $full_name = trim($_POST['full_name'] ?? '');
-    
-    // Validation
-    if (empty($username) || empty($password) || empty($confirm_password)) {
-        $error = "All mandatory fields are required.";
-    } elseif (!preg_match('/^[a-zA-Z0-9_]{3,20}$/', $username)) {
-        $error = "Username must be 3-20 characters (letters, numbers, underscores only).";
+    $username         = cleanText($_POST['username'] ?? '', 64);
+    $password         = is_string($_POST['password'] ?? null) ? $_POST['password'] : '';
+    $confirm_password = is_string($_POST['confirm_password'] ?? null) ? $_POST['confirm_password'] : '';
+    $email            = cleanText($_POST['email'] ?? '', 254);
+    $full_name        = cleanText($_POST['full_name'] ?? '', 100);
+
+    $policyErrors = validatePasswordPolicy($password);
+
+    if ($username === '' || $password === '' || $confirm_password === '') {
+        $error = 'All mandatory fields are required.';
+    } elseif (!isValidUsername($username)) {
+        $error = 'Username must be 3-64 characters (letters, numbers, . _ - @ only).';
     } elseif ($password !== $confirm_password) {
-        $error = "Passwords do not match.";
-    } elseif (strlen($password) < 8) {
-        $error = "Password must be at least 8 characters long.";
-    } elseif (!preg_match("/[A-Z]/", $password) || !preg_match("/[a-z]/", $password) || !preg_match("/[0-9]/", $password)) {
-        $error = "Password must contain uppercase, lowercase letters and numbers.";
-    } elseif (!empty($email) && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
-        $error = "Invalid email address format.";
+        $error = 'Passwords do not match.';
+    } elseif ($policyErrors) {
+        $error = 'Password too weak: ' . implode('; ', $policyErrors) . '.';
+    } elseif ($email !== '' && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        $error = 'Invalid email address format.';
     }
-    
-    // Database Interaction
-    if (empty($error)) {
+
+    if ($error === '') {
         try {
-            $stmt = $db->prepare("SELECT count(*) as count FROM users WHERE username = ? OR (email = ? AND email != '')");
+            $stmt = $db->prepare("SELECT COUNT(*) FROM users WHERE username = ? OR (email = ? AND email != '')");
             $stmt->bindValue(1, $username, SQLITE3_TEXT);
             $stmt->bindValue(2, $email, SQLITE3_TEXT);
-            $result = $stmt->execute();
-            $row = $result->fetchArray(SQLITE3_ASSOC);
-            
-            if ($row['count'] > 0) {
-                // Anti-Timing Attack
-                usleep(rand(100000, 300000));  
-                $error = "Username or Email already exists.";
-            } else {
-                $password_hash = password_hash($password, PASSWORD_DEFAULT);
-                
-                // --- FIX: DETERMINE ACCOUNT STATUS ---
-                $is_active = 0;
-                
-                if ($admin_create) {
-                    // Admin: Use dropdown value (fallback to config)
-                    $is_active = isset($_POST['user_status']) ? (int)$_POST['user_status'] : $config_default_active;
-                } else {
-                    // Public: Use System Configuration directly!
-                    // Previously this was hardcoded to 0.
-                    $is_active = $config_default_active;
-                }
-                
-                $db->exec('BEGIN');
+            $exists = (int)$stmt->execute()->fetchArray(SQLITE3_NUM)[0];
 
-                $stmt = $db->prepare("INSERT INTO users (username, password_hash, email, full_name, role, is_active, created_at)  
-                                      VALUES (?, ?, ?, ?, 'user', ?, datetime('now'))");
-                $stmt->bindValue(1, $username, SQLITE3_TEXT);
-                $stmt->bindValue(2, $password_hash, SQLITE3_TEXT);
-                $stmt->bindValue(3, $email, SQLITE3_TEXT);
-                $stmt->bindValue(4, $full_name, SQLITE3_TEXT);
-                $stmt->bindValue(5, $is_active, SQLITE3_INTEGER);
-                
-                if ($stmt->execute()) {
+            if ($exists > 0) {
+                usleep(random_int(100000, 300000));
+                $error = 'Username or Email already exists.';
+            } else {
+                // Public registrations always follow the system setting; the
+                // status field is only honoured for admins.
+                $is_active = $config_default_active;
+                if ($admin_create && isset($_POST['user_status'])) {
+                    $is_active = $_POST['user_status'] === '1' ? 1 : 0;
+                }
+
+                $db->exec('BEGIN IMMEDIATE');
+                try {
+                    $stmt = $db->prepare("INSERT INTO users (username, password_hash, email, full_name, role, is_active, created_at)
+                                          VALUES (?, ?, ?, ?, 'user', ?, datetime('now'))");
+                    $stmt->bindValue(1, $username, SQLITE3_TEXT);
+                    $stmt->bindValue(2, password_hash($password, PASSWORD_DEFAULT), SQLITE3_TEXT);
+                    $stmt->bindValue(3, $email, SQLITE3_TEXT);
+                    $stmt->bindValue(4, $full_name, SQLITE3_TEXT);
+                    $stmt->bindValue(5, $is_active, SQLITE3_INTEGER);
+                    $stmt->execute();
                     $user_id = $db->lastInsertRowID();
-                    
-                    $stmtSettings = $db->prepare("INSERT INTO user_settings (user_id) VALUES (?)");
+
+                    $stmtSettings = $db->prepare('INSERT INTO user_settings (user_id) VALUES (?)');
                     $stmtSettings->bindValue(1, $user_id, SQLITE3_INTEGER);
                     $stmtSettings->execute();
-                    
                     $db->exec('COMMIT');
-                    
-                    // --- FIX: DYNAMIC SUCCESS MESSAGE ---
-                    if ($admin_create) {
-                        $success = "User " . htmlspecialchars($username, ENT_QUOTES, 'UTF-8') . " created successfully.";
-                    } else {
-                        if ($is_active == 1) {
-                            $success = "Account created! You can log in immediately.";
-                        } else {
-                            $success = "Account created! Please wait for administrator approval.";
-                        }
-                    }
-                    
-                    // Clear form
-                    $username = $email = $full_name = '';
-                    
-                } else {
+                } catch (Exception $inner) {
                     $db->exec('ROLLBACK');
-                    $error = "Database error during registration.";
+                    throw $inner;
                 }
+
+                logSecurityEventToDB(
+                    $db,
+                    $admin_create ? 'USER_CREATED_BY_ADMIN' : 'USER_REGISTERED',
+                    $admin_create ? (int)$_SESSION['user_id'] : (int)$user_id,
+                    'New user: ' . $username
+                );
+
+                if ($admin_create) {
+                    $success = 'User ' . $username . ' created successfully.';
+                } elseif ($is_active === 1) {
+                    $success = 'Account created! You can log in immediately.';
+                } else {
+                    $success = 'Account created! Please wait for administrator approval.';
+                }
+                $username = $email = $full_name = '';
             }
         } catch (Exception $e) {
-            $db->exec('ROLLBACK');
-            error_log("Registration error: " . $e->getMessage());
-            $error = "System error occurred. Please try again.";
+            error_log('Registration error: ' . $e->getMessage());
+            $error = 'System error occurred. Please try again.';
         }
     }
 }
 
-if (empty($_SESSION['csrf_token'])) {
-    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
-}
-$csrf_token = $_SESSION['csrf_token'];
+$csrf_token = generateCSRFToken();
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -228,7 +191,7 @@ $csrf_token = $_SESSION['csrf_token'];
                         <?php echo strtoupper(substr($_SESSION['username'], 0, 1)); ?>
                     </div>
                     <div class="user-info">
-                        <div><?php echo htmlspecialchars($_SESSION['username'], ENT_QUOTES, 'UTF-8'); ?></div>
+                        <div><?php echo e($_SESSION['username']); ?></div>
                         <span>Administrator</span>
                     </div>
                 </div>
@@ -259,7 +222,7 @@ $csrf_token = $_SESSION['csrf_token'];
 
         <?php if ($success): ?>
             <div class="alert alert-success">
-                <i class="fas fa-check-circle"></i> <?php echo htmlspecialchars($success, ENT_QUOTES, 'UTF-8'); ?>
+                <i class="fas fa-check-circle"></i> <?php echo e($success); ?>
             </div>
             
             <div style="margin-top: 1.5rem; text-align: center;">
@@ -274,12 +237,12 @@ $csrf_token = $_SESSION['csrf_token'];
             
             <?php if ($error): ?>
                 <div class="alert alert-error">
-                    <i class="fas fa-exclamation-circle"></i> <?php echo htmlspecialchars($error, ENT_QUOTES, 'UTF-8'); ?>
+                    <i class="fas fa-exclamation-circle"></i> <?php echo e($error); ?>
                 </div>
             <?php endif; ?>
 
             <form method="POST" id="regForm" autocomplete="off">
-                <input type="hidden" name="csrf_token" value="<?php echo $csrf_token; ?>">
+                <input type="hidden" name="csrf_token" value="<?php echo e($csrf_token); ?>">
                 
                 <?php if ($admin_create): ?>
                 <div class="status-toggle-wrapper">
@@ -296,23 +259,23 @@ $csrf_token = $_SESSION['csrf_token'];
                 <div class="form-group">
                     <label for="username">Username</label>
                     <input type="text" id="username" name="username" required  
-                           value="<?php echo htmlspecialchars($username, ENT_QUOTES, 'UTF-8'); ?>"
-                           placeholder="johndoe" pattern="[a-zA-Z0-9_]{3,20}"
+                           value="<?php echo e($username); ?>"
+                           placeholder="johndoe" pattern="[A-Za-z0-9_.@\-]{3,64}"
                            autocomplete="off">
-                    <small style="color:var(--text-muted); font-size:0.75rem;">3-20 chars, letters/numbers only.</small>
+                    <small style="color:var(--text-muted); font-size:0.75rem;">3-64 chars: letters, numbers, . _ - @</small>
                 </div>
 
                 <div class="form-group">
                     <label for="email">Email Address</label>
                     <input type="email" id="email" name="email"  
-                           value="<?php echo htmlspecialchars($email, ENT_QUOTES, 'UTF-8'); ?>"
+                           value="<?php echo e($email); ?>"
                            placeholder="john@example.com">
                 </div>
 
                 <div class="form-group">
                     <label for="full_name">Full Name</label>
                     <input type="text" id="full_name" name="full_name"  
-                           value="<?php echo htmlspecialchars($full_name, ENT_QUOTES, 'UTF-8'); ?>"
+                           value="<?php echo e($full_name); ?>"
                            placeholder="John Doe">
                 </div>
 

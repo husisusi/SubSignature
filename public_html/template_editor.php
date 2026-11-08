@@ -1,24 +1,17 @@
 <?php
-// template_editor.php
+// template_editor.php - HTML editor for signature templates (admin only).
+
+// The bundled code editor (Ace) needs 'unsafe-eval' in the Content-Security-Policy.
+// Only this page relaxes the policy, no other page does.
+define('CSP_ALLOW_EVAL', true);
 
 require_once 'includes/config.php';
 requireAdmin();
 
-// ---------------------------------------------------------------------
-// 1. Security: Generate & Verify CSRF Token
-// ---------------------------------------------------------------------
-if (empty($_SESSION['csrf_token'])) {
-    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
-}
+const EDITOR_MAX_BYTES = 524288; // 512 KB
 
-// Ensure user is logged in
-if (!isset($_SESSION['loggedin']) || $_SESSION['loggedin'] !== true) {
-    header('Location: index.php');
-    exit;
-}
-
-$message = '';
-$error = '';
+$message = popFlash('success');
+$error = popFlash('error');
 
 // Variables for the editor state
 $current_name = '';
@@ -39,8 +32,8 @@ $current_content = '<!DOCTYPE html>
 </body>
 </html>';
 
-// Define templates directory safely
-$templates_dir = __DIR__ . '/templates';
+// Template directory (created on demand)
+$templates_dir = TEMPLATES_DIR;
 if (!is_dir($templates_dir)) {
     mkdir($templates_dir, 0755, true);
 }
@@ -48,88 +41,67 @@ if (!is_dir($templates_dir)) {
 // ---------------------------------------------------------------------
 // 2. Logic: Determine which file to load (Default vs. Edit vs. Post)
 // ---------------------------------------------------------------------
-
-// A. Check for System Default Template
-$default_config_file = $templates_dir . '/default_config.txt';
-$system_default_file = '';
-
-if (file_exists($default_config_file)) {
-    $read_default = trim(file_get_contents($default_config_file));
-    // SECURITY: Validate filename to prevent path traversal
-    $clean_default = basename($read_default);
-    if ($clean_default === $read_default && file_exists($templates_dir . '/' . $clean_default)) {
-        $system_default_file = $clean_default;
-    }
-}
-
-// B. Set initial state to System Default (if available)
-if (!empty($system_default_file)) {
-    $current_file = $system_default_file;
-}
+$system_default_file = getDefaultTemplateName();
+$current_file = is_file($templates_dir . '/' . $system_default_file) ? $system_default_file : '';
 
 // ---------------------------------------------------------------------
 // 3. Handle POST Request (Save / Create)
 // ---------------------------------------------------------------------
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    
-    // SECURITY: CSRF Check
-    if (!isset($_POST['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $_POST['csrf_token'])) {
-        die("Security Error: Invalid CSRF Token.");
-    }
+    requireCsrf();
 
-    $template_name = trim($_POST['template_name'] ?? '');
-    $template_content = $_POST['template_content'] ?? '';
+    $template_name = cleanText($_POST['template_name'] ?? '', 80);
+    $template_content = is_string($_POST['template_content'] ?? null) ? $_POST['template_content'] : '';
     $action = $_POST['action'] ?? '';
-    
-    // Update variables so the form retains data on error
+
+    // Keep the entered data in the form when validation fails.
     $current_name = $template_name;
     $current_content = $template_content;
-    
-    if (empty($template_name)) {
-        $error = "Template name is required!";
-    } elseif (empty($template_content)) {
-        $error = "Template content is required!";
+
+    if ($template_name === '') {
+        $error = 'Template name is required!';
+    } elseif (trim($template_content) === '') {
+        $error = 'Template content is required!';
+    } elseif (strlen($template_content) > EDITOR_MAX_BYTES) {
+        $error = 'Template is too large (max 512 KB).';
+    } elseif (strpos($template_content, '<?') !== false) {
+        $error = 'PHP / XML processing instructions are not allowed in templates.';
     } else {
-        // ACTION: CREATE NEW
+        // Active content (scripts, event handlers, javascript: URLs) is removed on save.
+        $template_content = sanitizeTemplateHtml($template_content);
+
         if ($action === 'save_new') {
-            // SECURITY: Sanitize filename (alphanumeric + underscore only)
-            $clean_name = preg_replace('/[^a-z0-9_]/i', '_', $template_name);
+            $clean_name = substr(preg_replace('/[^a-z0-9_]/i', '_', $template_name), 0, 70);
             $filename = 'signature_' . strtolower($clean_name) . '.html';
             $filepath = $templates_dir . '/' . $filename;
-            
-            if (file_exists($filepath)) {
-                $error = "Template with this name already exists!";
+
+            if (!isValidTemplateName($filename)) {
+                $error = 'Invalid template name.';
+            } elseif (file_exists($filepath)) {
+                $error = 'Template with this name already exists!';
+            } elseif (file_put_contents($filepath, $template_content, LOCK_EX) !== false) {
+                logSecurityEventToDB($db, 'TEMPLATE_CREATED', (int)$_SESSION['user_id'], $filename);
+                $message = 'Template created: ' . $filename;
+                $current_file = $filename;
+                $current_content = $template_content;
             } else {
-                if (file_put_contents($filepath, $template_content) !== false) {
-                    $message = "Template created: " . htmlspecialchars($filename);
-                    $current_file = $filename; // Switch editor to new file
-                } else {
-                    $error = "Could not write file. Check permissions.";
-                }
+                $error = 'Could not write file. Check permissions.';
             }
-        } 
-        // ACTION: UPDATE EXISTING
-        elseif ($action === 'save_existing') {
-            $existing_file = $_POST['existing_file'] ?? '';
-            
-            if (empty($existing_file)) {
-                $error = "No template selected for update!";
+        } elseif ($action === 'save_existing') {
+            $safe_filename = basename((string)($_POST['existing_file'] ?? ''));
+            $filepath = $templates_dir . '/' . $safe_filename;
+
+            if ($safe_filename === '') {
+                $error = 'No template selected for update!';
+            } elseif (!isEditableTemplateName($safe_filename) || !is_file($filepath) || !isPathInside($filepath, $templates_dir)) {
+                $error = 'Security Error: Invalid file path.';
+            } elseif (file_put_contents($filepath, $template_content, LOCK_EX) !== false) {
+                logSecurityEventToDB($db, 'TEMPLATE_UPDATED', (int)$_SESSION['user_id'], $safe_filename);
+                $message = 'Template updated: ' . $safe_filename;
+                $current_file = $safe_filename;
+                $current_content = $template_content;
             } else {
-                // SECURITY: Prevent Directory Traversal
-                $safe_filename = basename($existing_file);
-                $filepath = $templates_dir . '/' . $safe_filename;
-                
-                // SECURITY: Verify file exists and is strictly within templates dir
-                if (file_exists($filepath) && realpath($filepath) === realpath($templates_dir . '/' . $safe_filename)) {
-                    if (file_put_contents($filepath, $template_content) !== false) {
-                        $message = "Template updated: " . htmlspecialchars($safe_filename);
-                        $current_file = $safe_filename; // Keep editor on this file
-                    } else {
-                        $error = "Could not write file. Check permissions.";
-                    }
-                } else {
-                    $error = "Security Error: Invalid file path.";
-                }
+                $error = 'Could not write file. Check permissions.';
             }
         }
     }
@@ -145,7 +117,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['edit'])) {
     $target_path = $templates_dir . '/' . $requested_file;
 
     // SECURITY: Validate file existence and naming convention
-    if (file_exists($target_path) && strpos($requested_file, 'signature_') === 0) {
+    if (isEditableTemplateName($requested_file) && is_file($target_path)) {
         $current_file = $requested_file;
     } else {
         $error = "Template not found or invalid filename.";
@@ -158,9 +130,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['edit'])) {
 // 5. Final Content Loading
 // ---------------------------------------------------------------------
 // Load content based on $current_file (which is now either Default, Edited, or Saved)
-if (!empty($current_file)) {
+if (!empty($current_file) && !($_SERVER['REQUEST_METHOD'] === 'POST' && $error !== '')) {
     $load_path = $templates_dir . '/' . $current_file;
-    if (file_exists($load_path)) {
+    if (is_file($load_path)) {
         $current_content = file_get_contents($load_path);
         
         // Generate a "pretty name" for the input field
@@ -174,11 +146,8 @@ if (!empty($current_file)) {
 // 6. Load Existing Templates List (for Dropdown)
 // ---------------------------------------------------------------------
 $templates = [];
-$template_files = glob($templates_dir . '/*.html');
-if ($template_files) {
-    foreach ($template_files as $file) {
-        $templates[basename($file)] = file_get_contents($file);
-    }
+foreach (array_merge(listSignatureTemplates(), is_file($templates_dir . '/email_notification.html') ? ['email_notification.html'] : []) as $file) {
+    $templates[$file] = true; // only the names are needed in the dropdown
 }
 ?>
 <!DOCTYPE html>
@@ -193,7 +162,8 @@ if ($template_files) {
     
     <link rel="stylesheet" href="js/jodit/jodit.min.css">
     <script src="js/jodit/jodit.min.js"></script>
-    <script src="js/ace/ace.js"></script> 
+    <script src="js/ace/ace.js"></script>
+    <script src="js/safe-html.js"></script>
     
     <style>
         .jodit-container { border-radius: 8px !important; border: 1px solid var(--border) !important; }
@@ -238,7 +208,7 @@ if ($template_files) {
                     <?php echo strtoupper(substr($_SESSION['username'], 0, 1)); ?>
                 </div>
                 <div class="user-info">
-                    <div><?php echo htmlspecialchars($_SESSION['username'], ENT_QUOTES, 'UTF-8'); ?></div>
+                    <div><?php echo e($_SESSION['username']); ?></div>
                     <span>Administrator</span>
                 </div>
             </div>
@@ -255,10 +225,10 @@ if ($template_files) {
         </header>
 
         <?php if ($message): ?>
-            <div class="alert alert-success"><i class="fas fa-check-circle"></i> <?php echo htmlspecialchars($message, ENT_QUOTES, 'UTF-8'); ?></div>
+            <div class="alert alert-success"><i class="fas fa-check-circle"></i> <?php echo e($message); ?></div>
         <?php endif; ?>
         <?php if ($error): ?>
-            <div class="alert alert-error"><i class="fas fa-exclamation-circle"></i> <?php echo htmlspecialchars($error, ENT_QUOTES, 'UTF-8'); ?></div>
+            <div class="alert alert-error"><i class="fas fa-exclamation-circle"></i> <?php echo e($error); ?></div>
         <?php endif; ?>
 
         <div class="form-grid" style="grid-template-columns: 2fr 1fr; align-items: start;">
@@ -266,7 +236,7 @@ if ($template_files) {
                 
                 <section class="card">
                     <form method="POST" id="editorForm">
-                        <input type="hidden" name="csrf_token" value="<?php echo $_SESSION['csrf_token']; ?>">
+                        <?php echo csrfField(); ?>
 
                         <div class="editor-toolbar-grid">
                             
@@ -278,12 +248,12 @@ if ($template_files) {
                                     <option value="">-- Create New Template --</option>
                                     <?php foreach ($templates as $filename => $content): ?>
                                         <?php  
-                                        $display_name = ucfirst(str_replace('_', ' ', str_replace(['signature_', '.html'], '', $filename)));
+                                        $display_name = $filename === 'email_notification.html' ? 'Notification mail wrapper' : templateDisplayName($filename);
                                         // Mark as selected if it matches current file (default or edited)
                                         $selected = ($filename === $current_file) ? 'selected' : '';
                                         ?>
-                                        <option value="<?php echo htmlspecialchars($filename, ENT_QUOTES, 'UTF-8'); ?>" <?php echo $selected; ?>>
-                                            <?php echo htmlspecialchars($display_name, ENT_QUOTES, 'UTF-8'); ?>
+                                        <option value="<?php echo e($filename); ?>" <?php echo $selected; ?>>
+                                            <?php echo e($display_name); ?>
                                         </option>
                                     <?php endforeach; ?>
                                 </select>
@@ -294,7 +264,7 @@ if ($template_files) {
                                     <i class="fas fa-tag"></i> Template Name
                                 </label>
                                 <input type="text" id="template_name" name="template_name"  
-                                      value="<?php echo htmlspecialchars($current_name, ENT_QUOTES, 'UTF-8'); ?>"
+                                      value="<?php echo e($current_name); ?>"
                                       placeholder="e.g. Modern Blue" required 
                                       style="width: 100%; padding: 0.6rem; font-weight: 600; border: 1px solid #cbd5e1; border-radius: 6px;">
                             </div>
@@ -312,6 +282,7 @@ if ($template_files) {
                                 <button type="button" onclick="insertPlaceholder('{{ROLE}}')" class="placeholder-btn">{{ROLE}}</button>
                                 <button type="button" onclick="insertPlaceholder('{{EMAIL}}')" class="placeholder-btn">{{EMAIL}}</button>
                                 <button type="button" onclick="insertPlaceholder('{{PHONE}}')" class="placeholder-btn">{{PHONE}}</button>
+                                <button type="button" onclick="insertPlaceholder('{{PHONE_CLEAN}}')" class="placeholder-btn" title="Digits only, for tel: links">{{PHONE_CLEAN}}</button>
                                 <div style="width: 1px; background: #e2e8f0; margin: 0 5px;"></div>
                                 <button type="button" onclick="insertPlaceholder('<br>')" class="placeholder-btn">&lt;br&gt;</button>
                                 <button type="button" onclick="insertPlaceholder('<hr>')" class="placeholder-btn">&lt;hr&gt;</button>
@@ -319,7 +290,7 @@ if ($template_files) {
                         </div>
 
                         <div class="form-group">
-                            <textarea id="template_content" name="template_content" class="fallback-editor"><?php echo htmlspecialchars($current_content, ENT_QUOTES, 'UTF-8'); ?></textarea>
+                            <textarea id="template_content" name="template_content" class="fallback-editor"><?php echo e($current_content); ?></textarea>
                             <div id="editor_warning" style="display:none; color:red; margin-top:0.5rem;">Jodit Editor could not load.</div>
                         </div>
 
@@ -328,7 +299,7 @@ if ($template_files) {
                                 <button type="button" onclick="clearEditor()" class="btn btn-sm btn-danger" style="background:transparent; color:var(--danger); border:1px solid var(--border);"><i class="fas fa-trash-alt"></i> Clear All</button>
                                 <button type="button" onclick="loadDefaultTemplate()" class="btn btn-sm btn-secondary" style="background:transparent; color:var(--text-muted); border:1px solid var(--border);"><i class="fas fa-undo"></i> Reset Default</button>
                             </div>
-                            <input type="hidden" id="existing_file" name="existing_file" value="<?php echo htmlspecialchars($current_file, ENT_QUOTES, 'UTF-8'); ?>">
+                            <input type="hidden" id="existing_file" name="existing_file" value="<?php echo e($current_file); ?>">
                         </div>
                     </form>
                 </section>
@@ -460,13 +431,16 @@ if ($template_files) {
     
     function updatePreview() {
         var content = editorInstance ? editorInstance.value : document.getElementById('template_content').value;
-        var preview = content
-            .replace(/{{NAME}}/g, 'John Doe')
-            .replace(/{{ROLE}}/g, 'Senior Developer')
-            .replace(/{{EMAIL}}/g, 'john.doe@company.com')
-            .replace(/{{PHONE}}/g, '+49 89 12345678');
-        
-        document.getElementById('live_preview').innerHTML = preview;
+        // Sample data is escaped; the resulting HTML is sanitised before it is inserted.
+        var preview = SafeHtml.fill(content, {
+            NAME: 'John Doe',
+            ROLE: 'Senior Developer',
+            EMAIL: 'john.doe@company.com',
+            PHONE: '+49 89 12345678',
+            PHONE_CLEAN: '+498912345678'
+        });
+
+        document.getElementById('live_preview').innerHTML = SafeHtml.sanitize(preview);
     }
     
     function clearEditor() {
