@@ -1,0 +1,24 @@
+<?php
+/**
+ * Optional local configuration for SubSignature.
+ *
+ * Copy this file to "config.local.php" (same directory) and uncomment what you
+ * need. The file is loaded by includes/bootstrap.php before anything else.
+ * Keep it out of version control and make sure it is not world-readable.
+ */
+
+// Reverse proxies whose X-Forwarded-For / X-Forwarded-Proto headers are trusted.
+// Leave empty when the web server is reached directly: otherwise clients could
+// forge their IP address (which would weaken the login rate limiting).
+// define('TRUSTED_PROXIES', ['127.0.0.1', '10.0.0.5']);
+
+// Redirect every HTTP request to HTTPS (HSTS is sent automatically on HTTPS).
+// define('FORCE_HTTPS', true);
+
+// Allow the token API (api/v1) over plain HTTP. Testing only: tokens would
+// travel unencrypted.
+// define('API_ALLOW_HTTP', true);
+
+// How many days audit and login logs are kept (default 180).
+// define('LOG_RETENTION_DAYS', 365);
+
