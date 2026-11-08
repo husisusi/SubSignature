@@ -137,7 +137,7 @@ $serverSoftware = $_SERVER['SERVER_SOFTWARE'] ?? 'Unknown';
                         </tr>
                         <tr>
                             <td>Release Date</td>
-                            <td>Jan 2026</td>
+                            <td>Nov 2026</td>
                         </tr>
                         <tr>
                             <td>PHP Version</td>
