@@ -29,24 +29,24 @@ header('X-Accel-Buffering: no'); // disable nginx buffering
 // 2. INPUT VALIDATION
 // ---------------------------------------------------------
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-    sendStreamResponse('fatal_error', 'Security Error: Invalid request method.');
+    sendStreamResponse('fatal_error', t('Security Error: Invalid request method.'));
     exit;
 }
 
 if (!verifyCSRFToken($_POST['csrf_token'] ?? '')) {
-    sendStreamResponse('fatal_error', 'Security Error: Invalid CSRF Token. Request blocked.');
+    sendStreamResponse('fatal_error', t('Security Error: Invalid CSRF Token. Request blocked.'));
     exit;
 }
 
 $ids = $_POST['ids'] ?? [];
 if (empty($ids) || !is_array($ids)) {
-    sendStreamResponse('fatal_error', 'No signature items selected for processing.');
+    sendStreamResponse('fatal_error', t('No signature items selected for processing.'));
     exit;
 }
 // Integers only, unique, and capped to protect the SMTP server and this process.
 $ids = array_values(array_unique(array_filter(array_map('intval', $ids), function ($v) { return $v > 0; })));
 if (count($ids) > 500) {
-    sendStreamResponse('fatal_error', 'Too many items selected (maximum 500 per run).');
+    sendStreamResponse('fatal_error', t('Too many items selected (maximum 500 per run).'));
     exit;
 }
 
@@ -241,16 +241,17 @@ foreach ($ids as $sig_id) {
 
     if (!$data) {
         $failCount++;
-        sendStreamResponse('error', "ID $sig_id: Signature record not found in database.", $progData);
+        sendStreamResponse('error', t('ID {id}: Signature record not found in database.', ['id' => $sig_id]), $progData);
         continue;
     }
 
     $recipient = (string)$data['email'];
     if ($recipient === '' || !filter_var($recipient, FILTER_VALIDATE_EMAIL)) {
         $failCount++;
-        $msg = "ID $sig_id: Invalid email address ($recipient)";
+        $msg = "ID $sig_id: Invalid email address ($recipient)";   // log entry stays English
+        $msgUi = t('ID {id}: Invalid email address ({recipient})', ['id' => $sig_id, 'recipient' => $recipient]);
         logMail($db, $sig_id, $recipient, 'error', $msg);
-        sendStreamResponse('error', $msg, $progData);
+        sendStreamResponse('error', $msgUi, $progData);
         continue;
     }
 
@@ -259,8 +260,9 @@ foreach ($ids as $sig_id) {
     if (trim($finalSigHtml) === '') {
         $failCount++;
         $msg = "ID $sig_id: Template file missing (" . $data['template'] . ")";
+        $msgUi = t('ID {id}: Template file missing ({template})', ['id' => $sig_id, 'template' => $data['template']]);
         logMail($db, $sig_id, $recipient, 'error', $msg);
-        sendStreamResponse('error', $msg, $progData);
+        sendStreamResponse('error', $msgUi, $progData);
         continue;
     }
 
@@ -286,17 +288,17 @@ foreach ($ids as $sig_id) {
         'name'    => $attachmentName,
     ]];
 
-    $sendResult = MailHelper::send($recipient, 'Your New Email Signature', $finalMailBody, '', false, $attachments, $embeddedImages);
+    $sendResult = MailHelper::send($recipient, t('Your New Email Signature'), $finalMailBody, '', false, $attachments, $embeddedImages);
 
     $status = $sendResult['success'] ? 'success' : 'error';
     logMail($db, $sig_id, $recipient, $status, (string)$sendResult['message']);
 
     if ($sendResult['success']) {
         $successCount++;
-        sendStreamResponse('success', "Sent successfully to: $recipient", $progData);
+        sendStreamResponse('success', t('Sent successfully to: {recipient}', ['recipient' => $recipient]), $progData);
     } else {
         $failCount++;
-        sendStreamResponse('error', "Delivery failed for: $recipient (" . $sendResult['message'] . ")", $progData);
+        sendStreamResponse('error', t('Delivery failed for: {recipient} ({message})', ['recipient' => $recipient, 'message' => $sendResult['message']]), $progData);
     }
 
     // Anti-spam throttling
@@ -315,7 +317,7 @@ if (method_exists('MailHelper', 'closeConnection')) {
     MailHelper::closeConnection();
 }
 
-$summary = "Batch operation complete! Success: $successCount, Failed: $failCount";
+$summary = t('Batch operation complete! Success: {success}, Failed: {failed}', ['success' => $successCount, 'failed' => $failCount]);
 logSecurityEventToDB($db, 'SIGNATURE_MAIL_BATCH', $adminId, "Success: $successCount, Failed: $failCount");
 $finalData = [
     'status'   => 'finished',

@@ -49,7 +49,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['upload_images'])) {
 
                 // 2. Security: Check File Size
                 if ($file_size > $max_file_size) {
-                    $error_details[] = "$filename: File is too large (Max 5MB).";
+                    $error_details[] = t('{file}: File is too large (Max 5MB).', ['file' => $filename]);
                     continue;
                 }
 
@@ -104,7 +104,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['upload_images'])) {
         finfo_close($finfo);
 
         if ($success_count > 0) {
-            $message = "Successfully uploaded $success_count image(s).";
+            $message = t('Successfully uploaded {count} image(s).', ['count' => $success_count]);
             logSecurityEventToDB($db, 'IMAGES_UPLOADED', (int)$_SESSION['user_id'], "Count: $success_count");
         }
         if (!empty($error_details)) {
@@ -126,12 +126,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'delet
     if (in_array($ext, $allowed_extensions, true) && is_file($image_path) && isPathInside($image_path, IMAGES_DIR)) {
         if (unlink($image_path)) {
             logSecurityEventToDB($db, 'IMAGE_DELETED', (int)$_SESSION['user_id'], $image);
-            setFlash('success', 'Image deleted successfully.');
+            setFlash('success', t('Image deleted successfully.'));
         } else {
-            setFlash('error', 'Error deleting file. Check permissions.');
+            setFlash('error', t('Error deleting file. Check permissions.'));
         }
     } else {
-        setFlash('error', 'Image not found!');
+        setFlash('error', t('Image not found!'));
     }
     header('Location: admin_images.php');
     exit;
@@ -173,11 +173,12 @@ if (isset($_GET['message'])) $message = $_GET['message'];
 if (isset($_GET['error'])) $error = $_GET['error'];
 ?>
 <!DOCTYPE html>
-<html lang="en">
+<html lang="<?= e(currentLang()) ?>" dir="<?= e(langDir()) ?>">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Image Management - SubSignature</title>
+    <title><?= et('Image Management') ?> - SubSignature</title>
+    <?= i18nHead() ?>
     <script src="<?= assetUrl('js/theme.js') ?>"></script>
     <link rel="stylesheet" href="<?= assetUrl('css/theme.css') ?>">
     <link rel="stylesheet" href="<?= assetUrl('css/style.css') ?>">
@@ -224,22 +225,23 @@ if (isset($_GET['error'])) $error = $_GET['error'];
         <?php include 'includes/navbar.php'; ?>
         
         <div class="sidebar-footer">
+        <?= langSwitcher() ?>
             <div class="user-profile">
                 <div class="avatar"><?php echo strtoupper(substr($_SESSION['username'] ?? 'A', 0, 1)); ?></div>
                 <div class="user-info">
                     <div><?php echo e($_SESSION['username'] ?? 'Admin'); ?></div>
-                    <span>Administrator</span>
+                    <span><?= et('Administrator') ?></span>
                 </div>
             </div>
-            <a href="logout.php" class="btn-logout"><i class="fas fa-sign-out-alt"></i> <span>Sign Out</span></a>
+            <a href="logout.php" class="btn-logout"><i class="fas fa-sign-out-alt"></i> <span><?= et('Sign Out') ?></span></a>
         </div>
     </aside>
 
     <main class="main-content">
         
         <header class="page-header">
-            <h2>Image Management</h2>
-            <p>Secure upload and management of images (Logos, Banners, etc.).</p>
+            <h2><?= et('Image Management') ?></h2>
+            <p><?= et('Secure upload and management of images (Logos, Banners, etc.).') ?></p>
         </header>
 
         <?php if ($message): ?>
@@ -251,20 +253,20 @@ if (isset($_GET['error'])) $error = $_GET['error'];
 
         <div class="form-grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); margin-bottom: 2rem;">
             <div class="card" style="padding: 1.5rem; text-align:center;">
-                <div style="color: var(--text-muted); margin-bottom: 0.5rem;">Total Images</div>
+                <div style="color: var(--text-muted); margin-bottom: 0.5rem;"><?= et('Total Images') ?></div>
                 <div style="font-size: 2rem; font-weight: 700; color: var(--text-main);"><?php echo count($images); ?></div>
             </div>
         </div>
 
         <section class="card">
             <div class="card-header">
-                <h3><i class="fas fa-images"></i> Media Library</h3>
+                <h3><i class="fas fa-images"></i> <?= et('Media Library') ?></h3>
                 <div style="display:flex; gap: 0.5rem;">
                     <button onclick="openImportModal()" class="btn btn-sm btn-success">
-                        <i class="fas fa-upload"></i> Upload Images
+                        <i class="fas fa-upload"></i> <?= et('Upload Images') ?>
                     </button>
                     <a href="img/" target="_blank" class="btn btn-sm btn-secondary">
-                        <i class="fas fa-folder-open"></i> Open Folder
+                        <i class="fas fa-folder-open"></i> <?= et('Open Folder') ?>
                     </a>
                 </div>
             </div>
@@ -273,16 +275,16 @@ if (isset($_GET['error'])) $error = $_GET['error'];
                 <table style="width: 100%; border-collapse: collapse;">
                     <thead>
                         <tr style="background: var(--bg-subtle); text-align: left; border-bottom: 1px solid var(--border);">
-                            <th style="padding: 1rem; width: 60px;">Preview</th>
-                            <th style="padding: 1rem;">Filename</th>
-                            <th style="padding: 1rem;">Size</th>
-                            <th style="padding: 1rem;">Uploaded on</th>
-                            <th style="padding: 1rem; text-align: right;">Actions</th>
+                            <th style="padding: 1rem; width: 60px;"><?= et('Preview') ?></th>
+                            <th style="padding: 1rem;"><?= et('Filename') ?></th>
+                            <th style="padding: 1rem;"><?= et('Size') ?></th>
+                            <th style="padding: 1rem;"><?= et('Uploaded on') ?></th>
+                            <th style="padding: 1rem; text-align: right;"><?= et('Actions') ?></th>
                         </tr>
                     </thead>
                     <tbody>
                         <?php if (empty($images)): ?>
-                            <tr><td colspan="5" style="padding: 2rem; text-align: center; color: var(--text-muted);">No images uploaded yet.</td></tr>
+                            <tr><td colspan="5" style="padding: 2rem; text-align: center; color: var(--text-muted);"><?= et('No images uploaded yet.') ?></td></tr>
                         <?php endif; ?>
                         
                         <?php foreach ($images as $img): ?>
@@ -292,7 +294,7 @@ if (isset($_GET['error'])) $error = $_GET['error'];
                                 <!-- Enhanced Clickable Preview -->
                                 <img src="img/<?php echo e($img['filename']); ?>" 
                                      class="image-preview" 
-                                     alt="Preview"
+                                     alt="<?= et('Preview') ?>"
                                      onclick="openLightbox('img/<?php echo rawurlencode($img['filename']); ?>', '<?php echo e($img['filename']); ?>')">
                             </td>
 
@@ -308,9 +310,9 @@ if (isset($_GET['error'])) $error = $_GET['error'];
                             
                             <td style="padding: 1rem; text-align: right;">
                                 <div style="display: inline-flex; gap: 0.5rem;">
-                                    <button onclick="openLightbox('img/<?php echo rawurlencode($img['filename']); ?>', '<?php echo e($img['filename']); ?>')" class="btn btn-sm btn-secondary" title="View Full Image"><i class="fas fa-eye"></i></button>
+                                    <button onclick="openLightbox('img/<?php echo rawurlencode($img['filename']); ?>', '<?php echo e($img['filename']); ?>')" class="btn btn-sm btn-secondary" title="<?= et('View Full Image') ?>"><i class="fas fa-eye"></i></button>
                                     
-                                    <button type="button" data-post="admin_images.php" data-params='{"action":"delete_image","image":"<?php echo e($img['filename']); ?>"}' data-confirm="Really delete image?" class="btn btn-sm btn-danger" title="Delete"><i class="fas fa-trash"></i></button>
+                                    <button type="button" data-post="admin_images.php" data-params='{"action":"delete_image","image":"<?php echo e($img['filename']); ?>"}' data-confirm="<?= et('Really delete image?') ?>" class="btn btn-sm btn-danger" title="<?= et('Delete') ?>"><i class="fas fa-trash"></i></button>
                                 </div>
                             </td>
                         </tr>
@@ -327,9 +329,9 @@ if (isset($_GET['error'])) $error = $_GET['error'];
         <div class="modal-box">
             <span class="modal-close" onclick="closeImportModal()">&times;</span>
             <div class="modal-header">
-                <h3><i class="fas fa-cloud-upload-alt" style="color:var(--primary);"></i> Upload Images</h3>
+                <h3><i class="fas fa-cloud-upload-alt" style="color:var(--primary);"></i> <?= et('Upload Images') ?></h3>
                 <p style="color:var(--text-muted); font-size:0.9rem; margin-top:0.5rem;">
-                    Allowed: <code>.jpg, .jpeg, .png, .gif, .webp</code> (Max 5MB)
+                    <?= eth('Allowed: {types} (Max 5MB)', ['types' => '<code>.jpg, .jpeg, .png, .gif, .webp</code>']) ?>
                 </p>
             </div>
             
@@ -341,16 +343,16 @@ if (isset($_GET['error'])) $error = $_GET['error'];
                     <input type="file" name="image_files[]" class="upload-input" accept="image/*" multiple required onchange="showFileCount(this)">
                     <i class="fas fa-file-image" style="font-size: 2.5rem; color: var(--border-strong); margin-bottom: 1rem;"></i>
                     <div id="uploadText" style="font-weight: 500; color: var(--text-main);">
-                        Click or drag files here
+                        <?= et('Click or drag files here') ?>
                     </div>
                     <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.5rem;">
-                        Files will be automatically safely renamed
+                        <?= et('Files will be automatically safely renamed') ?>
                     </div>
                 </div>
                 
                 <div style="display:flex; justify-content:flex-end; gap:0.5rem; margin-top: 1.5rem;">
-                    <button type="button" class="btn btn-danger" style="background:var(--bg-white); color:var(--text-main); border:1px solid var(--border);" onclick="closeImportModal()">Cancel</button>
-                    <button type="submit" class="btn btn-primary">Upload</button>
+                    <button type="button" class="btn btn-danger" style="background:var(--bg-white); color:var(--text-main); border:1px solid var(--border);" onclick="closeImportModal()"><?= et('Cancel') ?></button>
+                    <button type="submit" class="btn btn-primary"><?= et('Upload') ?></button>
                 </div>
             </form>
         </div>
@@ -359,7 +361,7 @@ if (isset($_GET['error'])) $error = $_GET['error'];
     <!-- Lightbox Modal for Image Previews -->
     <div id="lightboxOverlay" class="modal-overlay" onclick="closeLightbox()">
         <span id="lightboxClose" onclick="closeLightbox()">&times;</span>
-        <img id="lightboxImage" class="lightbox-img" src="" alt="Full Preview">
+        <img id="lightboxImage" class="lightbox-img" src="" alt="<?= et('Full Preview') ?>">
         <div id="lightboxCaption" class="lightbox-caption"></div>
     </div>
 
@@ -396,10 +398,10 @@ if (isset($_GET['error'])) $error = $_GET['error'];
     function showFileCount(input) {
         const text = document.getElementById('uploadText');
         if (input.files && input.files.length > 0) {
-            text.innerHTML = `<strong>${input.files.length}</strong> file(s) selected`;
+            text.innerHTML = `<strong>${input.files.length}</strong> ` + <?= tj('file(s) selected') ?>;
             text.style.color = 'var(--success-text)';
         } else {
-            text.innerHTML = 'Click or drag files here';
+            text.innerHTML = <?= tj('Click or drag files here') ?>;
             text.style.color = 'var(--text-main)';
         }
     }

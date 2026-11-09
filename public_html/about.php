@@ -9,11 +9,12 @@ $phpVersion = phpversion();
 $serverSoftware = $_SERVER['SERVER_SOFTWARE'] ?? 'Unknown';
 ?>
 <!DOCTYPE html>
-<html lang="en">
+<html lang="<?= e(currentLang()) ?>" dir="<?= e(langDir()) ?>">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>About - SubSignature</title>
+    <title><?= et('About') ?> - SubSignature</title>
+    <?= i18nHead() ?>
     <script src="<?= assetUrl('js/theme.js') ?>"></script>
     <link rel="stylesheet" href="<?= assetUrl('css/theme.css') ?>">
     <link rel="stylesheet" href="<?= assetUrl('css/style.css') ?>">
@@ -77,17 +78,18 @@ $serverSoftware = $_SERVER['SERVER_SOFTWARE'] ?? 'Unknown';
     <aside class="sidebar">
         <?php include 'includes/navbar.php'; ?>
         <div class="sidebar-footer">
+        <?= langSwitcher() ?>
             <div class="user-profile">
                 <div class="avatar">
                     <?php echo strtoupper(substr($_SESSION['username'], 0, 1)); ?>
                 </div>
                 <div class="user-info">
                     <div><?php echo e($_SESSION['username']); ?></div>
-                    <span><?php echo isAdmin() ? 'Administrator' : 'User'; ?></span>
+                    <span><?= isAdmin() ? et('Administrator') : et('User') ?></span>
                 </div>
             </div>
             <a href="logout.php" class="btn-logout">
-                <i class="fas fa-sign-out-alt"></i> <span>Sign Out</span>
+                <i class="fas fa-sign-out-alt"></i> <span><?= et('Sign Out') ?></span>
             </a>
         </div>
     </aside>
@@ -95,8 +97,8 @@ $serverSoftware = $_SERVER['SERVER_SOFTWARE'] ?? 'Unknown';
     <main class="main-content">
         
         <header class="page-header">
-            <h2>About</h2>
-            <p>System information and credits.</p>
+            <h2><?= et('About') ?></h2>
+            <p><?= et('System information and credits.') ?></p>
         </header>
 
         <section class="card">
@@ -104,80 +106,80 @@ $serverSoftware = $_SERVER['SERVER_SOFTWARE'] ?? 'Unknown';
             <div class="about-hero">
                 <img src="img/subsig.svg" alt="SubSignature" class="about-logo">
                 <h1 class="about-title">SubSignature</h1>
-                <span class="about-badge">Version <?php echo $appVersion; ?></span>
+                <span class="about-badge"><?= et('Version {version}', ['version' => $appVersion]) ?></span>
                 <p style="margin-top: 1rem; color: var(--text-muted); max-width: 600px; margin-left: auto; margin-right: auto;">
-                    A secure, self-hosted, and offline-first email signature generator designed for privacy and ease of use.
+                    <?= et('A secure, self-hosted, and offline-first email signature generator designed for privacy and ease of use.') ?>
                 </p>
             </div>
 
             <div class="feature-grid">
                 <div class="feature-item">
                     <div class="feature-icon"><i class="fas fa-shield-alt"></i></div>
-                    <div class="feature-title">Security First</div>
-                    <div class="feature-desc">Brute-force protection, rate limiting, and comprehensive audit logs.</div>
+                    <div class="feature-title"><?= et('Security First') ?></div>
+                    <div class="feature-desc"><?= et('Brute-force protection, rate limiting, and comprehensive audit logs.') ?></div>
                 </div>
                 <div class="feature-item">
                     <div class="feature-icon"><i class="fas fa-wifi"></i></div>
-                    <div class="feature-title">100% Offline</div>
-                    <div class="feature-desc">No external requests to CDNs. Fully GDPR compliant and privacy-focused.</div>
+                    <div class="feature-title"><?= et('100% Offline') ?></div>
+                    <div class="feature-desc"><?= et('No external requests to CDNs. Fully GDPR compliant and privacy-focused.') ?></div>
                 </div>
                 <div class="feature-item">
                     <div class="feature-icon"><i class="fas fa-database"></i></div>
-                    <div class="feature-title">SQLite Powered</div>
-                    <div class="feature-desc">Lightweight, file-based database architecture without complex setup.</div>
+                    <div class="feature-title"><?= et('SQLite Powered') ?></div>
+                    <div class="feature-desc"><?= et('Lightweight, file-based database architecture without complex setup.') ?></div>
                 </div>
             </div>
 
             <div class="form-grid">
                 
                 <div>
-                    <h3 style="margin-bottom: 1rem; font-size: 1.1rem;">System Information</h3>
+                    <h3 style="margin-bottom: 1rem; font-size: 1.1rem;"><?= et('System Information') ?></h3>
                     <table class="tech-table">
                         <tr>
-                            <td>App Version</td>
+                            <td><?= et('App Version') ?></td>
                             <td>v<?php echo $appVersion; ?></td>
                         </tr>
                         <tr>
-                            <td>Release Date</td>
-                            <td>Nov 2026</td>
+                            <td><?= et('Release Date') ?></td>
+                            <td><?= et('Nov 2026') ?></td>
                         </tr>
                         <tr>
-                            <td>PHP Version</td>
+                            <td><?= et('PHP Version') ?></td>
                             <td><?php echo e($phpVersion); ?></td>
                         </tr>
                         <tr>
-                            <td>Database</td>
+                            <td><?= et('Database') ?></td>
                             <td>SQLite3</td>
                         </tr>
                         <tr>
-                            <td>Server API</td>
+                            <td><?= et('Server API') ?></td>
                             <td><?php echo e(php_sapi_name()); ?></td>
                         </tr>
                     </table>
                 </div>
 
                 <div>
-                    <h3 style="margin-bottom: 1rem; font-size: 1.1rem;">Credits & Licenses</h3>
+                    <h3 style="margin-bottom: 1rem; font-size: 1.1rem;"><?= et('Credits & Licenses') ?></h3>
                     <table class="tech-table">
                         <tr>
-                            <td>Developed by</td>
+                            <td><?= et('Developed by') ?></td>
                             <td>Husisusi</td>
                         </tr>
                         <tr>
-                            <td>License</td>
-                            <td>MIT License</td>
+                            <td><?= et('License') ?></td>
+                            <td><?= et('MIT License') ?></td>
                         </tr>
                         <tr>
-                            <td>Editor Engine</td>
+                            <td><?= et('Editor Engine') ?></td>
                             <td>Jodit (MIT)</td>
                         </tr>
                         <tr>
-                            <td>Icons</td>
-                            <td>FontAwesome Free</td>
+                            <td><?= et('Icons') ?></td>
+                            <td><?= et('FontAwesome Free') ?></td>
                         </tr>
                         <tr>
-                            <td>Source Code</td>
-                            <td><a href="https://github.com/husisusi/SubSignature" target="_blank" style="color:var(--primary); text-decoration:none;">GitHub Repo <i class="fas fa-external-link-alt" style="font-size:0.7rem;"></i></a></td>
+                            <td><?= et('Source Code') ?></td>
+                            <td><a href="https://github.com/husisusi/SubSignature" target="_blank" style="color:var(--primary); text-decoration:none;"><?= et('GitHub Repo') ?> <i class="fas fa-external-link-alt" style="font-size:0.7rem;"></i></a></td>
                         </tr>
                     </table>
                 </div>
@@ -185,7 +187,7 @@ $serverSoftware = $_SERVER['SERVER_SOFTWARE'] ?? 'Unknown';
             </div>
 
             <div style="margin-top: 2rem; text-align: center; padding-top: 1rem; border-top: 1px solid var(--border); color: var(--text-muted); font-size: 0.85rem;">
-                &copy; <?php echo date('Y'); ?> SubSignature. Made with <i class="fas fa-heart" style="color:var(--danger-text);"></i> and PHP.
+                &copy; <?php echo date('Y'); ?> SubSignature. <?= eth('Made with {heart} and PHP.', ['heart' => '<i class="fas fa-heart" style="color:var(--danger-text);"></i>']) ?>
             </div>
 
         </section>

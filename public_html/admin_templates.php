@@ -64,7 +64,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     continue;
                 }
                 if (strtolower(pathinfo($filename, PATHINFO_EXTENSION)) !== 'html') {
-                    $error_details[] = "$filename: Only .html files allowed.";
+                    $error_details[] = t('{file}: Only .html files allowed.', ['file' => $filename]);
                     continue;
                 }
                 if (filesize($tmp_name) > TEMPLATE_MAX_BYTES) {
@@ -112,7 +112,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             setFlash('error', implode("\n", $error_details));
         }
         if ($success_count > 0) {
-            setFlash('success', "Successfully imported $success_count template(s).");
+            setFlash('success', t('Successfully imported {count} template(s).', ['count' => $success_count]));
         }
         header('Location: admin_templates.php');
         exit;
@@ -213,11 +213,12 @@ usort($templates, function($a, $b) {
 
 ?>
 <!DOCTYPE html>
-<html lang="en">
+<html lang="<?= e(currentLang()) ?>" dir="<?= e(langDir()) ?>">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Template Management - SubSignature</title>
+    <title><?= et('Template Management') ?> - SubSignature</title>
+    <?= i18nHead() ?>
     <script src="<?= assetUrl('js/theme.js') ?>"></script>
     <link rel="stylesheet" href="<?= assetUrl('css/theme.css') ?>">
     <link rel="stylesheet" href="<?= assetUrl('css/style.css') ?>">
@@ -256,22 +257,23 @@ usort($templates, function($a, $b) {
         <?php include 'includes/navbar.php'; ?>
         
         <div class="sidebar-footer">
+        <?= langSwitcher() ?>
             <div class="user-profile">
                 <div class="avatar"><?php echo strtoupper(substr($_SESSION['username'], 0, 1)); ?></div>
                 <div class="user-info">
                     <div><?php echo e($_SESSION['username']); ?></div>
-                    <span>Administrator</span>
+                    <span><?= et('Administrator') ?></span>
                 </div>
             </div>
-            <a href="logout.php" class="btn-logout"><i class="fas fa-sign-out-alt"></i> <span>Sign Out</span></a>
+            <a href="logout.php" class="btn-logout"><i class="fas fa-sign-out-alt"></i> <span><?= et('Sign Out') ?></span></a>
         </div>
     </aside>
 
     <main class="main-content">
         
         <header class="page-header">
-            <h2>Template Management</h2>
-            <p>Manage, rename, import, and set default signature templates.</p>
+            <h2><?= et('Template Management') ?></h2>
+            <p><?= et('Manage, rename, import, and set default signature templates.') ?></p>
         </header>
 
         <?php if ($message): ?>
@@ -283,25 +285,25 @@ usort($templates, function($a, $b) {
 
         <div class="form-grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); margin-bottom: 2rem;">
             <div class="card" style="padding: 1.5rem; text-align:center;">
-                <div style="color: var(--text-muted); margin-bottom: 0.5rem;">Total Templates</div>
+                <div style="color: var(--text-muted); margin-bottom: 0.5rem;"><?= et('Total Templates') ?></div>
                 <div style="font-size: 2rem; font-weight: 700; color: var(--text-main);"><?php echo count($templates); ?></div>
             </div>
             <div class="card" style="padding: 1.5rem; text-align:center;">
-                <div style="color: var(--text-muted); margin-bottom: 0.5rem;">Total Usage</div>
+                <div style="color: var(--text-muted); margin-bottom: 0.5rem;"><?= et('Total Usage') ?></div>
                 <div style="font-size: 2rem; font-weight: 700; color: var(--text-main);"><?php echo array_sum(array_column($templates, 'usage')); ?></div>
             </div>
         </div>
 
         <section class="card">
             <div class="card-header">
-                <h3><i class="fas fa-list"></i> Installed Templates</h3>
+                <h3><i class="fas fa-list"></i> <?= et('Installed Templates') ?></h3>
                 <div style="display:flex; gap: 0.5rem;">
                     <button onclick="openImportModal()" class="btn btn-sm btn-success">
-                        <i class="fas fa-file-import"></i> Import HTML
+                        <i class="fas fa-file-import"></i> <?= et('Import HTML') ?>
                     </button>
                     
                     <a href="template_editor.php" class="btn btn-sm btn-primary">
-                        <i class="fas fa-plus"></i> New
+                        <i class="fas fa-plus"></i> <?= et('New') ?>
                     </a>
                 </div>
             </div>
@@ -310,11 +312,11 @@ usort($templates, function($a, $b) {
                 <table style="width: 100%; border-collapse: collapse;">
                     <thead>
                         <tr style="background: var(--bg-subtle); text-align: left; border-bottom: 1px solid var(--border);">
-                            <th style="padding: 1rem; width: 50px;">Def.</th>
-                            <th style="padding: 1rem;">Name</th>
-                            <th style="padding: 1rem;">Filename</th>
-                            <th style="padding: 1rem;">Usage</th>
-                            <th style="padding: 1rem; text-align: right;">Actions</th>
+                            <th style="padding: 1rem; width: 50px;"><?= et('Def.') ?></th>
+                            <th style="padding: 1rem;"><?= et('Name') ?></th>
+                            <th style="padding: 1rem;"><?= et('Filename') ?></th>
+                            <th style="padding: 1rem;"><?= et('Usage') ?></th>
+                            <th style="padding: 1rem; text-align: right;"><?= et('Actions') ?></th>
                         </tr>
                     </thead>
                     <tbody>
@@ -328,11 +330,11 @@ usort($templates, function($a, $b) {
                                     <input type="hidden" name="template_name" value="<?php echo e($t['filename']); ?>">
                                     
                                     <?php if ($t['is_default']): ?>
-                                        <button type="button" class="btn-star active" title="Current Default">
+                                        <button type="button" class="btn-star active" title="<?= et('Current Default') ?>">
                                             <i class="fas fa-star"></i>
                                         </button>
                                     <?php else: ?>
-                                        <button type="submit" class="btn-star" title="Set as Default">
+                                        <button type="submit" class="btn-star" title="<?= et('Set as Default') ?>">
                                             <i class="far fa-star"></i>
                                         </button>
                                     <?php endif; ?>
@@ -342,7 +344,7 @@ usort($templates, function($a, $b) {
                             <td style="padding: 1rem;">
                                 <strong><?php echo e($t['display_name']); ?></strong>
                                 <?php if ($t['is_default']): ?>
-                                    <span class="template-badge badge-default" style="margin-left:5px;">Default</span>
+                                    <span class="template-badge badge-default" style="margin-left:5px;"><?= et('Default') ?></span>
                                 <?php endif; ?>
                             </td>
                             
@@ -360,14 +362,14 @@ usort($templates, function($a, $b) {
                             
                             <td style="padding: 1rem; text-align: right;">
                                 <div style="display: inline-flex; gap: 0.5rem;">
-                                    <a href="template_editor.php?edit=<?php echo rawurlencode($t['filename']); ?>" class="btn btn-sm btn-primary" title="Edit"><i class="fas fa-pen"></i></a>
+                                    <a href="template_editor.php?edit=<?php echo rawurlencode($t['filename']); ?>" class="btn btn-sm btn-primary" title="<?= et('Edit') ?>"><i class="fas fa-pen"></i></a>
                                     
-                                    <a href="preview_template.php?template=<?php echo rawurlencode($t['filename']); ?>" target="_blank" class="btn btn-sm btn-secondary" title="Preview"><i class="fas fa-eye"></i></a>
+                                    <a href="preview_template.php?template=<?php echo rawurlencode($t['filename']); ?>" target="_blank" class="btn btn-sm btn-secondary" title="<?= et('Preview') ?>"><i class="fas fa-eye"></i></a>
                                     
-                                    <button type="button" onclick="toggleRename('<?php echo md5($t['filename']); ?>')" class="btn btn-sm btn-secondary" title="Rename"><i class="fas fa-i-cursor"></i></button>
+                                    <button type="button" onclick="toggleRename('<?php echo md5($t['filename']); ?>')" class="btn btn-sm btn-secondary" title="<?= et('Rename') ?>"><i class="fas fa-i-cursor"></i></button>
                                     
                                     <?php if (!$t['is_default']): ?>
-                                        <button type="button" data-post="admin_templates.php" data-params='{"action":"delete_template","template":"<?php echo e($t['filename']); ?>"}' data-confirm="Really delete?" class="btn btn-sm btn-danger" title="Delete"><i class="fas fa-trash"></i></button>
+                                        <button type="button" data-post="admin_templates.php" data-params='{"action":"delete_template","template":"<?php echo e($t['filename']); ?>"}' data-confirm="<?= et('Really delete?') ?>" class="btn btn-sm btn-danger" title="<?= et('Delete') ?>"><i class="fas fa-trash"></i></button>
                                     <?php else: ?>
                                         <button class="btn btn-sm btn-secondary" disabled style="opacity:0.5; cursor:not-allowed;"><i class="fas fa-trash"></i></button>
                                     <?php endif; ?>
@@ -382,11 +384,11 @@ usort($templates, function($a, $b) {
                                     <input type="hidden" name="rename_template" value="1">
                                     <input type="hidden" name="old_name" value="<?php echo e($t['filename']); ?>">
                                     
-                                    <span>Rename to:</span>
+                                    <span><?= et('Rename to:') ?></span>
                                     <input type="text" name="new_name" value="<?php echo e($t['filename']); ?>" required style="padding: 5px; border: 1px solid var(--border); border-radius: 4px; width: 250px;">
                                     
-                                    <button type="submit" class="btn btn-sm btn-primary">Save</button>
-                                    <button type="button" onclick="toggleRename('<?php echo md5($t['filename']); ?>')" class="btn btn-sm btn-secondary">Cancel</button>
+                                    <button type="submit" class="btn btn-sm btn-primary"><?= et('Save') ?></button>
+                                    <button type="button" onclick="toggleRename('<?php echo md5($t['filename']); ?>')" class="btn btn-sm btn-secondary"><?= et('Cancel') ?></button>
                                 </form>
                             </td>
                         </tr>
@@ -402,9 +404,9 @@ usort($templates, function($a, $b) {
         <div class="modal-box">
             <span class="modal-close" onclick="closeImportModal()">&times;</span>
             <div class="modal-header">
-                <h3><i class="fas fa-cloud-upload-alt" style="color:var(--primary);"></i> Import Templates</h3>
+                <h3><i class="fas fa-cloud-upload-alt" style="color:var(--primary);"></i> <?= et('Import Templates') ?></h3>
                 <p style="color:var(--text-muted); font-size:0.9rem; margin-top:0.5rem;">
-                    Upload new HTML templates. Only <code>.html</code> files allowed.
+                    <?= eth('Upload new HTML templates. Only {ext} files allowed.', ['ext' => '<code>.html</code>']) ?>
                 </p>
             </div>
             
@@ -416,16 +418,16 @@ usort($templates, function($a, $b) {
                     <input type="file" name="html_files[]" class="upload-input" accept=".html" multiple required onchange="showFileCount(this)">
                     <i class="fas fa-file-code" style="font-size: 2.5rem; color: var(--border-strong); margin-bottom: 1rem;"></i>
                     <div id="uploadText" style="font-weight: 500; color: var(--text-main);">
-                        Click to select or drag & drop files
+                        <?= et('Click to select or drag & drop files') ?>
                     </div>
                     <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.5rem;">
-                        Files will be renamed to <code>signature_*.html</code>
+                        <?= eth('Files will be renamed to {pattern}', ['pattern' => '<code>signature_*.html</code>']) ?>
                     </div>
                 </div>
                 
                 <div style="display:flex; justify-content:flex-end; gap:0.5rem; margin-top: 1.5rem;">
-                    <button type="button" class="btn btn-danger" style="background:var(--bg-white); color:var(--text-main); border:1px solid var(--border);" onclick="closeImportModal()">Cancel</button>
-                    <button type="submit" class="btn btn-primary">Start Import</button>
+                    <button type="button" class="btn btn-danger" style="background:var(--bg-white); color:var(--text-main); border:1px solid var(--border);" onclick="closeImportModal()"><?= et('Cancel') ?></button>
+                    <button type="submit" class="btn btn-primary"><?= et('Start Import') ?></button>
                 </div>
             </form>
         </div>
@@ -450,10 +452,10 @@ usort($templates, function($a, $b) {
     function showFileCount(input) {
         const text = document.getElementById('uploadText');
         if (input.files && input.files.length > 0) {
-            text.innerHTML = `<strong>${input.files.length}</strong> file(s) selected`;
+            text.innerHTML = `<strong>${input.files.length}</strong> ` + <?= tj('file(s) selected') ?>;
             text.style.color = 'var(--success-text)';
         } else {
-            text.innerHTML = 'Click to select or drag & drop files';
+            text.innerHTML = <?= tj('Click to select or drag & drop files') ?>;
             text.style.color = 'var(--text-main)';
         }
     }

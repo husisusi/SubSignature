@@ -184,6 +184,15 @@ function startUserSession(array $user): void
     $_SESSION['login_time']    = time();
     $_SESSION['pw_fp']         = passwordFingerprint($user['password_hash']);
     $_SESSION['csrf_token']    = bin2hex(random_bytes(32));
+
+    // Restore the user's saved interface language (follows the account across devices).
+    global $db;
+    if ($db instanceof SQLite3) {
+        $saved = $db->querySingle('SELECT language FROM users WHERE id = ' . (int)$user['id']);
+        if (is_string($saved) && isSupportedLanguage($saved)) {
+            setLanguageCookie($saved);
+        }
+    }
 }
 
 /**

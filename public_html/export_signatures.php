@@ -131,11 +131,13 @@ if ($is_admin) {
 }
 ?>
 <!DOCTYPE html>
-<html lang="en">
+<html lang="<?= e(currentLang()) ?>" dir="<?= e(langDir()) ?>">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Export Signatures - SubSignature</title>
+    <title><?= et('Export Signatures') ?> - SubSignature</title>
+    
+    <?= i18nHead() ?>
     
     <script src="<?= assetUrl('js/theme.js') ?>"></script>
     <link rel="stylesheet" href="<?= assetUrl('css/theme.css') ?>">
@@ -289,7 +291,7 @@ if ($is_admin) {
 
     <div class="loading-overlay" id="loadingOverlay">
         <div class="spinner"></div>
-        <h3 id="loadingText">Processing...</h3>
+        <h3 id="loadingText"><?= et('Processing...') ?></h3>
     </div>
 
     <aside class="sidebar">
@@ -297,17 +299,18 @@ if ($is_admin) {
 <?php include 'includes/navbar.php'; ?>
 
         <div class="sidebar-footer">
+        <?= langSwitcher() ?>
             <div class="user-profile">
                 <div class="avatar">
                     <?php echo strtoupper(substr($_SESSION['username'], 0, 1)); ?>
                 </div>
                 <div class="user-info">
                     <div><?php echo e($_SESSION['username']); ?></div>
-                    <span><?php echo isAdmin() ? 'Administrator' : 'User'; ?></span>
+                    <span><?= isAdmin() ? et('Administrator') : et('User') ?></span>
                 </div>
             </div>
             <a href="logout.php" class="btn-logout">
-                <i class="fas fa-sign-out-alt"></i> <span>Sign Out</span>
+                <i class="fas fa-sign-out-alt"></i> <span><?= et('Sign Out') ?></span>
             </a>
         </div>
     </aside>
@@ -315,8 +318,8 @@ if ($is_admin) {
     <main class="main-content">
         
         <header class="page-header">
-            <h2>Export Signatures</h2>
-            <p>Download your data as CSV or ZIP archives.</p>
+            <h2><?= et('Export Signatures') ?></h2>
+            <p><?= et('Download your data as CSV or ZIP archives.') ?></p>
         </header>
 
         <div class="user-header-card">
@@ -332,11 +335,11 @@ if ($is_admin) {
             
             <div style="display: flex; align-items: center; gap: 1rem;">
                 <span class="signature-count-badge">
-                    <i class="fas fa-signature"></i> <?php echo count($signatures); ?> Signatures
+                    <i class="fas fa-signature"></i> <?= et('{count} Signatures', ['count' => count($signatures)]) ?>
                 </span>
                 <?php if ($selected_user_id != $_SESSION['user_id']): ?>
                     <a href="export_signatures.php" class="btn btn-sm btn-secondary" style="border-radius:20px;">
-                        View My Data
+                        <?= et('View My Data') ?>
                     </a>
                 <?php endif; ?>
             </div>
@@ -346,7 +349,7 @@ if ($is_admin) {
             <div class="warning-banner">
                 <i class="fas fa-exclamation-triangle"></i>
                 <div>
-                    <strong>Admin View:</strong> You are viewing another user's data. Exports will contain their signatures.
+                    <strong><?= et('Admin View:') ?></strong> <?= et("You are viewing another user's data. Exports will contain their signatures.") ?>
                 </div>
             </div>
         <?php endif; ?>
@@ -354,11 +357,11 @@ if ($is_admin) {
         <?php if ($is_admin && !empty($users)): ?>
         <section class="card">
             <div class="card-header">
-                <h3><i class="fas fa-users-cog"></i> Select User to Manage</h3>
+                <h3><i class="fas fa-users-cog"></i> <?= et('Select User to Manage') ?></h3>
             </div>
             <form method="GET" style="display: flex; gap: 1rem; align-items: flex-end; flex-wrap: wrap;">
                 <div class="form-group" style="flex: 1; min-width: 250px;">
-                    <label for="view_user">Choose User Account</label>
+                    <label for="view_user"><?= et('Choose User Account') ?></label>
                     <select id="view_user" name="view_user" onchange="this.form.submit()" style="width: 100%; padding: 0.75rem; border: 1px solid var(--border); border-radius: 8px;">
                         <?php foreach ($users as $user): ?>
                             <option value="<?php echo $user['id']; ?>" <?php echo $user['id'] == $selected_user_id ? 'selected' : ''; ?>>
@@ -369,7 +372,7 @@ if ($is_admin) {
                 </div>
                 <div class="form-group">
                      <button type="submit" class="btn btn-primary" style="height: 48px;">
-                        <i class="fas fa-sync-alt"></i> Load User
+                        <i class="fas fa-sync-alt"></i> <?= et('Load User') ?>
                      </button>
                 </div>
             </form>
@@ -380,41 +383,41 @@ if ($is_admin) {
         <div class="export-options">
             <div class="option-card">
                 <i class="fas fa-file-csv option-icon" style="color: #10b981;"></i>
-                <h4>Export CSV</h4>
+                <h4><?= et('Export CSV') ?></h4>
                 <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 1.5rem;">
-                    Download a spreadsheet with all signature data (Name, Role, Email, etc.).
+                    <?= et('Download a spreadsheet with all signature data (Name, Role, Email, etc.).') ?>
                 </p>
                 <a href="export_signatures.php?export=1&user_id=<?php echo $selected_user_id; ?>" class="btn btn-success" style="width: 100%; justify-content: center;">
-                    <i class="fas fa-download"></i> Download CSV
+                    <i class="fas fa-download"></i> <?= et('Download CSV') ?>
                 </a>
             </div>
 
             <div class="option-card">
                 <i class="fas fa-file-archive option-icon" style="color: #f59e0b;"></i>
-                <h4>Download HTML (ZIP)</h4>
+                <h4><?= et('Download HTML (ZIP)') ?></h4>
                 <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 1.5rem;">
-                    Get all signatures as separate HTML files packed in a ZIP archive.
+                    <?= et('Get all signatures as separate HTML files packed in a ZIP archive.') ?>
                 </p>
                 <a href="download_all.php?user_id=<?php echo $selected_user_id; ?>" class="btn btn-warning" style="width: 100%; justify-content: center;" onclick="startZipDownload(event)">
-                    <i class="fas fa-file-zipper"></i> Download ZIP
+                    <i class="fas fa-file-zipper"></i> <?= et('Download ZIP') ?>
                 </a>
             </div>
         </div>
 
         <section class="card" style="margin-top: 2rem;">
             <div class="card-header">
-                <h3><i class="fas fa-table"></i> Data Preview (Recent)</h3>
+                <h3><i class="fas fa-table"></i> <?= et('Data Preview (Recent)') ?></h3>
             </div>
             <div class="table-container">
                 <table class="preview-table">
                     <thead>
                         <tr>
-                            <th>Name</th>
-                            <th>Role</th>
-                            <th>Email</th>
-                            <th>Phone</th>
-                            <th>Template</th>
-                            <th>Date</th>
+                            <th><?= et('Name') ?></th>
+                            <th><?= et('Role') ?></th>
+                            <th><?= et('Email') ?></th>
+                            <th><?= et('Phone') ?></th>
+                            <th><?= et('Template') ?></th>
+                            <th><?= et('Date') ?></th>
                         </tr>
                     </thead>
                     <tbody>
@@ -435,7 +438,7 @@ if ($is_admin) {
             </div>
             <?php if (count($signatures) > 5): ?>
                 <p style="text-align: center; margin-top: 1rem; color: var(--text-muted); font-size: 0.9rem;">
-                    ... and <?php echo count($signatures) - 5; ?> more records available for export.
+                    <?= et('... and {count} more records available for export.', ['count' => count($signatures) - 5]) ?>
                 </p>
             <?php endif; ?>
         </section>
@@ -443,10 +446,10 @@ if ($is_admin) {
         <?php else: ?>
             <div class="card" style="text-align: center; padding: 4rem;">
                 <i class="fas fa-folder-open" style="font-size: 3rem; color: var(--border-strong); margin-bottom: 1rem;"></i>
-                <h3 style="color: var(--text-muted);">No signatures found</h3>
-                <p style="color: var(--text-muted);">This user hasn't generated any signatures yet.</p>
+                <h3 style="color: var(--text-muted);"><?= et('No signatures found') ?></h3>
+                <p style="color: var(--text-muted);"><?= et('This user hasn\'t generated any signatures yet.') ?></p>
                 <?php if ($selected_user_id == $_SESSION['user_id']): ?>
-                    <a href="generator.php" class="btn btn-primary" style="margin-top: 1rem;">Create Signature</a>
+                    <a href="generator.php" class="btn btn-primary" style="margin-top: 1rem;"><?= et('Create Signature') ?></a>
                 <?php endif; ?>
             </div>
         <?php endif; ?>
@@ -462,7 +465,7 @@ if ($is_admin) {
             const text = document.getElementById('loadingText');
             
             overlay.style.display = 'flex';
-            text.textContent = 'Generating ZIP Archive...';
+            text.textContent = <?= tj('Generating ZIP Archive...') ?>;
             
             // Trigger download
             window.location.href = url;

@@ -67,11 +67,12 @@ $csrf_token = generateCSRFToken();
 $count = count(listSignatureTemplates());
 ?>
 <!DOCTYPE html>
-<html lang="en">
+<html lang="<?= e(currentLang()) ?>" dir="<?= e(langDir()) ?>">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Backup - SubSignature</title>
+    <title><?= et('Backup') ?> - SubSignature</title>
+    <?= i18nHead() ?>
     <script src="<?= assetUrl('js/theme.js') ?>"></script>
     <link rel="stylesheet" href="<?= assetUrl('css/theme.css') ?>">
     <link rel="stylesheet" href="<?= assetUrl('css/style.css') ?>">
@@ -135,14 +136,15 @@ $count = count(listSignatureTemplates());
 <aside class="sidebar">
     <?php include 'includes/navbar.php'; ?>
     <div class="sidebar-footer">
+        <?= langSwitcher() ?>
         <div class="user-profile">
             <div class="avatar"><?php echo strtoupper(substr($_SESSION['username'], 0, 1)); ?></div>
             <div class="user-info">
                 <div><?php echo e($_SESSION['username']); ?></div>
-                <span><?php echo isAdmin() ? 'Administrator' : 'User'; ?></span>
+                <span><?= isAdmin() ? et('Administrator') : et('User') ?></span>
             </div>
         </div>
-        <a href="logout.php" class="btn-logout"><i class="fas fa-sign-out-alt"></i> <span>Sign Out</span></a>
+        <a href="logout.php" class="btn-logout"><i class="fas fa-sign-out-alt"></i> <span><?= et('Sign Out') ?></span></a>
         <div style="text-align: center; margin-top: 0.75rem; font-size: 0.7rem; color: var(--text-faint);">
             SubSignature <a href="about.php" style="color: inherit; text-decoration: none; font-weight: 600;">v1.0.1</a>
         </div>
@@ -151,8 +153,8 @@ $count = count(listSignatureTemplates());
 
 <main class="main-content">
     <header class="page-header">
-        <h2>Backup System</h2>
-        <p>Manage and secure your template data.</p>
+        <h2><?= et('Backup System') ?></h2>
+        <p><?= et('Manage and secure your template data.') ?></p>
     </header>
 
     <div class="card" style="max-width: 700px; margin: 0 auto; overflow: hidden; padding: 0;">
@@ -161,26 +163,25 @@ $count = count(listSignatureTemplates());
             <div class="backup-icon-circle">
                 <i class="fas fa-cube"></i>
             </div>
-            <h3 style="font-size: 1.5rem; margin-bottom: 0.5rem;">Export Templates</h3>
+            <h3 style="font-size: 1.5rem; margin-bottom: 0.5rem;"><?= et('Export Templates') ?></h3>
             <p style="color: var(--text-muted); margin-bottom: 1.5rem;">
-                Create a secure ZIP archive of all HTML signature templates.
+                <?= et('Create a secure ZIP archive of all HTML signature templates.') ?>
             </p>
             
             <div class="stat-badge">
-                <i class="fas fa-file-code"></i> <?php echo $count; ?> Templates found
+                <i class="fas fa-file-code"></i> <?= et('{count} Templates found', ['count' => $count]) ?>
             </div>
             
             <br>
             
             <button onclick="openModal()" class="btn btn-primary" style="padding: 0.8rem 2rem; font-size: 1rem;">
-                <i class="fas fa-download"></i> Create Backup
+                <i class="fas fa-download"></i> <?= et('Create Backup') ?>
             </button>
         </div>
 
         <div style="padding: 1.5rem; background: var(--bg-white); font-size: 0.9rem; color: var(--text-muted);">
-            <strong><i class="fas fa-info-circle"></i> Note:</strong> 
-            The backup includes all `.html` template files currently active in the system. 
-            User data or database entries are not included in this specific archive.
+            <strong><i class="fas fa-info-circle"></i> <?= et('Note:') ?></strong> 
+            <?= et('The backup includes all `.html` template files currently active in the system. User data or database entries are not included in this specific archive.') ?>
         </div>
     </div>
 </main>
@@ -188,9 +189,9 @@ $count = count(listSignatureTemplates());
 <div class="modal-overlay" id="backupModal">
     <div class="modal-box">
         <div class="modal-icon"><i class="fas fa-file-zipper"></i></div>
-        <h3 style="font-size: 1.4rem; margin-bottom: 0.5rem; color: var(--text-main);">Ready to download?</h3>
+        <h3 style="font-size: 1.4rem; margin-bottom: 0.5rem; color: var(--text-main);"><?= et('Ready to download?') ?></h3>
         <p style="color: var(--text-muted);">
-            We are about to generate a ZIP file containing <strong><?php echo $count; ?> templates</strong>.
+            <?= eth('We are about to generate a ZIP file containing {count}.', ['count' => '<strong>' . e(t('{count} templates', ['count' => $count])) . '</strong>']) ?>
         </p>
         
         <form method="POST" action="backup_templates.php" id="downloadForm">
@@ -198,10 +199,10 @@ $count = count(listSignatureTemplates());
             
             <div class="modal-actions">
                 <button type="button" class="btn btn-danger" onclick="closeModal()">
-                    Cancel
+                    <?= et('Cancel') ?>
                 </button>
                 <button type="submit" class="btn btn-primary" onclick="startDownload(this)">
-                    <i class="fas fa-check"></i> Download
+                    <i class="fas fa-check"></i> <?= et('Download') ?>
                 </button>
             </div>
         </form>
@@ -226,7 +227,7 @@ $count = count(listSignatureTemplates());
 
     // Handle Button Loading State
     function startDownload(btn) {
-        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processing...';
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> ' + <?= tj('Processing...') ?>;
         btn.style.opacity = '0.8';
         // Note: We don't disable the button because form submission might be blocked in some browsers if disabled immediately
         
@@ -235,7 +236,7 @@ $count = count(listSignatureTemplates());
             closeModal();
             // Reset button
             setTimeout(() => {
-                btn.innerHTML = '<i class="fas fa-check"></i> Download';
+                btn.innerHTML = '<i class="fas fa-check"></i> ' + <?= tj('Download') ?>;
                 btn.style.opacity = '1';
             }, 1000);
         }, 1500);

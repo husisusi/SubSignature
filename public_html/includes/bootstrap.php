@@ -21,7 +21,7 @@ define('SUBSIG_BOOTSTRAPPED', true);
 // ---------------------------------------------------------------------
 // 1. CONSTANTS & PATHS
 // ---------------------------------------------------------------------
-define('APP_VERSION', '1.4.0');
+define('APP_VERSION', '1.5.0');
 define('APP_ROOT', dirname(__DIR__));                      // public_html/
 define('TEMPLATES_DIR', APP_ROOT . '/templates');
 define('IMAGES_DIR', APP_ROOT . '/img');
@@ -36,7 +36,7 @@ define('TMP_DIR', BASE_DIR . '/tmp');
 define('SECRET_KEY_FILE', BASE_DIR . '/secret.key');
 
 // Current database schema version (see runMigrations()).
-define('SCHEMA_VERSION', 2);
+define('SCHEMA_VERSION', 3);
 
 // ---------------------------------------------------------------------
 // 2. DIRECTORY CHECKS
@@ -84,6 +84,7 @@ set_exception_handler(function ($e) {
 // ---------------------------------------------------------------------
 require_once __DIR__ . '/crypto.php';
 require_once __DIR__ . '/helpers.php';
+require_once __DIR__ . '/i18n.php';
 
 // ---------------------------------------------------------------------
 // 6. DATABASE CONNECTION
@@ -246,6 +247,9 @@ function runMigrations(SQLite3 $db): void
             revoked_at DATETIME,
             FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
         )");
+
+        // ---- Version 3: per-user interface language ----------------------
+        addColumnIfMissing($db, 'users', 'language', 'TEXT');
 
         $db->exec('CREATE INDEX IF NOT EXISTS idx_sig_user ON user_signatures(user_id)');
         $db->exec('CREATE INDEX IF NOT EXISTS idx_sig_email ON user_signatures(email COLLATE NOCASE)');

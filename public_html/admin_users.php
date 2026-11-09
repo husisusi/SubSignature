@@ -22,12 +22,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $target = $stmt->execute()->fetchArray(SQLITE3_ASSOC);
 
     if (!$target) {
-        setFlash('error', 'User not found.');
+        setFlash('error', t('User not found.'));
     } elseif ($action === 'reset_password') {
         $new_password = is_string($_POST['new_password'] ?? null) ? $_POST['new_password'] : '';
         $policyErrors = validatePasswordPolicy($new_password);
         if ($policyErrors) {
-            setFlash('error', 'Password too weak: ' . implode('; ', $policyErrors) . '.');
+            setFlash('error', t('Password too weak: {details}.', ['details' => implode('; ', $policyErrors)]));
         } else {
             $stmt = $db->prepare('UPDATE users SET password_hash = ?, failed_login_attempts = 0, account_locked_until = NULL WHERE id = ?');
             $stmt->bindValue(1, password_hash($new_password, PASSWORD_DEFAULT), SQLITE3_TEXT);
@@ -35,11 +35,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt->execute();
             // Existing sessions of that user end automatically (password fingerprint changes).
             logSecurityEventToDB($db, 'ADMIN_PASSWORD_RESET', $self_id, 'Target: ' . $target['username']);
-            setFlash('success', 'Password successfully reset for user ' . $target['username'] . '.');
+            setFlash('success', t('Password successfully reset for user {user}.', ['user' => $target['username']]));
         }
     } elseif ($target_user_id === $self_id) {
         // Admins cannot lock themselves out (deactivate / demote / delete themselves).
-        setFlash('error', 'You cannot change your own account here.');
+        setFlash('error', t('You cannot change your own account here.'));
     } else {
         $done = true;
         switch ($action) {
@@ -66,7 +66,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt->bindValue(1, $target_user_id, SQLITE3_INTEGER);
             $stmt->execute();
             logSecurityEventToDB($db, 'ADMIN_USER_' . strtoupper($action), $self_id, 'Target: ' . $target['username']);
-            setFlash('success', 'Action completed for user ' . $target['username'] . '.');
+            setFlash('success', t('Action completed for user {user}.', ['user' => $target['username']]));
         }
     }
     header('Location: admin_users.php');
@@ -88,11 +88,12 @@ $active_users = array_filter($users, function ($u) { return $u['is_active'] == 1
 $admin_users = array_filter($users, function ($u) { return $u['role'] == 'admin'; });
 ?>
 <!DOCTYPE html>
-<html lang="en">
+<html lang="<?= e(currentLang()) ?>" dir="<?= e(langDir()) ?>">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>User Management - SubSignature</title>
+    <title><?= et('User Management') ?> - SubSignature</title>
+    <?= i18nHead() ?>
     <script src="<?= assetUrl('js/theme.js') ?>"></script>
     <link rel="stylesheet" href="<?= assetUrl('css/theme.css') ?>">
     <link rel="stylesheet" href="<?= assetUrl('css/style.css') ?>">
@@ -157,26 +158,27 @@ $admin_users = array_filter($users, function ($u) { return $u['role'] == 'admin'
     <aside class="sidebar">
         <?php include 'includes/navbar.php'; ?>
         <div class="sidebar-footer">
+        <?= langSwitcher() ?>
             <div class="user-profile">
                 <div class="avatar"><?php echo strtoupper(substr($_SESSION['username'], 0, 1)); ?></div>
                 <div class="user-info">
                     <div><?php echo e($_SESSION['username']); ?></div>
-                    <span>Administrator</span>
+                    <span><?= et('Administrator') ?></span>
                 </div>
             </div>
-            <a href="logout.php" class="btn-logout"><i class="fas fa-sign-out-alt"></i> <span>Sign Out</span></a>
+            <a href="logout.php" class="btn-logout"><i class="fas fa-sign-out-alt"></i> <span><?= et('Sign Out') ?></span></a>
         </div>
     </aside>
 
     <main class="main-content">
         <div class="page-header-actions">
             <div class="page-header-title">
-                <h2>User Management</h2>
-                <p>Manage system access and roles.</p>
+                <h2><?= et('User Management') ?></h2>
+                <p><?= et('Manage system access and roles.') ?></p>
             </div>
             
             <a href="register.php?admin=1" class="btn btn-primary">
-                <i class="fas fa-user-plus"></i> Create New User
+                <i class="fas fa-user-plus"></i> <?= et('Create New User') ?>
             </a>
         </div>
 
@@ -189,22 +191,22 @@ $admin_users = array_filter($users, function ($u) { return $u['role'] == 'admin'
 
         <div class="stats-grid">
             <div class="stat-card">
-                <span class="stat-label">Total Users</span>
+                <span class="stat-label"><?= et('Total Users') ?></span>
                 <span class="stat-value"><?php echo $total_users; ?></span>
                 <i class="fas fa-users stat-icon"></i>
             </div>
             <div class="stat-card">
-                <span class="stat-label">Active Users</span>
+                <span class="stat-label"><?= et('Active Users') ?></span>
                 <span class="stat-value" style="color:var(--success);"><?php echo count($active_users); ?></span>
                 <i class="fas fa-check-circle stat-icon" style="color:var(--success);"></i>
             </div>
             <div class="stat-card">
-                <span class="stat-label">Administrators</span>
+                <span class="stat-label"><?= et('Administrators') ?></span>
                 <span class="stat-value" style="color:var(--primary);"><?php echo count($admin_users); ?></span>
                 <i class="fas fa-crown stat-icon"></i>
             </div>
             <div class="stat-card">
-                <span class="stat-label">Inactive</span>
+                <span class="stat-label"><?= et('Inactive') ?></span>
                 <span class="stat-value" style="color:var(--text-muted);"><?php echo $total_users - count($active_users); ?></span>
                 <i class="fas fa-user-slash stat-icon" style="color:var(--text-muted);"></i>
             </div>
@@ -216,13 +218,13 @@ $admin_users = array_filter($users, function ($u) { return $u['role'] == 'admin'
                     <thead>
                         <tr>
                             <th style="width: 50px;">ID</th>
-                            <th>Username</th>
-                            <th>Full Name</th>
-                            <th>Role</th>
-                            <th>Status</th>
-                            <th>Created At</th>
-                            <th>Last Login</th>
-                            <th style="text-align:right;">Actions</th>
+                            <th><?= et('Username') ?></th>
+                            <th><?= et('Full Name') ?></th>
+                            <th><?= et('Role') ?></th>
+                            <th><?= et('Status') ?></th>
+                            <th><?= et('Created At') ?></th>
+                            <th><?= et('Last Login') ?></th>
+                            <th style="text-align:right;"><?= et('Actions') ?></th>
                         </tr>
                     </thead>
                     <tbody>
@@ -230,7 +232,7 @@ $admin_users = array_filter($users, function ($u) { return $u['role'] == 'admin'
                         <tr>
                             <td>#<?php echo $user['id']; ?></td>
                             <td>
-                                <a href="profile.php?user_id=<?php echo (int)$user['id']; ?>" class="username-link" title="Edit Profile">
+                                <a href="profile.php?user_id=<?php echo (int)$user['id']; ?>" class="username-link" title="<?= et('Edit Profile') ?>">
                                     <?php echo e($user['username']); ?>
                                     <i class="fas fa-pen"></i>
                                 </a>
@@ -238,10 +240,10 @@ $admin_users = array_filter($users, function ($u) { return $u['role'] == 'admin'
                                     <span class="badge-self">YOU</span>
                                 <?php endif; ?>
                                 <?php if (($user['auth_source'] ?? 'local') === 'ldap'): ?>
-                                    <span class="badge badge-user" title="Imported from LDAP / Active Directory">LDAP</span>
+                                    <span class="badge badge-user" title="<?= et('Imported from LDAP / Active Directory') ?>">LDAP</span>
                                 <?php endif; ?>
                                 <div style="font-size:0.85rem; color:var(--text-muted); margin-top:2px;">
-                                    <?php echo e($user['email'] ?: 'No email'); ?>
+                                    <?php echo e($user['email'] ?: t('No email')); ?>
                                 </div>
                             </td>
                             <td>
@@ -249,16 +251,16 @@ $admin_users = array_filter($users, function ($u) { return $u['role'] == 'admin'
                             </td>
                             <td>
                                 <?php if ($user['role'] == 'admin'): ?>
-                                    <span class="badge badge-admin"><i class="fas fa-crown"></i> Admin</span>
+                                    <span class="badge badge-admin"><i class="fas fa-crown"></i> <?= et('Admin') ?></span>
                                 <?php else: ?>
-                                    <span class="badge badge-user">User</span>
+                                    <span class="badge badge-user"><?= et('User') ?></span>
                                 <?php endif; ?>
                             </td>
                             <td>
                                 <?php if ($user['is_active']): ?>
-                                    <div class="status-active"><span class="status-dot dot-active"></span> Active</div>
+                                    <div class="status-active"><span class="status-dot dot-active"></span> <?= et('Active') ?></div>
                                 <?php else: ?>
-                                    <div class="status-inactive"><span class="status-dot dot-inactive"></span> Inactive</div>
+                                    <div class="status-inactive"><span class="status-dot dot-inactive"></span> <?= et('Inactive') ?></div>
                                 <?php endif; ?>
                             </td>
                             <td style="color:var(--text-muted); font-size:0.9rem;">
@@ -272,25 +274,25 @@ $admin_users = array_filter($users, function ($u) { return $u['role'] == 'admin'
                                     <?php if ($user['id'] != $_SESSION['user_id']): ?>
                                         <button type="button" class="btn-icon warning" 
                                                 data-reset-id="<?php echo (int)$user['id']; ?>" data-reset-name="<?php echo e($user['username']); ?>"
-                                                title="Reset Password">
+                                                title="<?= et('Reset Password') ?>">
                                             <i class="fas fa-key"></i>
                                         </button>
 
                                         <?php if ($user['is_active']): ?>
-                                            <button type="button" data-post="admin_users.php" data-params='{"action":"deactivate","user_id":"<?php echo (int)$user['id']; ?>"}' class="btn-icon warning" data-confirm="Deactivate this user?" title="Deactivate"><i class="fas fa-user-slash"></i></button>
+                                            <button type="button" data-post="admin_users.php" data-params='{"action":"deactivate","user_id":"<?php echo (int)$user['id']; ?>"}' class="btn-icon warning" data-confirm="<?= et('Deactivate this user?') ?>" title="<?= et('Deactivate') ?>"><i class="fas fa-user-slash"></i></button>
                                         <?php else: ?>
-                                            <button type="button" data-post="admin_users.php" data-params='{"action":"activate","user_id":"<?php echo (int)$user['id']; ?>"}' class="btn-icon success" data-confirm="Activate this user?" title="Activate"><i class="fas fa-user-check"></i></button>
+                                            <button type="button" data-post="admin_users.php" data-params='{"action":"activate","user_id":"<?php echo (int)$user['id']; ?>"}' class="btn-icon success" data-confirm="<?= et('Activate this user?') ?>" title="<?= et('Activate') ?>"><i class="fas fa-user-check"></i></button>
                                         <?php endif; ?>
                                         
                                         <?php if ($user['role'] == 'user'): ?>
-                                            <button type="button" data-post="admin_users.php" data-params='{"action":"make_admin","user_id":"<?php echo (int)$user['id']; ?>"}' class="btn-icon" data-confirm="Promote to Admin?" title="Promote"><i class="fas fa-arrow-up"></i></button>
+                                            <button type="button" data-post="admin_users.php" data-params='{"action":"make_admin","user_id":"<?php echo (int)$user['id']; ?>"}' class="btn-icon" data-confirm="<?= et('Promote to Admin?') ?>" title="<?= et('Promote') ?>"><i class="fas fa-arrow-up"></i></button>
                                         <?php else: ?>
-                                            <button type="button" data-post="admin_users.php" data-params='{"action":"make_user","user_id":"<?php echo (int)$user['id']; ?>"}' class="btn-icon" data-confirm="Demote to User?" title="Demote"><i class="fas fa-arrow-down"></i></button>
+                                            <button type="button" data-post="admin_users.php" data-params='{"action":"make_user","user_id":"<?php echo (int)$user['id']; ?>"}' class="btn-icon" data-confirm="<?= et('Demote to User?') ?>" title="<?= et('Demote') ?>"><i class="fas fa-arrow-down"></i></button>
                                         <?php endif; ?>
                                         
-                                        <button type="button" data-post="admin_users.php" data-params='{"action":"delete","user_id":"<?php echo (int)$user['id']; ?>"}' class="btn-icon danger" data-confirm="Permanently delete?" title="Delete"><i class="fas fa-trash"></i></button>
+                                        <button type="button" data-post="admin_users.php" data-params='{"action":"delete","user_id":"<?php echo (int)$user['id']; ?>"}' class="btn-icon danger" data-confirm="<?= et('Permanently delete?') ?>" title="<?= et('Delete') ?>"><i class="fas fa-trash"></i></button>
                                     <?php else: ?>
-                                        <a href="profile.php" class="btn-icon" title="Edit My Profile"><i class="fas fa-user-edit"></i></a>
+                                        <a href="profile.php" class="btn-icon" title="<?= et('Edit My Profile') ?>"><i class="fas fa-user-edit"></i></a>
                                     <?php endif; ?>
                                 </div>
                             </td>
@@ -306,9 +308,9 @@ $admin_users = array_filter($users, function ($u) { return $u['role'] == 'admin'
         <div class="modal-box">
             <span class="modal-close" id="resetModalClose">&times;</span>
             <div class="modal-header">
-                <h3><i class="fas fa-key warning" style="color:var(--warning-text);"></i> Reset Password</h3>
+                <h3><i class="fas fa-key warning" style="color:var(--warning-text);"></i> <?= et('Reset Password') ?></h3>
                 <p style="color:var(--text-muted); font-size:0.9rem; margin-top:0.5rem;">
-                    Set a new password for user: <strong id="modalUsername"></strong>
+                    <?= eth('Set a new password for user: {user}', ['user' => '<strong id="modalUsername"></strong>']) ?>
                 </p>
             </div>
             
@@ -318,14 +320,14 @@ $admin_users = array_filter($users, function ($u) { return $u['role'] == 'admin'
                 <input type="hidden" name="user_id" id="modalUserId">
                 
                 <div class="form-group" style="margin-bottom:1.5rem;">
-                    <label for="new_password" style="display:block; margin-bottom:0.5rem; font-weight:500;">New Password</label>
-                    <input type="text" id="new_password" name="new_password" required autocomplete="off" maxlength="200" placeholder="Enter new password..." style="width:100%; padding:0.75rem; border:1px solid var(--border); border-radius:6px; font-size:1rem;">
-                    <small style="color:var(--text-muted); display:block; margin-top:0.25rem;">Min. 8 characters, upper and lower case letters and a number</small>
+                    <label for="new_password" style="display:block; margin-bottom:0.5rem; font-weight:500;"><?= et('New Password') ?></label>
+                    <input type="text" id="new_password" name="new_password" required autocomplete="off" maxlength="200" placeholder="<?= et('Enter new password...') ?>" style="width:100%; padding:0.75rem; border:1px solid var(--border); border-radius:6px; font-size:1rem;">
+                    <small style="color:var(--text-muted); display:block; margin-top:0.25rem;"><?= et('Min. 8 characters, upper and lower case letters and a number') ?></small>
                 </div>
                 
                 <div style="display:flex; justify-content:flex-end; gap:0.5rem;">
-                    <button type="button" class="btn btn-danger" style="background:var(--bg-white); color:var(--text-main); border:1px solid var(--border);" id="resetModalCancel">Cancel</button>
-                    <button type="submit" class="btn btn-primary">Set Password</button>
+                    <button type="button" class="btn btn-danger" style="background:var(--bg-white); color:var(--text-main); border:1px solid var(--border);" id="resetModalCancel"><?= et('Cancel') ?></button>
+                    <button type="submit" class="btn btn-primary"><?= et('Set Password') ?></button>
                 </div>
             </form>
         </div>

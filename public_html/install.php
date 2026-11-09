@@ -6,6 +6,10 @@
  * after deployment (or restrict access to it until you have done so).
  */
 
+// Translation helpers are needed even when the pre-flight checks fail.
+require_once __DIR__ . '/includes/helpers.php';
+require_once __DIR__ . '/includes/i18n.php';
+
 $error = '';
 $success = '';
 $redirect_target = '';
@@ -52,7 +56,7 @@ if ($allRequirementsMet) {
         $csrf_token = generateCSRFToken();
     } catch (Exception $e) {
         error_log('Installer error: ' . $e->getMessage());
-        $error = 'Critical database error. Check the PHP error log.';
+        $error = t('Critical database error. Check the PHP error log.');
         $allRequirementsMet = false;
     }
 }
@@ -62,7 +66,7 @@ if ($allRequirementsMet) {
 // -----------------------------------------------------------
 if ($allRequirementsMet && $_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!verifyCSRFToken($_POST['csrf_token'] ?? '')) {
-        $error = 'Security violation: invalid CSRF token. Please reload the page.';
+        $error = t('Security violation: invalid CSRF token. Please reload the page.');
     } else {
         $username = cleanText($_POST['username'] ?? '', 64);
         $password = is_string($_POST['password'] ?? null) ? $_POST['password'] : '';
@@ -71,13 +75,13 @@ if ($allRequirementsMet && $_SERVER['REQUEST_METHOD'] === 'POST') {
         $policyErrors = validatePasswordPolicy($password);
 
         if ($username === '' || $password === '' || $confirm === '') {
-            $error = 'All fields are required.';
+            $error = t('All fields are required.');
         } elseif (!isValidUsername($username)) {
-            $error = 'Username must be 3-64 characters (letters, numbers, . _ - @ only).';
+            $error = t('Username must be 3-64 characters (letters, numbers, . _ - @ only).');
         } elseif ($email !== '' && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
-            $error = 'Invalid email address format.';
+            $error = t('Invalid email address format.');
         } elseif ($password !== $confirm) {
-            $error = 'Passwords do not match.';
+            $error = t('Passwords do not match.');
         } elseif ($policyErrors) {
             $error = implode("\n", $policyErrors);
         } else {
@@ -86,7 +90,7 @@ if ($allRequirementsMet && $_SERVER['REQUEST_METHOD'] === 'POST') {
                 // Re-check inside the transaction: two simultaneous installs must not both succeed.
                 if ((int)$db->querySingle("SELECT COUNT(*) FROM users WHERE role = 'admin'") > 0) {
                     $db->exec('ROLLBACK');
-                    $error = 'System already installed.';
+                    $error = t('System already installed.');
                 } else {
                     $stmt = $db->prepare("INSERT INTO users (username, password_hash, email, full_name, role, is_active)
                                           VALUES (?, ?, ?, 'System Administrator', 'admin', 1)");
@@ -108,13 +112,13 @@ if ($allRequirementsMet && $_SERVER['REQUEST_METHOD'] === 'POST') {
                     $stmt->bindValue(1, $user_id, SQLITE3_INTEGER);
                     startUserSession($stmt->execute()->fetchArray(SQLITE3_ASSOC));
 
-                    $success = 'Installation successful!';
+                    $success = t('Installation successful!');
                     $redirect_target = 'generator.php';
                 }
             } catch (Exception $e) {
                 @$db->exec('ROLLBACK');
                 error_log('Installer error: ' . $e->getMessage());
-                $error = 'System error. Check the PHP error log.';
+                $error = t('System error. Check the PHP error log.');
             }
         }
     }
@@ -122,13 +126,14 @@ if ($allRequirementsMet && $_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 ?>
 <!DOCTYPE html>
-<html lang="en">
+<html lang="<?= e(currentLang()) ?>" dir="<?= e(langDir()) ?>">
 <head>
     <meta charset="UTF-8">
+    <?= i18nHead() ?>
     <script src="<?= 'js/theme.js?v=' . (int)@filemtime(__DIR__ . '/js/theme.js') ?>"></script>
     <link rel="stylesheet" href="<?= 'css/theme.css?v=' . (int)@filemtime(__DIR__ . '/css/theme.css') ?>">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Installation - SubSignature</title>
+    <title><?= et('Installation') ?> - SubSignature</title>
     
     <?php if ($success): ?>
         <meta http-equiv="refresh" content="3;url=<?php echo $redirect_target; ?>">
@@ -191,6 +196,7 @@ if ($allRequirementsMet && $_SERVER['REQUEST_METHOD'] === 'POST') {
     </style>
 </head>
 <body>
+    <?= langSwitcher(true) ?>
 
 <div class="install-box">
     
@@ -199,10 +205,10 @@ if ($allRequirementsMet && $_SERVER['REQUEST_METHOD'] === 'POST') {
             <div class="success-icon-wrap">
                 <svg viewBox="0 0 24 24" fill="currentColor" style="width:100%;height:100%"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
             </div>
-            <div class="success-title">Success!</div>
+            <div class="success-title"><?= et('Success!') ?></div>
             <div class="success-text">
-                System installed successfully.<br>
-                Redirecting to Dashboard...
+                <?= et('System installed successfully.') ?><br>
+                <?= et('Redirecting to Dashboard...') ?>
             </div>
             
             <div class="progress-bar">
@@ -220,14 +226,14 @@ if ($allRequirementsMet && $_SERVER['REQUEST_METHOD'] === 'POST') {
     <?php else: ?>
         <div class="header">
             <img src="img/subsig.svg" alt="SubSignature Logo" style="height: 120px; width: auto; object-fit: contain;">
-            <div class="title">System Installation</div>
-            <div class="subtitle">Setup your Admin Account</div>
+            <div class="title"><?= et('System Installation') ?></div>
+            <div class="subtitle"><?= et('Setup your Admin Account') ?></div>
         </div>
 
         <div class="section">
             <div class="section-title">
                 <svg class="icon" viewBox="0 0 24 24"><path d="M2 20h20v-4H2v4zm2-3h2v2H4v-2zM2 4v4h20V4H2zm4 3H4V5h2v2zm-4 7h20v-4H2v4zm2-3h2v2H4v-2z"/></svg>
-                System Check
+                <?= et('System Check') ?>
             </div>
             <ul class="req-list">
                 <?php foreach ($requirements as $label => $met): ?>
@@ -252,7 +258,7 @@ if ($allRequirementsMet && $_SERVER['REQUEST_METHOD'] === 'POST') {
                 <div class="section">
                     <div class="section-title">
                         <svg class="icon" viewBox="0 0 24 24"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 10.99h7c-.53 4.12-3.28 7.79-7 8.94V12H5V6.3l7-3.11v8.8z"/></svg>
-                        Create Administrator
+                        <?= et('Create Administrator') ?>
                     </div>
                     
                     <?php if ($error): ?>
@@ -263,38 +269,38 @@ if ($allRequirementsMet && $_SERVER['REQUEST_METHOD'] === 'POST') {
                     <?php endif; ?>
 
                     <div class="input-group">
-                        <label class="label">Username</label>
-                        <input type="text" name="username" class="input" required placeholder="admin" value="<?php echo isset($_POST['username']) && is_string($_POST['username']) ? e($_POST['username']) : ''; ?>">
+                        <label class="label"><?= et('Username') ?></label>
+                        <input type="text" name="username" class="input" required placeholder="<?= et('admin') ?>" value="<?php echo isset($_POST['username']) && is_string($_POST['username']) ? e($_POST['username']) : ''; ?>">
                     </div>
                     
                     <div class="input-group">
-                        <label class="label">Email Address</label>
+                        <label class="label"><?= et('Email Address') ?></label>
                         <input type="email" name="email" class="input" placeholder="admin@example.com" value="<?php echo isset($_POST['email']) && is_string($_POST['email']) ? e($_POST['email']) : ''; ?>">
                     </div>
 
                     <div class="input-group">
-                        <label class="label">Password</label>
-                        <input type="password" name="password" class="input" required placeholder="Strong password">
-                        <div class="hint">Min. 8 chars, 1 uppercase, 1 lowercase, 1 number</div>
+                        <label class="label"><?= et('Password') ?></label>
+                        <input type="password" name="password" class="input" required placeholder="<?= et('Strong password') ?>">
+                        <div class="hint"><?= et('Min. 8 chars, 1 uppercase, 1 lowercase, 1 number') ?></div>
                     </div>
 
                     <div class="input-group">
-                        <label class="label">Confirm Password</label>
-                        <input type="password" name="confirm_password" class="input" required placeholder="Repeat password">
+                        <label class="label"><?= et('Confirm Password') ?></label>
+                        <input type="password" name="confirm_password" class="input" required placeholder="<?= et('Repeat password') ?>">
                     </div>
 
                     <button type="submit" class="btn">
                         <svg class="icon" viewBox="0 0 24 24"><path d="M2.81 14.12L5.64 14l.79-.79c.26-.26.26-.67 0-.93A5.006 5.006 0 0 1 5.92 7L13 14a5.006 5.006 0 0 1-5.28.51c-.26-.26-.67-.26-.93 0l-.79.79-.12 2.83 2.83-.12.79-.79c.26-.26.67-.26.93 0 .42.42 1.34.42 1.76 0 .42-.42.42-1.34 0-1.76l6.36-6.36c3.9-3.9 3.9-10.23 0-14.13L15 4.93V2h-3v4.93l-3.93 3.93-1.42-1.42c-.26-.26-.67-.26-.93 0L2.94 11.3c-.39.39-.39 1.02 0 1.41l.79.79-.92 2.62zM15 9l5-5"/></svg>
-                        Install & Create Admin
+                        <?= et('Install & Create Admin') ?>
                     </button>
                 </div>
             </form>
         <?php else: ?>
             <div class="alert alert-error">
-                <strong>Installation Blocked:</strong><br>
-                Please resolve the system requirements marked as FAIL above before proceeding.
+                <strong><?= et('Installation Blocked:') ?></strong><br>
+                <?= et('Please resolve the system requirements marked as FAIL above before proceeding.') ?>
             </div>
-            <button class="btn" onclick="location.reload()">Check Again</button>
+            <button class="btn" onclick="location.reload()"><?= et('Check Again') ?></button>
         <?php endif; ?>
     <?php endif; ?>
 </div>

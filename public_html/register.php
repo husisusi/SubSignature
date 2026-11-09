@@ -47,15 +47,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $policyErrors = validatePasswordPolicy($password);
 
     if ($username === '' || $password === '' || $confirm_password === '') {
-        $error = 'All mandatory fields are required.';
+        $error = t('All mandatory fields are required.');
     } elseif (!isValidUsername($username)) {
-        $error = 'Username must be 3-64 characters (letters, numbers, . _ - @ only).';
+        $error = t('Username must be 3-64 characters (letters, numbers, . _ - @ only).');
     } elseif ($password !== $confirm_password) {
-        $error = 'Passwords do not match.';
+        $error = t('Passwords do not match.');
     } elseif ($policyErrors) {
-        $error = 'Password too weak: ' . implode('; ', $policyErrors) . '.';
+        $error = t('Password too weak: {details}.', ['details' => implode('; ', $policyErrors)]);
     } elseif ($email !== '' && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
-        $error = 'Invalid email address format.';
+        $error = t('Invalid email address format.');
     }
 
     if ($error === '') {
@@ -67,7 +67,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             if ($exists > 0) {
                 usleep(random_int(100000, 300000));
-                $error = 'Username or Email already exists.';
+                $error = t('Username or Email already exists.');
             } else {
                 // Public registrations always follow the system setting; the
                 // status field is only honoured for admins.
@@ -105,17 +105,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 );
 
                 if ($admin_create) {
-                    $success = 'User ' . $username . ' created successfully.';
+                    $success = t('User {user} created successfully.', ['user' => $username]);
                 } elseif ($is_active === 1) {
-                    $success = 'Account created! You can log in immediately.';
+                    $success = t('Account created! You can log in immediately.');
                 } else {
-                    $success = 'Account created! Please wait for administrator approval.';
+                    $success = t('Account created! Please wait for administrator approval.');
                 }
                 $username = $email = $full_name = '';
             }
         } catch (Exception $e) {
             error_log('Registration error: ' . $e->getMessage());
-            $error = 'System error occurred. Please try again.';
+            $error = t('System error occurred. Please try again.');
         }
     }
 }
@@ -123,11 +123,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $csrf_token = generateCSRFToken();
 ?>
 <!DOCTYPE html>
-<html lang="en">
+<html lang="<?= e(currentLang()) ?>" dir="<?= e(langDir()) ?>">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title><?php echo $admin_create ? 'Create User' : 'Register'; ?> - SubSignature</title>
+    <title><?= $admin_create ? et('Create User') : et('Register') ?> - SubSignature</title>
+    
+    <?= i18nHead() ?>
     
     <script src="<?= assetUrl('js/theme.js') ?>"></script>
     <link rel="stylesheet" href="<?= assetUrl('css/theme.css') ?>">
@@ -188,25 +190,26 @@ $csrf_token = generateCSRFToken();
         <aside class="sidebar">
             <?php include 'includes/navbar.php'; ?>
             <div class="sidebar-footer">
+        <?= langSwitcher() ?>
                 <div class="user-profile">
                     <div class="avatar">
                         <?php echo strtoupper(substr($_SESSION['username'], 0, 1)); ?>
                     </div>
                     <div class="user-info">
                         <div><?php echo e($_SESSION['username']); ?></div>
-                        <span>Administrator</span>
+                        <span><?= et('Administrator') ?></span>
                     </div>
                 </div>
                 <a href="logout.php" class="btn-logout">
-                    <i class="fas fa-sign-out-alt"></i> <span>Sign Out</span>
+                    <i class="fas fa-sign-out-alt"></i> <span><?= et('Sign Out') ?></span>
                 </a>
             </div>
         </aside>
 
         <main class="main-content">
             <header class="page-header">
-                <h2>Create User</h2>
-                <p>Manually register a new user account.</p>
+                <h2><?= et('Create User') ?></h2>
+                <p><?= et('Manually register a new user account.') ?></p>
             </header>
     <?php endif; ?>
 
@@ -217,8 +220,8 @@ $csrf_token = generateCSRFToken();
                 <div style="margin-bottom: 1rem;">
                     <img src="img/subsig.svg" alt="SubSignature Logo" style="height: 100px; width: auto; object-fit: contain;">
                 </div>
-                <h2 style="font-size:1.5rem;">Create Account</h2>
-                <p style="color:var(--text-muted);">Join SubSignature today</p>
+                <h2 style="font-size:1.5rem;"><?= et('Create Account') ?></h2>
+                <p style="color:var(--text-muted);"><?= et('Join SubSignature today') ?></p>
             </div>
         <?php endif; ?>
 
@@ -229,10 +232,10 @@ $csrf_token = generateCSRFToken();
             
             <div style="margin-top: 1.5rem; text-align: center;">
                 <?php if ($admin_create): ?>
-                    <a href="admin_users.php" class="btn btn-secondary">Back to User List</a>
-                    <a href="register.php?admin=1" class="btn btn-primary">Create Another</a>
+                    <a href="admin_users.php" class="btn btn-secondary"><?= et('Back to User List') ?></a>
+                    <a href="register.php?admin=1" class="btn btn-primary"><?= et('Create Another') ?></a>
                 <?php else: ?>
-                    <a href="index.php" class="btn btn-primary" style="width:100%">Go to Login</a>
+                    <a href="index.php" class="btn btn-primary" style="width:100%"><?= et('Go to Login') ?></a>
                 <?php endif; ?>
             </div>
         <?php else: ?>  
@@ -249,67 +252,67 @@ $csrf_token = generateCSRFToken();
                 <?php if ($admin_create): ?>
                 <div class="status-toggle-wrapper">
                     <div class="form-group" style="margin-bottom:0;">
-                        <label for="user_status">Initial Account Status</label>
+                        <label for="user_status"><?= et('Initial Account Status') ?></label>
                         <select name="user_status" id="user_status" style="width:100%; padding:0.6rem; border:1px solid var(--border); border-radius:6px;">
-                            <option value="1" <?php echo ($config_default_active == 1) ? 'selected' : ''; ?>>Active (Can login immediately)</option>
-                            <option value="0" <?php echo ($config_default_active == 0) ? 'selected' : ''; ?>>Inactive (Requires activation)</option>
+                            <option value="1" <?php echo ($config_default_active == 1) ? 'selected' : ''; ?>><?= et('Active (Can login immediately)') ?></option>
+                            <option value="0" <?php echo ($config_default_active == 0) ? 'selected' : ''; ?>><?= et('Inactive (Requires activation)') ?></option>
                         </select>
                     </div>
                 </div>
                 <?php endif; ?>
 
                 <div class="form-group">
-                    <label for="username">Username</label>
+                    <label for="username"><?= et('Username') ?></label>
                     <input type="text" id="username" name="username" required  
                            value="<?php echo e($username); ?>"
-                           placeholder="johndoe" pattern="[A-Za-z0-9_.@\-]{3,64}"
+                           placeholder="<?= et('johndoe') ?>" pattern="[A-Za-z0-9_.@\-]{3,64}"
                            autocomplete="off">
-                    <small style="color:var(--text-muted); font-size:0.75rem;">3-64 chars: letters, numbers, . _ - @</small>
+                    <small style="color:var(--text-muted); font-size:0.75rem;"><?= et('3-64 chars: letters, numbers, . _ - @') ?></small>
                 </div>
 
                 <div class="form-group">
-                    <label for="email">Email Address</label>
+                    <label for="email"><?= et('Email Address') ?></label>
                     <input type="email" id="email" name="email"  
                            value="<?php echo e($email); ?>"
                            placeholder="john@example.com">
                 </div>
 
                 <div class="form-group">
-                    <label for="full_name">Full Name</label>
+                    <label for="full_name"><?= et('Full Name') ?></label>
                     <input type="text" id="full_name" name="full_name"  
                            value="<?php echo e($full_name); ?>"
-                           placeholder="John Doe">
+                           placeholder="<?= et('John Doe') ?>">
                 </div>
 
                 <div class="form-group password-group">
-                    <label for="password">Password</label>
+                    <label for="password"><?= et('Password') ?></label>
                     <i class="fas fa-eye toggle-password" onclick="togglePass('password')"></i>
                     <input type="password" id="password" name="password" required  
-                           placeholder="Min. 8 chars" oninput="checkStrength(this.value)"
+                           placeholder="<?= et('Min. 8 chars') ?>" oninput="checkStrength(this.value)"
                            autocomplete="new-password">
                     
                     <div class="strength-meter">
                         <div class="strength-fill" id="strengthBar"></div>
                     </div>
-                    <div class="strength-text" id="strengthText">Enter password</div>
+                    <div class="strength-text" id="strengthText"><?= et('Enter password') ?></div>
                 </div>
 
                 <div class="form-group password-group">
-                    <label for="confirm_password">Confirm Password</label>
+                    <label for="confirm_password"><?= et('Confirm Password') ?></label>
                     <i class="fas fa-eye toggle-password" onclick="togglePass('confirm_password')"></i>
                     <input type="password" id="confirm_password" name="confirm_password" required  
-                           placeholder="Repeat password">
+                           placeholder="<?= et('Repeat password') ?>">
                 </div>
 
                 <div class="form-actions" style="margin-top: 2rem;">
                     <button type="submit" class="btn btn-primary" style="width:100%;">
-                        <?php echo $admin_create ? 'Create User' : 'Register Account'; ?>
+                        <?= $admin_create ? et('Create User') : et('Register Account') ?>
                     </button>
                 </div>
 
                 <?php if (!$admin_create): ?>
                     <div class="auth-footer">
-                        Already have an account? <a href="index.php">Log In</a>
+                        <?= eth('Already have an account? {link}', ['link' => '<a href="index.php">' . et('Log In') . '</a>']) ?>
                     </div>
                 <?php endif; ?>
             </form>
@@ -355,7 +358,7 @@ $csrf_token = generateCSRFToken();
         form.addEventListener('submit', function(e) {
             const p1 = document.getElementById('password').value;
             const p2 = document.getElementById('confirm_password').value;
-            if (p1 !== p2) { e.preventDefault(); alert('Passwords do not match!'); }
+            if (p1 !== p2) { e.preventDefault(); alert(<?= tj('Passwords do not match!') ?>); }
         });
     }
     </script>

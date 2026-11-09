@@ -64,17 +64,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } else {
             LdapConfig::save($db, $newCfg);
             logSecurityEventToDB($db, 'LDAP_CONFIG_SAVED', $admin_id, 'Host: ' . $newCfg['host']);
-            setFlash('success', 'LDAP settings saved.');
+            setFlash('success', t('LDAP settings saved.'));
             header('Location: admin_ldap.php');
             exit;
         }
     } elseif (in_array($action, ['test', 'preview'], true)) {
         if (!$ldap_available) {
-            $error = 'The PHP "ldap" extension is not installed on this server.';
+            $error = t('The PHP "ldap" extension is not installed on this server.');
         } elseif (!checkRateLimit('ldap_run', 20, 600, 'uid:' . $admin_id)) {
-            $error = 'Too many LDAP requests. Please wait a few minutes.';
+            $error = t('Too many LDAP requests. Please wait a few minutes.');
         } elseif ($cfg['host'] === '' || $cfg['base_dn'] === '') {
-            $error = 'Please save the connection settings first.';
+            $error = t('Please save the connection settings first.');
         } else {
             try {
                 $service = new LdapService($cfg);
@@ -82,7 +82,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 if ($action === 'test') {
                     $sample = $service->search($cfg['base_dn'], $cfg['user_filter'], $importer->requestedAttributes(), 5);
-                    $message = 'Connection successful. The filter returned entries (sample of up to 5 read: ' . count($sample) . ').';
+                    $message = t('Connection successful. The filter returned entries (sample of up to 5 read: {count}).', ['count' => count($sample)]);
                 } else {
                     $plan = $importer->buildPlan($service);
                     $plan_token = bin2hex(random_bytes(16));
@@ -95,7 +95,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     logSecurityEventToDB($db, 'LDAP_PREVIEW', $admin_id, 'Entries: ' . $plan['counts']['total']);
                 }
             } catch (Exception $e) {
-                error_log('LDAP error: ' . $e->getMessage());
+                error_log(t('LDAP error: {message}', ['message' => $e->getMessage()]));
                 $error = 'LDAP error: ' . $e->getMessage();
             }
         }
@@ -103,20 +103,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $token = (string)($_POST['plan_token'] ?? '');
         $stored = ldapLoadPlan($token, $admin_id);
         if ($stored === null) {
-            setFlash('error', 'The preview has expired. Please run the preview again.');
+            setFlash('error', t('The preview has expired. Please run the preview again.'));
         } else {
             try {
                 $importer = new LdapImporter($db, $cfg);
                 $result = $importer->applyPlan($stored);
                 @unlink(ldapPlanPath($token));
                 logSecurityEventToDB($db, 'LDAP_IMPORT', $admin_id, json_encode($result));
-                setFlash('success', sprintf(
-                    'Import finished: %d created, %d updated, %d signatures written, %d deactivated, %d skipped.',
-                    $result['created'], $result['updated'], $result['signatures'], $result['deactivated'], $result['skipped']
+                setFlash('success', t(
+                    'Import finished: {created} created, {updated} updated, {signatures} signatures written, {deactivated} deactivated, {skipped} skipped.',
+                    [
+                        'created' => $result['created'], 'updated' => $result['updated'],
+                        'signatures' => $result['signatures'], 'deactivated' => $result['deactivated'],
+                        'skipped' => $result['skipped'],
+                    ]
                 ));
             } catch (Exception $e) {
                 error_log('LDAP import failed: ' . $e->getMessage());
-                setFlash('error', 'The import failed and was rolled back. See the PHP error log.');
+                setFlash('error', t('The import failed and was rolled back. See the PHP error log.'));
             }
         }
         header('Location: admin_ldap.php');
@@ -135,11 +139,12 @@ $templates = listSignatureTemplates();
 $presetsJson = json_encode(LdapConfig::PRESETS, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
 ?>
 <!DOCTYPE html>
-<html lang="en">
+<html lang="<?= e(currentLang()) ?>" dir="<?= e(langDir()) ?>">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LDAP Import - SubSignature</title>
+    <title><?= et('LDAP Import') ?> - SubSignature</title>
+    <?= i18nHead() ?>
     <script src="<?= assetUrl('js/theme.js') ?>"></script>
     <link rel="stylesheet" href="<?= assetUrl('css/theme.css') ?>">
     <link rel="stylesheet" href="<?= assetUrl('css/style.css') ?>">
@@ -180,21 +185,22 @@ $presetsJson = json_encode(LdapConfig::PRESETS, JSON_HEX_TAG | JSON_HEX_AMP | JS
     <aside class="sidebar">
         <?php include 'includes/navbar.php'; ?>
         <div class="sidebar-footer">
+        <?= langSwitcher() ?>
             <div class="user-profile">
                 <div class="avatar"><?php echo strtoupper(substr($_SESSION['username'], 0, 1)); ?></div>
                 <div class="user-info">
                     <div><?php echo e($_SESSION['username']); ?></div>
-                    <span>Administrator</span>
+                    <span><?= et('Administrator') ?></span>
                 </div>
             </div>
-            <a href="logout.php" class="btn-logout"><i class="fas fa-sign-out-alt"></i> <span>Sign Out</span></a>
+            <a href="logout.php" class="btn-logout"><i class="fas fa-sign-out-alt"></i> <span><?= et('Sign Out') ?></span></a>
         </div>
     </aside>
 
     <main class="main-content">
         <header class="page-header">
-            <h2>LDAP / Active Directory Import</h2>
-            <p>Import users, email addresses and other attributes from your directory. Directory accounts cannot log in to SubSignature.</p>
+            <h2><?= et('LDAP / Active Directory Import') ?></h2>
+            <p><?= et('Import users, email addresses and other attributes from your directory. Directory accounts cannot log in to SubSignature.') ?></p>
         </header>
 
         <?php if ($message): ?>
@@ -205,22 +211,21 @@ $presetsJson = json_encode(LdapConfig::PRESETS, JSON_HEX_TAG | JSON_HEX_AMP | JS
         <?php endif; ?>
         <?php if (!$ldap_available): ?>
             <div class="warn-box"><i class="fas fa-exclamation-triangle"></i>
-                The PHP <code>ldap</code> extension is not installed. You can edit and save the settings, but test and import are disabled
-                (Debian/Ubuntu: <code>apt install php-ldap</code>).
+                <?= eth('The PHP {ext} extension is not installed. You can edit and save the settings, but test and import are disabled (Debian/Ubuntu: {cmd}).', ['ext' => '<code>ldap</code>', 'cmd' => '<code>apt install php-ldap</code>']) ?>
             </div>
         <?php endif; ?>
 
         <?php if ($plan !== null): ?>
         <section class="card" style="margin-bottom:1.5rem;">
-            <div class="card-header"><h3><i class="fas fa-clipboard-list"></i> Import Preview</h3></div>
+            <div class="card-header"><h3><i class="fas fa-clipboard-list"></i> <?= et('Import Preview') ?></h3></div>
             <div style="padding:1.5rem;">
                 <div class="stat-row">
-                    <div class="stat-box"><strong><?php echo (int)$plan['counts']['total']; ?></strong><span>Directory entries</span></div>
-                    <div class="stat-box"><strong style="color:var(--success-text);"><?php echo (int)$plan['counts']['create']; ?></strong><span>To create</span></div>
-                    <div class="stat-box"><strong style="color:var(--info-text);"><?php echo (int)$plan['counts']['update']; ?></strong><span>To update</span></div>
-                    <div class="stat-box"><strong><?php echo (int)$plan['counts']['unchanged']; ?></strong><span>Unchanged</span></div>
-                    <div class="stat-box"><strong style="color:var(--danger-text);"><?php echo (int)$plan['counts']['skip']; ?></strong><span>Skipped</span></div>
-                    <div class="stat-box"><strong style="color:var(--warning-text);"><?php echo (int)$plan['counts']['deactivate']; ?></strong><span>To deactivate</span></div>
+                    <div class="stat-box"><strong><?php echo (int)$plan['counts']['total']; ?></strong><span><?= et('Directory entries') ?></span></div>
+                    <div class="stat-box"><strong style="color:var(--success-text);"><?php echo (int)$plan['counts']['create']; ?></strong><span><?= et('To create') ?></span></div>
+                    <div class="stat-box"><strong style="color:var(--info-text);"><?php echo (int)$plan['counts']['update']; ?></strong><span><?= et('To update') ?></span></div>
+                    <div class="stat-box"><strong><?php echo (int)$plan['counts']['unchanged']; ?></strong><span><?= et('Unchanged') ?></span></div>
+                    <div class="stat-box"><strong style="color:var(--danger-text);"><?php echo (int)$plan['counts']['skip']; ?></strong><span><?= et('Skipped') ?></span></div>
+                    <div class="stat-box"><strong style="color:var(--warning-text);"><?php echo (int)$plan['counts']['deactivate']; ?></strong><span><?= et('To deactivate') ?></span></div>
                 </div>
 
                 <?php
@@ -232,7 +237,7 @@ $presetsJson = json_encode(LdapConfig::PRESETS, JSON_HEX_TAG | JSON_HEX_AMP | JS
                 ?>
                 <div style="overflow-x:auto; max-height:420px; overflow-y:auto;">
                     <table class="plan-table">
-                        <thead><tr><th>Action</th><th>Username</th><th>Name</th><th>Email</th><th>Role</th><th>Phone</th><th>Note</th></tr></thead>
+                        <thead><tr><th><?= et('Action') ?></th><th><?= et('Username') ?></th><th><?= et('Name') ?></th><th><?= et('Email') ?></th><th><?= et('Role') ?></th><th><?= et('Phone') ?></th><th><?= et('Note') ?></th></tr></thead>
                         <tbody>
                         <?php foreach ($rowsShown as $r): ?>
                             <tr>
@@ -249,13 +254,13 @@ $presetsJson = json_encode(LdapConfig::PRESETS, JSON_HEX_TAG | JSON_HEX_AMP | JS
                     </table>
                 </div>
                 <?php if (count($rowsView) > count($rowsShown)): ?>
-                    <p class="form-hint">Showing the first <?php echo count($rowsShown); ?> of <?php echo count($rowsView); ?> entries. The import applies to all of them.</p>
+                    <p class="form-hint"><?= et('Showing the first {shown} of {total} entries. The import applies to all of them.', ['shown' => count($rowsShown), 'total' => count($rowsView)]) ?></p>
                 <?php endif; ?>
 
                 <?php if ($plan['counts']['deactivate'] > 0): ?>
                     <div class="warn-box" style="margin-top:1rem;">
-                        <?php echo (int)$plan['counts']['deactivate']; ?> previously imported account(s) are no longer in the directory result and will be deactivated.
-                        Check the filter and base DN if this looks wrong.
+                        <?= et('{count} previously imported account(s) are no longer in the directory result and will be deactivated.', ['count' => (int)$plan['counts']['deactivate']]) ?>
+                        <?= et('Check the filter and base DN if this looks wrong.') ?>
                     </div>
                 <?php endif; ?>
 
@@ -263,8 +268,8 @@ $presetsJson = json_encode(LdapConfig::PRESETS, JSON_HEX_TAG | JSON_HEX_AMP | JS
                     <?php echo csrfField(); ?>
                     <input type="hidden" name="plan_token" value="<?php echo e($plan_token); ?>">
                     <button type="submit" name="action" value="apply" class="btn btn-primary"
-                            data-confirm="Apply this import now?"><i class="fas fa-check"></i> Apply Import</button>
-                    <button type="submit" name="action" value="cancel" class="btn btn-secondary">Cancel</button>
+                            data-confirm="<?= et('Apply this import now?') ?>"><i class="fas fa-check"></i> <?= et('Apply Import') ?></button>
+                    <button type="submit" name="action" value="cancel" class="btn btn-secondary"><?= et('Cancel') ?></button>
                 </form>
             </div>
         </section>
@@ -275,117 +280,117 @@ $presetsJson = json_encode(LdapConfig::PRESETS, JSON_HEX_TAG | JSON_HEX_AMP | JS
 
             <div class="config-grid">
                 <section class="config-card">
-                    <h3><i class="fas fa-network-wired"></i> Connection</h3>
+                    <h3><i class="fas fa-network-wired"></i> <?= et('Connection') ?></h3>
 
                     <div class="form-group-grid">
                         <div>
-                            <label class="form-label" for="preset">Directory type</label>
+                            <label class="form-label" for="preset"><?= et('Directory type') ?></label>
                             <select name="preset" id="preset" class="form-input">
                                 <?php foreach (LdapConfig::PRESETS as $key => $p): ?>
                                     <option value="<?php echo e($key); ?>" <?php echo $cfg['preset'] === $key ? 'selected' : ''; ?>><?php echo e($p['label']); ?></option>
                                 <?php endforeach; ?>
-                                <option value="custom" <?php echo $cfg['preset'] === 'custom' ? 'selected' : ''; ?>>Custom</option>
+                                <option value="custom" <?php echo $cfg['preset'] === 'custom' ? 'selected' : ''; ?>><?= et('Custom') ?></option>
                             </select>
                         </div>
                         <div>
-                            <label class="form-label" for="encryption">Encryption</label>
+                            <label class="form-label" for="encryption"><?= et('Encryption') ?></label>
                             <select name="encryption" id="encryption" class="form-input">
-                                <option value="ldaps" <?php echo $cfg['encryption'] === 'ldaps' ? 'selected' : ''; ?>>LDAPS (TLS, recommended)</option>
+                                <option value="ldaps" <?php echo $cfg['encryption'] === 'ldaps' ? 'selected' : ''; ?>><?= et('LDAPS (TLS, recommended)') ?></option>
                                 <option value="starttls" <?php echo $cfg['encryption'] === 'starttls' ? 'selected' : ''; ?>>STARTTLS</option>
-                                <option value="none" <?php echo $cfg['encryption'] === 'none' ? 'selected' : ''; ?>>None (not recommended)</option>
+                                <option value="none" <?php echo $cfg['encryption'] === 'none' ? 'selected' : ''; ?>><?= et('None (not recommended)') ?></option>
                             </select>
                         </div>
                     </div>
 
                     <div class="form-group-grid">
                         <div>
-                            <label class="form-label" for="host">Host</label>
-                            <input type="text" name="host" id="host" class="form-input" placeholder="dc01.example.com" maxlength="255" value="<?php echo e($cfg['host']); ?>">
+                            <label class="form-label" for="host"><?= et('Host') ?></label>
+                            <input type="text" name="host" id="host" class="form-input" placeholder="<?= et('dc01.example.com') ?>" maxlength="255" value="<?php echo e($cfg['host']); ?>">
                         </div>
                         <div>
-                            <label class="form-label" for="port">Port</label>
+                            <label class="form-label" for="port"><?= et('Port') ?></label>
                             <input type="number" name="port" id="port" class="form-input" min="1" max="65535" value="<?php echo (int)$cfg['port']; ?>">
                         </div>
                     </div>
 
                     <div class="form-group-grid">
                         <div>
-                            <label class="form-label" for="verify_cert">Server certificate</label>
+                            <label class="form-label" for="verify_cert"><?= et('Server certificate') ?></label>
                             <select name="verify_cert" id="verify_cert" class="form-input">
-                                <option value="1" <?php echo $cfg['verify_cert'] ? 'selected' : ''; ?>>Verify (recommended)</option>
-                                <option value="0" <?php echo !$cfg['verify_cert'] ? 'selected' : ''; ?>>Do not verify (insecure)</option>
+                                <option value="1" <?php echo $cfg['verify_cert'] ? 'selected' : ''; ?>><?= et('Verify (recommended)') ?></option>
+                                <option value="0" <?php echo !$cfg['verify_cert'] ? 'selected' : ''; ?>><?= et('Do not verify (insecure)') ?></option>
                             </select>
                         </div>
                         <div>
-                            <label class="form-label" for="ca_file">CA file (optional)</label>
-                            <input type="text" name="ca_file" id="ca_file" class="form-input" placeholder="/etc/ssl/certs/corp-ca.pem" maxlength="255" value="<?php echo e($cfg['ca_file']); ?>">
+                            <label class="form-label" for="ca_file"><?= et('CA file (optional)') ?></label>
+                            <input type="text" name="ca_file" id="ca_file" class="form-input" placeholder="<?= et('/etc/ssl/certs/corp-ca.pem') ?>" maxlength="255" value="<?php echo e($cfg['ca_file']); ?>">
                         </div>
                     </div>
 
                     <div class="form-group-grid">
                         <div>
-                            <label class="form-label" for="bind_dn">Bind DN / user principal</label>
+                            <label class="form-label" for="bind_dn"><?= et('Bind DN / user principal') ?></label>
                             <input type="text" name="bind_dn" id="bind_dn" class="form-input" autocomplete="off" placeholder="svc-subsig@example.com" maxlength="512" value="<?php echo e($cfg['bind_dn']); ?>">
                         </div>
                         <div>
-                            <label class="form-label" for="bind_pass">Bind password</label>
+                            <label class="form-label" for="bind_pass"><?= et('Bind password') ?></label>
                             <input type="password" name="bind_pass" id="bind_pass" class="form-input" autocomplete="new-password"
                                    placeholder="<?php echo $cfg['bind_pass'] !== '' ? '•••••••• (unchanged)' : ''; ?>">
                         </div>
                     </div>
-                    <span class="form-hint">Use a read-only service account. The password is stored encrypted.</span>
+                    <span class="form-hint"><?= et('Use a read-only service account. The password is stored encrypted.') ?></span>
 
                     <div style="margin-top:1rem;">
-                        <label class="form-label" for="base_dn">Base DN</label>
-                        <input type="text" name="base_dn" id="base_dn" class="form-input" placeholder="OU=Staff,DC=example,DC=com" maxlength="512" value="<?php echo e($cfg['base_dn']); ?>">
+                        <label class="form-label" for="base_dn"><?= et('Base DN') ?></label>
+                        <input type="text" name="base_dn" id="base_dn" class="form-input" placeholder="<?= et('OU=Staff,DC=example,DC=com') ?>" maxlength="512" value="<?php echo e($cfg['base_dn']); ?>">
                     </div>
                 </section>
 
                 <section class="config-card">
-                    <h3><i class="fas fa-filter"></i> Search &amp; attribute mapping</h3>
+                    <h3><i class="fas fa-filter"></i> <?= et('Search & attribute mapping') ?></h3>
 
                     <div style="margin-bottom:1rem;">
-                        <label class="form-label" for="user_filter">User filter</label>
+                        <label class="form-label" for="user_filter"><?= et('User filter') ?></label>
                         <input type="text" name="user_filter" id="user_filter" class="form-input" maxlength="2000" value="<?php echo e($cfg['user_filter']); ?>">
-                        <span class="form-hint">The default for Active Directory skips disabled accounts.</span>
+                        <span class="form-hint"><?= et('The default for Active Directory skips disabled accounts.') ?></span>
                     </div>
 
                     <div class="form-group-grid">
                         <div>
-                            <label class="form-label" for="attr_username">Username attribute</label>
+                            <label class="form-label" for="attr_username"><?= et('Username attribute') ?></label>
                             <input type="text" name="attr_username" id="attr_username" class="form-input" maxlength="70" value="<?php echo e($cfg['attr_username']); ?>">
                         </div>
                         <div>
-                            <label class="form-label" for="attr_email">Email attribute</label>
+                            <label class="form-label" for="attr_email"><?= et('Email attribute') ?></label>
                             <input type="text" name="attr_email" id="attr_email" class="form-input" maxlength="70" value="<?php echo e($cfg['attr_email']); ?>">
                         </div>
                         <div>
-                            <label class="form-label" for="attr_name">Full name attribute</label>
+                            <label class="form-label" for="attr_name"><?= et('Full name attribute') ?></label>
                             <input type="text" name="attr_name" id="attr_name" class="form-input" maxlength="70" value="<?php echo e($cfg['attr_name']); ?>">
                         </div>
                         <div>
-                            <label class="form-label" for="attr_id">Unique ID attribute</label>
+                            <label class="form-label" for="attr_id"><?= et('Unique ID attribute') ?></label>
                             <input type="text" name="attr_id" id="attr_id" class="form-input" maxlength="70" value="<?php echo e($cfg['attr_id']); ?>">
                         </div>
                         <div>
-                            <label class="form-label" for="attr_role">Role / title attribute</label>
-                            <input type="text" name="attr_role" id="attr_role" class="form-input" maxlength="70" placeholder="title" value="<?php echo e($cfg['attr_role']); ?>">
+                            <label class="form-label" for="attr_role"><?= et('Role / title attribute') ?></label>
+                            <input type="text" name="attr_role" id="attr_role" class="form-input" maxlength="70" placeholder="<?= et('title') ?>" value="<?php echo e($cfg['attr_role']); ?>">
                         </div>
                         <div>
-                            <label class="form-label" for="attr_phone">Phone attribute</label>
-                            <input type="text" name="attr_phone" id="attr_phone" class="form-input" maxlength="70" placeholder="telephoneNumber" value="<?php echo e($cfg['attr_phone']); ?>">
+                            <label class="form-label" for="attr_phone"><?= et('Phone attribute') ?></label>
+                            <input type="text" name="attr_phone" id="attr_phone" class="form-input" maxlength="70" placeholder="<?= et('telephoneNumber') ?>" value="<?php echo e($cfg['attr_phone']); ?>">
                         </div>
                     </div>
-                    <span class="form-hint">Any directory attribute can be mapped (e.g. <code>mobile</code>, <code>department</code>, <code>co</code>). The unique ID keeps accounts linked when a username changes.</span>
+                    <span class="form-hint"><?= eth('Any directory attribute can be mapped (e.g. {examples}). The unique ID keeps accounts linked when a username changes.', ['examples' => '<code>mobile</code>, <code>department</code>, <code>co</code>']) ?></span>
                 </section>
 
                 <section class="config-card">
-                    <h3><i class="fas fa-sliders-h"></i> Import options</h3>
+                    <h3><i class="fas fa-sliders-h"></i> <?= et('Import options') ?></h3>
 
                     <div class="config-item">
                         <div>
-                            <h4 style="margin:0; font-size:0.95rem;">Create a signature for each user</h4>
-                            <p style="margin:0; color:var(--text-muted); font-size:0.8rem;">Uses name, role, email and phone from the directory.</p>
+                            <h4 style="margin:0; font-size:0.95rem;"><?= et('Create a signature for each user') ?></h4>
+                            <p style="margin:0; color:var(--text-muted); font-size:0.8rem;"><?= et('Uses name, role, email and phone from the directory.') ?></p>
                         </div>
                         <label class="switch">
                             <input type="hidden" name="create_signatures" value="0">
@@ -396,10 +401,10 @@ $presetsJson = json_encode(LdapConfig::PRESETS, JSON_HEX_TAG | JSON_HEX_AMP | JS
 
                     <div class="config-item">
                         <div>
-                            <h4 style="margin:0; font-size:0.95rem;">Template for new signatures</h4>
+                            <h4 style="margin:0; font-size:0.95rem;"><?= et('Template for new signatures') ?></h4>
                         </div>
                         <select name="template" class="form-input" style="max-width:220px;">
-                            <option value="">System default</option>
+                            <option value=""><?= et('System default') ?></option>
                             <?php foreach ($templates as $t): ?>
                                 <option value="<?php echo e($t); ?>" <?php echo $cfg['template'] === $t ? 'selected' : ''; ?>><?php echo e(templateDisplayName($t)); ?></option>
                             <?php endforeach; ?>
@@ -408,8 +413,8 @@ $presetsJson = json_encode(LdapConfig::PRESETS, JSON_HEX_TAG | JSON_HEX_AMP | JS
 
                     <div class="config-item">
                         <div>
-                            <h4 style="margin:0; font-size:0.95rem;">New accounts are active</h4>
-                            <p style="margin:0; color:var(--text-muted); font-size:0.8rem;">Imported accounts always have the role "user".</p>
+                            <h4 style="margin:0; font-size:0.95rem;"><?= et('New accounts are active') ?></h4>
+                            <p style="margin:0; color:var(--text-muted); font-size:0.8rem;"><?= et('Imported accounts always have the role "user".') ?></p>
                         </div>
                         <label class="switch">
                             <input type="hidden" name="default_active" value="0">
@@ -420,8 +425,8 @@ $presetsJson = json_encode(LdapConfig::PRESETS, JSON_HEX_TAG | JSON_HEX_AMP | JS
 
                     <div class="config-item">
                         <div>
-                            <h4 style="margin:0; font-size:0.95rem;">Deactivate accounts missing in the directory</h4>
-                            <p style="margin:0; color:var(--text-muted); font-size:0.8rem;">Only previously imported accounts are affected.</p>
+                            <h4 style="margin:0; font-size:0.95rem;"><?= et('Deactivate accounts missing in the directory') ?></h4>
+                            <p style="margin:0; color:var(--text-muted); font-size:0.8rem;"><?= et('Only previously imported accounts are affected.') ?></p>
                         </div>
                         <label class="switch">
                             <input type="hidden" name="deactivate_missing" value="0">
@@ -431,17 +436,17 @@ $presetsJson = json_encode(LdapConfig::PRESETS, JSON_HEX_TAG | JSON_HEX_AMP | JS
                     </div>
 
                     <p class="form-hint" style="margin-top:1rem;">
-                        Local accounts are never modified: a directory entry with the same username or email as a local account is skipped.
+                        <?= et('Local accounts are never modified: a directory entry with the same username or email as a local account is skipped.') ?>
                     </p>
                 </section>
             </div>
 
             <div class="actions-row">
-                <button type="submit" name="action" value="save" class="btn btn-primary"><i class="fas fa-save"></i> Save settings</button>
-                <button type="submit" name="action" value="test" class="btn btn-secondary" <?php echo $ldap_available ? '' : 'disabled'; ?>><i class="fas fa-plug"></i> Test connection</button>
-                <button type="submit" name="action" value="preview" class="btn btn-success" <?php echo $ldap_available ? '' : 'disabled'; ?>><i class="fas fa-search"></i> Preview import</button>
+                <button type="submit" name="action" value="save" class="btn btn-primary"><i class="fas fa-save"></i> <?= et('Save settings') ?></button>
+                <button type="submit" name="action" value="test" class="btn btn-secondary" <?php echo $ldap_available ? '' : 'disabled'; ?>><i class="fas fa-plug"></i> <?= et('Test connection') ?></button>
+                <button type="submit" name="action" value="preview" class="btn btn-success" <?php echo $ldap_available ? '' : 'disabled'; ?>><i class="fas fa-search"></i> <?= et('Preview import') ?></button>
             </div>
-            <span class="form-hint">Test and preview use the <em>saved</em> settings. Save first after making changes.</span>
+            <span class="form-hint"><?= eth('Test and preview use the {saved} settings. Save first after making changes.', ['saved' => '<em>' . et('saved') . '</em>']) ?></span>
         </form>
     </main>
 

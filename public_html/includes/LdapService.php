@@ -42,7 +42,7 @@ class LdapService implements LdapClientInterface
     public function __construct(array $config)
     {
         if (!function_exists('ldap_connect')) {
-            throw new RuntimeException('The PHP "ldap" extension is not installed.');
+            throw new RuntimeException(t('The PHP "ldap" extension is not installed.'));
         }
         $this->config = $config;
         $this->connect();
@@ -75,7 +75,7 @@ class LdapService implements LdapClientInterface
 
         $link = @ldap_connect($uri);
         if (!$link) {
-            throw new RuntimeException('Could not create the LDAP connection (check host and port).');
+            throw new RuntimeException(t('Could not create the LDAP connection (check host and port).'));
         }
         ldap_set_option($link, LDAP_OPT_PROTOCOL_VERSION, 3);
         ldap_set_option($link, LDAP_OPT_REFERRALS, 0);          // do not chase referrals (AD returns many)
@@ -83,20 +83,20 @@ class LdapService implements LdapClientInterface
         ldap_set_option($link, LDAP_OPT_TIMELIMIT, 60);
 
         if ($c['encryption'] === 'starttls' && !@ldap_start_tls($link)) {
-            throw new RuntimeException('STARTTLS failed: ' . ldap_error($link));
+            throw new RuntimeException(t('STARTTLS failed: {error}', ['error' => ldap_error($link)]));
         }
 
         // A DN with an empty password would be an "unauthenticated bind" which
         // many servers accept silently, so it is refused here.
         if ($c['bind_dn'] !== '') {
             if ($c['bind_pass'] === '') {
-                throw new RuntimeException('A bind DN is configured but no bind password is set.');
+                throw new RuntimeException(t('A bind DN is configured but no bind password is set.'));
             }
             if (!@ldap_bind($link, $c['bind_dn'], $c['bind_pass'])) {
-                throw new RuntimeException('Bind failed: ' . ldap_error($link));
+                throw new RuntimeException(t('Bind failed: {error}', ['error' => ldap_error($link)]));
             }
         } elseif (!@ldap_bind($link)) {
-            throw new RuntimeException('Anonymous bind failed: ' . ldap_error($link));
+            throw new RuntimeException(t('Anonymous bind failed: {error}', ['error' => ldap_error($link)]));
         }
 
         $this->link = $link;
@@ -115,7 +115,7 @@ class LdapService implements LdapClientInterface
             ]];
             $result = @ldap_search($this->link, $baseDn, $filter, $attributes, 0, 0, 0, LDAP_DEREF_NEVER, $controls);
             if ($result === false) {
-                throw new RuntimeException('Search failed: ' . ldap_error($this->link));
+                throw new RuntimeException(t('Search failed: {error}', ['error' => ldap_error($this->link)]));
             }
 
             $errCode = 0;

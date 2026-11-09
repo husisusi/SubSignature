@@ -38,11 +38,11 @@ function renderSignatureItem($sig, $target_user_id, $search, $show_owner_name = 
                 <div class="sig-actions" style="display:flex; gap:0.5rem; align-items:center;">
                     <?php if ($encodedHtml !== ''): ?>
                     <textarea id="source-<?php echo (int)$sig['id']; ?>" class="visually-hidden"><?php echo $encodedHtml; ?></textarea>
-                    <button type="button" onclick="openModal(<?php echo (int)$sig['id']; ?>)" class="btn btn-sm btn-secondary" style="background:var(--bg-white); border:1px solid var(--border-strong);" title="Preview"><i class="fas fa-eye"></i></button>
+                    <button type="button" onclick="openModal(<?php echo (int)$sig['id']; ?>)" class="btn btn-sm btn-secondary" style="background:var(--bg-white); border:1px solid var(--border-strong);" title="<?= et('Preview') ?>"><i class="fas fa-eye"></i></button>
                     <?php endif; ?>
-                    <a href="download.php?id=<?php echo (int)$sig['id']; ?>" class="btn btn-sm btn-primary" title="Download"><i class="fas fa-download"></i></a>
+                    <a href="download.php?id=<?php echo (int)$sig['id']; ?>" class="btn btn-sm btn-primary" title="<?= et('Download') ?>"><i class="fas fa-download"></i></a>
                     <button type="button" data-post="<?php echo e($deleteUrl); ?>" data-params='{"action":"delete_one","id":"<?php echo (int)$sig['id']; ?>"}'
-                       data-confirm="Delete?" class="btn btn-sm btn-danger" title="Delete"><i class="fas fa-trash"></i></button>
+                       data-confirm="<?= et('Delete?') ?>" class="btn btn-sm btn-danger" title="<?= et('Delete') ?>"><i class="fas fa-trash"></i></button>
                 </div>
             </div>
         </div>
@@ -122,7 +122,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmtDel->bindValue(':id', (int)($_POST['id'] ?? 0), SQLITE3_INTEGER);
         if ($target_user_id !== 'all') $stmtDel->bindValue(':uid', $target_user_id, SQLITE3_INTEGER);
         $stmtDel->execute();
-        setFlash('success', 'Signature deleted.');
+        setFlash('success', t('Signature deleted.'));
         header('Location: ' . $redirect);
         exit;
     }
@@ -138,7 +138,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $s->bindValue(1, $target_user_id, SQLITE3_INTEGER);
             $s->execute();
         }
-        setFlash('success', 'All signatures deleted!');
+        setFlash('success', t('All signatures deleted!'));
         header('Location: ' . $redirect);
         exit;
     }
@@ -160,7 +160,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $count += $db->changes();
         }
         $db->exec('COMMIT');
-        setFlash('success', $count . ' signatures deleted.');
+        setFlash('success', t('{count} signatures deleted.', ['count' => $count]));
         header('Location: ' . $redirect);
         exit;
     }
@@ -169,18 +169,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $message = popFlash('success');
 ?>
 <!DOCTYPE html>
-<html lang="en">
+<html lang="<?= e(currentLang()) ?>" dir="<?= e(langDir()) ?>">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>All Signatures - SubSignature</title>
+<title><?= et('All Signatures') ?> - SubSignature</title>
+<?= i18nHead() ?>
 <script src="<?= assetUrl('js/theme.js') ?>"></script>
 <link rel="stylesheet" href="<?= assetUrl('css/theme.css') ?>">
 <link rel="stylesheet" href="<?= assetUrl('css/style.css') ?>">
 <link rel="stylesheet" href="<?= assetUrl('css/all.min.css') ?>">
 <?php echo csrfMeta(); ?>
 <style>
-    .visually-hidden { position: absolute; left: -9999px; opacity: 0; }
+    .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); opacity: 0; }
     .alert { padding: 1rem; border-radius: 8px; margin-bottom: 1.5rem; display: flex; gap: 0.75rem; align-items: center; }
     .alert-success { background: var(--success-bg); color: var(--success-text); border: 1px solid var(--success-border); }
     .empty-state { text-align: center; padding: 4rem 1rem; color: var(--text-faint); }
@@ -264,18 +265,19 @@ $message = popFlash('success');
 <aside class="sidebar">
     <?php if (file_exists('includes/navbar.php')) include 'includes/navbar.php'; ?>
     <div class="sidebar-footer">
+        <?= langSwitcher() ?>
         <div class="user-profile">
             <div class="avatar"><?php echo strtoupper(substr($_SESSION['username'], 0, 1)); ?></div>
             <div class="user-info"><div><?php echo e($_SESSION['username']); ?></div><span><?php echo $is_admin ? 'Administrator' : 'User'; ?></span></div>
         </div>
-        <a href="logout.php" class="btn-logout"><i class="fas fa-sign-out-alt"></i> <span>Sign Out</span></a>
+        <a href="logout.php" class="btn-logout"><i class="fas fa-sign-out-alt"></i> <span><?= et('Sign Out') ?></span></a>
     </div>
 </aside>
 
 <main class="main-content">
     <header class="page-header">
-        <h2>Signature Management</h2>
-        <p>View, search and manage existing signatures.</p>
+        <h2><?= et('Signature Management') ?></h2>
+        <p><?= et('View, search and manage existing signatures.') ?></p>
     </header>
 
     <?php if ($message): ?>
@@ -285,7 +287,7 @@ $message = popFlash('success');
     <section class="card">
         <div class="card-header">
             <div style="display: flex; align-items: center;">
-                <h3 style="margin:0;"><i class="fas fa-list"></i> Signatures</h3>
+                <h3 style="margin:0;"><i class="fas fa-list"></i> <?= et('Signatures') ?></h3>
                 <span class="count-badge"><?php echo $totalSignatures; ?></span>
             </div>
 
@@ -294,18 +296,18 @@ $message = popFlash('success');
                 
                 <?php if ($is_admin): ?>
                 <button id="btnSendSelected" onclick="sendBulkEmail()" class="btn btn-sm btn-primary btn-header btn-disabled">
-                    <i class="fas fa-paper-plane"></i> Send Selected
+                    <i class="fas fa-paper-plane"></i> <?= et('Send Selected') ?>
                 </button>
                 <?php endif; ?>
                 
                 <button id="btnDeleteSelected" onclick="deleteSelectedItems()" class="btn btn-sm btn-danger btn-header btn-disabled">
-                    <i class="fas fa-trash"></i> Delete Selected
+                    <i class="fas fa-trash"></i> <?= et('Delete Selected') ?>
                 </button>
 
                 <div style="width:1px; height:20px; background:var(--border-strong); margin:0 5px;"></div>
 
                 <button onclick="confirmDeleteAll()" class="btn btn-sm btn-danger btn-header">
-                    <i class="fas fa-trash-alt"></i> Delete All
+                    <i class="fas fa-trash-alt"></i> <?= et('Delete All') ?>
                 </button>
                 <?php endif; ?>
             </div>
@@ -316,7 +318,7 @@ $message = popFlash('success');
                 <?php if ($is_admin): ?>
                 <div style="flex-shrink:0;">
                     <select name="user_id" class="user-select" onchange="this.form.submit()">
-                        <option value="all" <?php echo ($target_user_id === 'all') ? 'selected' : ''; ?>>All Users</option>
+                        <option value="all" <?php echo ($target_user_id === 'all') ? 'selected' : ''; ?>><?= et('All Users') ?></option>
                         <?php foreach ($users_list as $u): ?>
                         <option value="<?php echo (int)$u['id']; ?>" <?php echo ($u['id'] == $target_user_id) ? 'selected' : ''; ?>>
                             <?php echo e($u['username']); ?>
@@ -325,63 +327,63 @@ $message = popFlash('success');
                     </select>
                 </div>
                 <?php endif; ?>
-                <input type="text" name="search" class="search-input" placeholder="Search..." value="<?php echo e($search); ?>">
-                <button type="submit" class="btn btn-primary">Search</button>
-                <?php if (!empty($search)): ?><a href="all_signatures.php?user_id=<?php echo e((string)$target_user_id); ?>" class="btn btn-secondary">Clear</a><?php endif; ?>
+                <input type="text" name="search" class="search-input" placeholder="<?= et('Search...') ?>" value="<?php echo e($search); ?>">
+                <button type="submit" class="btn btn-primary"><?= et('Search') ?></button>
+                <?php if (!empty($search)): ?><a href="all_signatures.php?user_id=<?php echo e((string)$target_user_id); ?>" class="btn btn-secondary"><?= et('Clear') ?></a><?php endif; ?>
             </form>
         </div>
 
         <div style="padding: 10px 15px; background: var(--bg-subtle); border-bottom: 1px solid var(--border); display:flex; align-items:center; gap: 10px;">
             <input type="checkbox" id="selectAll" class="sig-checkbox" onchange="toggleSelectAll(this)">
-            <label for="selectAll" style="font-weight:600; font-size:0.9rem; cursor:pointer; color:var(--text-muted);">Select All visible</label>
+            <label for="selectAll" style="font-weight:600; font-size:0.9rem; cursor:pointer; color:var(--text-muted);"><?= et('Select All visible') ?></label>
         </div>
 
         <div class="signature-list" id="signatureListContainer">
             <?php if (empty($signatures)): ?>
-            <div class="empty-state"><i class="fas fa-folder-open empty-icon"></i><p>No signatures found.</p></div>
+            <div class="empty-state"><i class="fas fa-folder-open empty-icon"></i><p><?= et('No signatures found.') ?></p></div>
             <?php else: ?>
             <?php foreach ($signatures as $sig) renderSignatureItem($sig, $target_user_id, $search, ($target_user_id === 'all')); ?>
             <?php endif; ?>
         </div>
 
-        <div class="infinite-spinner" id="infiniteLoader"><i class="fas fa-spinner fa-spin fa-2x"></i><div style="margin-top:10px">Loading more...</div></div>
+        <div class="infinite-spinner" id="infiniteLoader"><i class="fas fa-spinner fa-spin fa-2x"></i><div style="margin-top:10px"><?= et('Loading more...') ?></div></div>
         <div id="sentinel"></div>
-        <div class="end-of-results" id="endOfResults">All signatures loaded.</div>
+        <div class="end-of-results" id="endOfResults"><?= et('All signatures loaded.') ?></div>
     </section>
 </main>
 
 <div id="previewModal" class="modal-overlay">
     <div class="modal-box">
-        <div class="modal-header"><h3 style="margin:0">Preview</h3><button class="close-modal-btn" onclick="closeModal()">&times;</button></div>
+        <div class="modal-header"><h3 style="margin:0"><?= et('Preview') ?></h3><button class="close-modal-btn" onclick="closeModal()">&times;</button></div>
         <div class="modal-body"><iframe id="modalFrame" class="modal-iframe" sandbox=""></iframe></div>
-        <div class="modal-footer"><button class="btn btn-sm btn-secondary" onclick="closeModal()">Close</button></div>
+        <div class="modal-footer"><button class="btn btn-sm btn-secondary" onclick="closeModal()"><?= et('Close') ?></button></div>
     </div>
 </div>
 
 <div id="progressModal" class="modal-overlay" style="z-index: 10000;">
     <div class="modal-box" style="max-width: 500px; height: auto; min-height: 250px;">
         <div class="modal-header">
-            <h3 style="margin:0"><i class="fas fa-paper-plane"></i> Sending Emails...</h3>
+            <h3 style="margin:0"><i class="fas fa-paper-plane"></i> <?= et('Sending Emails...') ?></h3>
         </div>
         <div class="modal-body" style="padding: 20px; display: flex; flex-direction: column; gap: 15px; height: auto;">
             <div style="width: 100%; background-color: var(--border); border-radius: 99px; overflow: hidden; height: 20px;">
                 <div id="progressBarFill" style="width: 0%; height: 100%; background-color: var(--primary); transition: width 0.3s ease;"></div>
             </div>
             <div style="display: flex; justify-content: space-between; font-size: 0.9rem; color: var(--text-muted);">
-                <span id="progressText">Initializing...</span>
+                <span id="progressText"><?= et('Initializing...') ?></span>
                 <span id="progressPercent">0%</span>
             </div>
 
             <div id="progressLog" style="flex-grow: 1; background: var(--bg-white); color: var(--text-main); font-family: monospace; font-size: 0.85rem; padding: 10px; border-radius: 6px; overflow-y: auto; max-height: 150px; border: 1px solid var(--border-strong); box-shadow: inset 0 2px 4px rgba(0,0,0,0.05);">
-                <div>> Ready to start...</div>
+                <div>> <?= et('Ready to start...') ?></div>
             </div>
         </div>
         <div class="modal-footer" style="display:flex; justify-content:space-between;">
              <button id="btnCancelProgress" class="btn btn-sm btn-danger" onclick="cancelBulkEmail()">
-                <i class="fas fa-stop-circle"></i> Cancel
+                <i class="fas fa-stop-circle"></i> <?= et('Cancel') ?>
             </button>
             
-            <button id="btnCloseProgress" class="btn btn-sm btn-secondary btn-disabled" onclick="closeProgressModal()">Close</button>
+            <button id="btnCloseProgress" class="btn btn-sm btn-secondary btn-disabled" onclick="closeProgressModal()"><?= et('Close') ?></button>
         </div>
     </div>
 </div>
@@ -413,20 +415,20 @@ function updateBulkButtons() {
     if (btnSend) {
         if (selectedCount > 0) {
             btnSend.classList.remove('btn-disabled');
-            btnSend.innerHTML = `<i class="fas fa-paper-plane"></i> Send Selected (${selectedCount})`;
+            btnSend.innerHTML = '<i class="fas fa-paper-plane"></i> ' + <?= tj('Send Selected ({count})') ?>.replace('{count}', selectedCount);
         } else {
             btnSend.classList.add('btn-disabled');
-            btnSend.innerHTML = `<i class="fas fa-paper-plane"></i> Send Selected`;
+            btnSend.innerHTML = '<i class="fas fa-paper-plane"></i> ' + <?= tj('Send Selected') ?>;
         }
     }
 
     if (btnDel) {
         if (selectedCount > 0) {
             btnDel.classList.remove('btn-disabled');
-            btnDel.innerHTML = `<i class="fas fa-trash"></i> Delete Selected (${selectedCount})`;
+            btnDel.innerHTML = '<i class="fas fa-trash"></i> ' + <?= tj('Delete Selected ({count})') ?>.replace('{count}', selectedCount);
         } else {
             btnDel.classList.add('btn-disabled');
-            btnDel.innerHTML = `<i class="fas fa-trash"></i> Delete Selected`;
+            btnDel.innerHTML = '<i class="fas fa-trash"></i> ' + <?= tj('Delete Selected') ?>;
         }
     }
 
@@ -444,7 +446,7 @@ function deleteSelectedItems() {
     const checkboxes = document.querySelectorAll('.sig-checkbox:not(#selectAll):checked');
     const ids = Array.from(checkboxes).map(cb => cb.value);
     if (ids.length === 0) return;
-    if (!confirm(`Delete ${ids.length} signatures?`)) return;
+    if (!confirm(<?= tj('Delete {count} signatures?') ?>.replace('{count}', ids.length))) return;
 
     const form = document.getElementById('deleteSelectedForm');
     while (form.firstChild) {
@@ -471,7 +473,7 @@ async function sendBulkEmail() {
     
     // SECURITY: Ask only ONCE at the beginning.
     // We do NOT ask again when cancelling.
-    if (!confirm(`Start sending emails to ${ids.length} users?`)) return;
+    if (!confirm(<?= tj('Start sending emails to {count} users?') ?>.replace('{count}', ids.length))) return;
 
     // 1. UI Reset
     const pModal = document.getElementById('progressModal');
@@ -485,16 +487,16 @@ async function sendBulkEmail() {
     pModal.style.display = 'flex';
     pBar.style.width = '0%';
     pBar.style.backgroundColor = 'var(--primary)'; // Blue (Reset)
-    pText.innerText = `0 of ${ids.length}`;
+    pText.innerText = <?= tj('{current} of {total}') ?>.replace('{current}', 0).replace('{total}', ids.length);
     pPercent.innerText = '0%';
-    pLog.innerHTML = '<div>> Connecting to server...</div>';
+    pLog.innerHTML = '<div>> ' + <?= tj('Connecting to server...') ?> + '</div>';
     
     // Button Status
     btnClose.classList.add('btn-disabled'); 
     btnCancel.classList.remove('btn-disabled');
     
     // "Panic Button" Styling
-    btnCancel.innerHTML = '<i class="fas fa-stop-circle"></i> STOP IMMEDIATELY';
+    btnCancel.innerHTML = '<i class="fas fa-stop-circle"></i> ' + <?= tj('STOP IMMEDIATELY') ?>;
     btnCancel.disabled = false;
     btnCancel.style.backgroundColor = '#dc2626';
     btnCancel.style.color = '#000000';
@@ -516,7 +518,7 @@ async function sendBulkEmail() {
             signal: signal 
         });
 
-        if (!response.ok) throw new Error("Network error");
+        if (!response.ok) throw new Error(<?= tj('Network error') ?>);
 
         const reader = response.body.getReader();
         const decoder = new TextDecoder("utf-8");
@@ -537,10 +539,10 @@ async function sendBulkEmail() {
                         const data = JSON.parse(jsonStr);
                         
                         if (data.status === 'finished') {
-                            logMessage(`DONE: ${data.summary}`, 'var(--success-text)'); // Dark Green
+                            logMessage(<?= tj('DONE: {summary}') ?>.replace('{summary}', data.summary), 'var(--success-text)'); // Dark Green
                             finishProcess(true);
                         } else if (data.status === 'fatal_error') {
-                            logMessage(`ERROR: ${data.message}`, '#dc2626'); // Red
+                            logMessage(<?= tj('ERROR: {message}') ?>.replace('{message}', data.message), '#dc2626'); // Red
                             finishProcess(false);
                         } else {
                             // Standard Log Entry
@@ -550,7 +552,7 @@ async function sendBulkEmail() {
                             if (data.progress) {
                                 const pct = Math.round((data.progress.current / data.progress.total) * 100);
                                 pBar.style.width = `${pct}%`;
-                                pText.innerText = `${data.progress.current} of ${data.progress.total}`;
+                                pText.innerText = <?= tj('{current} of {total}') ?>.replace('{current}', data.progress.current).replace('{total}', data.progress.total);
                                 pPercent.innerText = `${pct}%`;
                             }
                         }
@@ -562,11 +564,11 @@ async function sendBulkEmail() {
     } catch (e) {
         if (e.name === 'AbortError') {
             // EXECUTES ON CANCELLATION
-            logMessage('🛑 ABORTED BY USER! Stopping immediately...', '#dc2626');
+            logMessage('🛑 ' + <?= tj('ABORTED BY USER! Stopping immediately...') ?>, '#dc2626');
             pBar.style.backgroundColor = '#ef4444'; // Bar turns red
-            logMessage('Connection closed. Server will stop processing.', 'var(--text-main)');
+            logMessage(<?= tj('Connection closed. Server will stop processing.') ?>, 'var(--text-main)');
         } else {
-            logMessage(`System Error: ${e.message}`, '#dc2626');
+            logMessage(<?= tj('System Error: {message}') ?>.replace('{message}', e.message), '#dc2626');
         }
         finishProcess(false);
     }
@@ -579,7 +581,7 @@ function cancelBulkEmail() {
         abortController.abort(); 
         
         const btnCancel = document.getElementById('btnCancelProgress');
-        btnCancel.innerHTML = 'STOPPED';
+        btnCancel.innerHTML = <?= tj('STOPPED') ?>;
         btnCancel.classList.add('btn-disabled');
     }
 }
@@ -600,7 +602,7 @@ function finishProcess(success) {
     const btnCancel = document.getElementById('btnCancelProgress');
     
     btnClose.classList.remove('btn-disabled');
-    btnClose.innerText = "Done (Close)";
+    btnClose.innerText = <?= tj('Done (Close)') ?>;
     
     btnCancel.classList.add('btn-disabled');
     btnCancel.disabled = true;
@@ -637,7 +639,7 @@ window.onclick = e => { if(e.target == modal) closeModal(); }
 
 // --- DELETE ALL ---
 function confirmDeleteAll() {
-    if(confirm('Delete ALL signatures displayed in this list?')) document.getElementById('deleteAllForm').submit();
+    if(confirm(<?= tj('Delete ALL signatures displayed in this list?') ?>)) document.getElementById('deleteAllForm').submit();
 }
 
 // --- SCROLLING ---

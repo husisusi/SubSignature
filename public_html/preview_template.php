@@ -31,4 +31,4 @@ if (isEditableTemplateName($filename) && is_file(TEMPLATES_DIR . '/' . $filename
 }
 
 http_response_code(404);
-echo '<h1>Template not found!</h1>';
+echo '<h1>' . et('Template not found!') . '</h1>';

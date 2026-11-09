@@ -18,4 +18,4 @@ if (isEditableTemplateName($filename) && is_file($path) && isPathInside($path, T
 
 http_response_code(404);
 header('Content-Type: text/plain; charset=utf-8');
-echo 'Template not found or access denied.';
+echo t('Template not found or access denied.');

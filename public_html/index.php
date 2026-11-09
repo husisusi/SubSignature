@@ -14,7 +14,7 @@ $notice = '';
 $csrf_token = generateCSRFToken();
 
 if (isset($_GET['timeout'])) {
-    $notice = 'Your session has expired. Please sign in again.';
+    $notice = t('Your session has expired. Please sign in again.');
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -22,16 +22,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $password = is_string($_POST['password'] ?? null) ? $_POST['password'] : '';
 
     if (!verifyCSRFToken($_POST['csrf_token'] ?? '')) {
-        $error = 'Security violation: invalid session. Please reload the page.';
+        $error = t('Security violation: invalid session. Please reload the page.');
         logSecurityEventToDB($db, 'CSRF_FAILED', null, 'Login form');
     } elseif (rateLimitIsBlocked('login_ip', 10, 300)) {
         // Per-IP throttle (counts failed attempts only).
-        $error = 'Too many login attempts. Please try again in 5 minutes.';
+        $error = t('Too many login attempts. Please try again in 5 minutes.');
         logSecurityEventToDB($db, 'RATE_LIMIT_EXCEEDED', null, 'Action: login_ip');
     } elseif (isAccountLocked($db, $username)) {
         // Per-username throttle; applies to unknown names too, so it does not
         // reveal which accounts exist.
-        $error = 'Too many failed attempts for this account. Try again in 15 minutes.';
+        $error = t('Too many failed attempts for this account. Try again in 15 minutes.');
         logSecurityEventToDB($db, 'ACCOUNT_LOCKED', null, 'User: ' . $username);
     } else {
         $stmt = $db->prepare('SELECT id, username, password_hash, role, full_name, email, is_active FROM users WHERE username = ?');
@@ -68,10 +68,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($passwordOk) {
             // Correct password but deactivated account: only now it is safe
             // to tell the user (the caller proved they know the password).
-            $error = 'Your account is deactivated. Please contact the administrator.';
+            $error = t('Your account is deactivated. Please contact the administrator.');
         } else {
             usleep(random_int(100000, 300000));
-            $error = 'Invalid username or password!';
+            $error = t('Invalid username or password!');
         }
         rateLimitHit('login_ip', 300);
         rateLimitHit('login_user', 900, mb_strtolower($username, 'UTF-8'));
@@ -84,11 +84,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 ?>
 <!DOCTYPE html>
-<html lang="en">
+<html lang="<?= e(currentLang()) ?>" dir="<?= e(langDir()) ?>">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Login - SubSignature</title>
+    <title><?= et('Login') ?> - SubSignature</title>
+    <?= i18nHead() ?>
     <script src="<?= assetUrl('js/theme.js') ?>"></script>
     <link rel="stylesheet" href="<?= assetUrl('css/theme.css') ?>">
     <link rel="stylesheet" href="<?= assetUrl('css/all.min.css') ?>">
@@ -155,36 +156,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     </style>
 </head>
 <body>
+    <?= langSwitcher(true) ?>
     <div class="login-box">
         <img src="img/subsig.svg" alt="SubSignature Logo" style="height: 100px; width: auto; object-fit: contain;">
         <div class="logo-text">SubSignature</div>
-        <div class="tagline">Professional Email Signatures</div>
+        <div class="tagline"><?= et('Professional Email Signatures') ?></div>
         
         <?php if (isset($_GET['error']) && $_GET['error'] === 'deactivated'): ?>
             <div class="error-alert">
                 <i class="fas fa-ban"></i>
-                <div><strong>Account Deactivated</strong><br>Contact administrator.</div>
+                <div><strong><?= et('Account Deactivated') ?></strong><br><?= et('Contact administrator.') ?></div>
             </div>
         <?php endif; ?>
         
         <?php if (isset($_GET['success']) && $_GET['success'] == 'registered'): ?>
             <div class="success-alert">
                 <i class="fas fa-check-circle"></i>
-                <div><strong>Registration Successful!</strong><br>Wait for activation.</div>
+                <div><strong><?= et('Registration Successful!') ?></strong><br><?= et('Wait for activation.') ?></div>
             </div>
         <?php endif; ?>
         
         <?php if (isset($_GET['msg']) && $_GET['msg'] == 'loggedout'): ?>
             <div class="success-alert">
                 <i class="fas fa-sign-out-alt"></i>
-                <div><strong>Logged Out</strong><br>See you soon.</div>
+                <div><strong><?= et('Logged Out') ?></strong><br><?= et('See you soon.') ?></div>
             </div>
         <?php endif; ?>
         
         <?php if (isset($_SESSION['failed_logins']) && $_SESSION['failed_logins'] > 0): ?>
             <div class="failed-attempts" id="failedAttempts">
                 <i class="fas fa-exclamation-triangle"></i>
-                Failed attempts: <?php echo (int)$_SESSION['failed_logins']; ?>
+                <?= et('Failed attempts: {count}', ['count' => (int)$_SESSION['failed_logins']]) ?>
             </div>
         <?php endif; ?>
         
@@ -206,18 +208,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <input type="hidden" name="csrf_token" value="<?php echo e($csrf_token); ?>">
             
             <div class="input-group">
-                <label class="input-label"><i class="fas fa-user"></i> Username</label>
-                <input type="text" name="username" class="input-field" placeholder="Enter username" 
+                <label class="input-label"><i class="fas fa-user"></i> <?= et('Username') ?></label>
+                <input type="text" name="username" class="input-field" placeholder="<?= et('Enter username') ?>" 
                        required autofocus autocomplete="username"
                        value="<?php echo isset($_POST['username']) && is_string($_POST['username']) ? e($_POST['username']) : ''; ?>"
                        id="usernameInput">
             </div>
             
             <div class="input-group">
-                <label class="input-label"><i class="fas fa-lock"></i> Password</label>
+                <label class="input-label"><i class="fas fa-lock"></i> <?= et('Password') ?></label>
                 <div class="password-wrapper">
                     <input type="password" name="password" id="password" class="input-field" 
-                           placeholder="Enter password" required autocomplete="current-password">
+                           placeholder="<?= et('Enter password') ?>" required autocomplete="current-password">
                     <button type="button" class="toggle-password" onclick="togglePassword()">
                         <i class="fas fa-eye"></i>
                     </button>
@@ -225,12 +227,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             </div>
             
             <button type="submit" class="login-btn" id="loginBtn">
-                <i class="fas fa-sign-in-alt"></i> Sign In
+                <i class="fas fa-sign-in-alt"></i> <?= et('Sign In') ?>
             </button>
         </form>
         
         <div class="register-link">
-            New user? <a href="register.php">Create account</a>
+            <?= eth('New user? {link}', ['link' => '<a href="register.php">' . et('Create account') . '</a>']) ?>
         </div>
         
     </div>
@@ -260,11 +262,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             return false;
         }
         
-        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Signing in...';
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> ' + <?= tj('Signing in...') ?>;
         btn.disabled = true;
         // Re-enable button after 5 seconds to prevent spam if server is slow
         setTimeout(() => {
-            btn.innerHTML = '<i class="fas fa-sign-in-alt"></i> Sign In';
+            btn.innerHTML = '<i class="fas fa-sign-in-alt"></i> ' + <?= tj('Sign In') ?>;
             btn.disabled = false;
         }, 5000);
         return true;

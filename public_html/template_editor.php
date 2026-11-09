@@ -59,13 +59,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $current_content = $template_content;
 
     if ($template_name === '') {
-        $error = 'Template name is required!';
+        $error = t('Template name is required!');
     } elseif (trim($template_content) === '') {
-        $error = 'Template content is required!';
+        $error = t('Template content is required!');
     } elseif (strlen($template_content) > EDITOR_MAX_BYTES) {
-        $error = 'Template is too large (max 512 KB).';
+        $error = t('Template is too large (max 512 KB).');
     } elseif (strpos($template_content, '<?') !== false) {
-        $error = 'PHP / XML processing instructions are not allowed in templates.';
+        $error = t('PHP / XML processing instructions are not allowed in templates.');
     } else {
         // Active content (scripts, event handlers, javascript: URLs) is removed on save.
         $template_content = sanitizeTemplateHtml($template_content);
@@ -76,32 +76,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $filepath = $templates_dir . '/' . $filename;
 
             if (!isValidTemplateName($filename)) {
-                $error = 'Invalid template name.';
+                $error = t('Invalid template name.');
             } elseif (file_exists($filepath)) {
-                $error = 'Template with this name already exists!';
+                $error = t('Template with this name already exists!');
             } elseif (file_put_contents($filepath, $template_content, LOCK_EX) !== false) {
                 logSecurityEventToDB($db, 'TEMPLATE_CREATED', (int)$_SESSION['user_id'], $filename);
-                $message = 'Template created: ' . $filename;
+                $message = t('Template created: {name}', ['name' => $filename]);
                 $current_file = $filename;
                 $current_content = $template_content;
             } else {
-                $error = 'Could not write file. Check permissions.';
+                $error = t('Could not write file. Check permissions.');
             }
         } elseif ($action === 'save_existing') {
             $safe_filename = basename((string)($_POST['existing_file'] ?? ''));
             $filepath = $templates_dir . '/' . $safe_filename;
 
             if ($safe_filename === '') {
-                $error = 'No template selected for update!';
+                $error = t('No template selected for update!');
             } elseif (!isEditableTemplateName($safe_filename) || !is_file($filepath) || !isPathInside($filepath, $templates_dir)) {
-                $error = 'Security Error: Invalid file path.';
+                $error = t('Security Error: Invalid file path.');
             } elseif (file_put_contents($filepath, $template_content, LOCK_EX) !== false) {
                 logSecurityEventToDB($db, 'TEMPLATE_UPDATED', (int)$_SESSION['user_id'], $safe_filename);
-                $message = 'Template updated: ' . $safe_filename;
+                $message = t('Template updated: {name}', ['name' => $safe_filename]);
                 $current_file = $safe_filename;
                 $current_content = $template_content;
             } else {
-                $error = 'Could not write file. Check permissions.';
+                $error = t('Could not write file. Check permissions.');
             }
         }
     }
@@ -120,7 +120,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['edit'])) {
     if (isEditableTemplateName($requested_file) && is_file($target_path)) {
         $current_file = $requested_file;
     } else {
-        $error = "Template not found or invalid filename.";
+        $error = t('Template not found or invalid filename.');
         // Reset to empty if invalid
         $current_file = ''; 
     }
@@ -151,11 +151,13 @@ foreach (array_merge(listSignatureTemplates(), is_file($templates_dir . '/email_
 }
 ?>
 <!DOCTYPE html>
-<html lang="en">
+<html lang="<?= e(currentLang()) ?>" dir="<?= e(langDir()) ?>">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Template Editor - SubSignature</title>
+    <title><?= et('Template Editor') ?> - SubSignature</title>
+    
+    <?= i18nHead() ?>
     
     <script src="<?= assetUrl('js/theme.js') ?>"></script>
     <link rel="stylesheet" href="<?= assetUrl('css/theme.css') ?>">
@@ -205,25 +207,26 @@ foreach (array_merge(listSignatureTemplates(), is_file($templates_dir . '/email_
     <aside class="sidebar">
         <?php if (file_exists('includes/navbar.php')) include 'includes/navbar.php'; ?>
         <div class="sidebar-footer">
+        <?= langSwitcher() ?>
             <div class="user-profile">
                 <div class="avatar">
                     <?php echo strtoupper(substr($_SESSION['username'], 0, 1)); ?>
                 </div>
                 <div class="user-info">
                     <div><?php echo e($_SESSION['username']); ?></div>
-                    <span>Administrator</span>
+                    <span><?= et('Administrator') ?></span>
                 </div>
             </div>
             <a href="logout.php" class="btn-logout">
-                <i class="fas fa-sign-out-alt"></i> <span>Sign Out</span>
+                <i class="fas fa-sign-out-alt"></i> <span><?= et('Sign Out') ?></span>
             </a>
         </div>
     </aside>
 
     <main class="main-content">
         <header class="page-header">
-            <h2>Template Editor</h2>
-            <p>Design and manage HTML email signature templates.</p>
+            <h2><?= et('Template Editor') ?></h2>
+            <p><?= et('Design and manage HTML email signature templates.') ?></p>
         </header>
 
         <?php if ($message): ?>
@@ -244,13 +247,13 @@ foreach (array_merge(listSignatureTemplates(), is_file($templates_dir . '/email_
                             
                             <div class="form-group" style="margin-bottom: 0;">
                                 <label for="template_selector" style="font-size: 0.8rem; text-transform: uppercase; color: var(--text-muted); font-weight: 700;">
-                                    <i class="fas fa-folder-open"></i> Load Existing
+                                    <i class="fas fa-folder-open"></i> <?= et('Load Existing') ?>
                                 </label>
                                 <select id="template_selector" onchange="loadTemplate(this.value)" style="width: 100%; padding: 0.6rem; border: 1px solid var(--border-strong); border-radius: 6px;">
-                                    <option value="">-- Create New Template --</option>
+                                    <option value=""><?= et('-- Create New Template --') ?></option>
                                     <?php foreach ($templates as $filename => $content): ?>
                                         <?php  
-                                        $display_name = $filename === 'email_notification.html' ? 'Notification mail wrapper' : templateDisplayName($filename);
+                                        $display_name = $filename === 'email_notification.html' ? t('Notification mail wrapper') : templateDisplayName($filename);
                                         // Mark as selected if it matches current file (default or edited)
                                         $selected = ($filename === $current_file) ? 'selected' : '';
                                         ?>
@@ -263,28 +266,32 @@ foreach (array_merge(listSignatureTemplates(), is_file($templates_dir . '/email_
 
                             <div class="form-group" style="margin-bottom: 0;">
                                 <label for="template_name" style="font-size: 0.8rem; text-transform: uppercase; color: var(--text-muted); font-weight: 700;">
-                                    <i class="fas fa-tag"></i> Template Name
+                                    <i class="fas fa-tag"></i> <?= et('Template Name') ?>
                                 </label>
                                 <input type="text" id="template_name" name="template_name"  
                                       value="<?php echo e($current_name); ?>"
-                                      placeholder="e.g. Modern Blue" required 
+                                      placeholder="<?= et('e.g. Modern Blue') ?>" required 
                                       style="width: 100%; padding: 0.6rem; font-weight: 600; border: 1px solid var(--border-strong); border-radius: 6px;">
                             </div>
 
                             <div style="display: flex; gap: 0.5rem;">
-                                <button type="submit" name="action" value="save_new" class="btn btn-primary" title="Create as new file"><i class="fas fa-plus"></i> Create</button>
-                                <button type="submit" name="action" value="save_existing" class="btn btn-success" id="saveExistingBtn" <?php echo empty($current_file) ? 'disabled' : ''; ?> title="Overwrite existing file"><i class="fas fa-save"></i> Save</button>
+                                <button type="submit" name="action" value="save_new" class="btn btn-primary" title="<?= et('Create as new file') ?>"><i class="fas fa-plus"></i> <?= et('Create') ?></button>
+                                <button type="submit" name="action" value="save_existing" class="btn btn-success" id="saveExistingBtn" <?php echo empty($current_file) ? 'disabled' : ''; ?> title="<?= et('Overwrite existing file') ?>"><i class="fas fa-save"></i> <?= et('Save') ?></button>
                             </div>
                         </div>
                         
                         <div class="form-group">
-                            <label style="font-size: 0.85rem; font-weight: 600; color: var(--text-muted);"><i class="fas fa-magic"></i> Insert Dynamic Variable:</label>
+                            <label style="font-size: 0.85rem; font-weight: 600; color: var(--text-muted);"><i class="fas fa-magic"></i> <?= et('Insert Dynamic Variable:') ?></label>
                             <div class="placeholders">
                                 <button type="button" onclick="insertPlaceholder('{{NAME}}')" class="placeholder-btn">{{NAME}}</button>
                                 <button type="button" onclick="insertPlaceholder('{{ROLE}}')" class="placeholder-btn">{{ROLE}}</button>
                                 <button type="button" onclick="insertPlaceholder('{{EMAIL}}')" class="placeholder-btn">{{EMAIL}}</button>
                                 <button type="button" onclick="insertPlaceholder('{{PHONE}}')" class="placeholder-btn">{{PHONE}}</button>
-                                <button type="button" onclick="insertPlaceholder('{{PHONE_CLEAN}}')" class="placeholder-btn" title="Digits only, for tel: links">{{PHONE_CLEAN}}</button>
+                                <button type="button" onclick="insertPlaceholder('{{PHONE_CLEAN}}')" class="placeholder-btn" title="<?= et('Digits only, for tel: links') ?>">{{PHONE_CLEAN}}</button>
+                                <button type="button" onclick="insertPlaceholder('{{COMPANY}}')" class="placeholder-btn" title="<?= et('Company-wide value (System Configuration)') ?>">{{COMPANY}}</button>
+                                <button type="button" onclick="insertPlaceholder('{{WEBSITE}}')" class="placeholder-btn" title="<?= et('Company-wide value (System Configuration)') ?>">{{WEBSITE}}</button>
+                                <button type="button" onclick="insertPlaceholder('{{ADDRESS}}')" class="placeholder-btn" title="<?= et('Company-wide value (System Configuration)') ?>">{{ADDRESS}}</button>
+                                <button type="button" onclick="insertPlaceholder('{{DISCLAIMER}}')" class="placeholder-btn" title="<?= et('Company-wide value (System Configuration)') ?>">{{DISCLAIMER}}</button>
                                 <div style="width: 1px; background: var(--border); margin: 0 5px;"></div>
                                 <button type="button" onclick="insertPlaceholder('<br>')" class="placeholder-btn">&lt;br&gt;</button>
                                 <button type="button" onclick="insertPlaceholder('<hr>')" class="placeholder-btn">&lt;hr&gt;</button>
@@ -293,13 +300,13 @@ foreach (array_merge(listSignatureTemplates(), is_file($templates_dir . '/email_
 
                         <div class="form-group">
                             <textarea id="template_content" name="template_content" class="fallback-editor"><?php echo e($current_content); ?></textarea>
-                            <div id="editor_warning" style="display:none; color:red; margin-top:0.5rem;">Jodit Editor could not load.</div>
+                            <div id="editor_warning" style="display:none; color:red; margin-top:0.5rem;"><?= et('Jodit Editor could not load.') ?></div>
                         </div>
 
                         <div class="form-actions" style="justify-content: space-between; margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--border);">
                             <div>
-                                <button type="button" onclick="clearEditor()" class="btn btn-sm btn-danger" style="background:transparent; color:var(--danger); border:1px solid var(--border);"><i class="fas fa-trash-alt"></i> Clear All</button>
-                                <button type="button" onclick="loadDefaultTemplate()" class="btn btn-sm btn-secondary" style="background:transparent; color:var(--text-muted); border:1px solid var(--border);"><i class="fas fa-undo"></i> Reset Default</button>
+                                <button type="button" onclick="clearEditor()" class="btn btn-sm btn-danger" style="background:transparent; color:var(--danger); border:1px solid var(--border);"><i class="fas fa-trash-alt"></i> <?= et('Clear All') ?></button>
+                                <button type="button" onclick="loadDefaultTemplate()" class="btn btn-sm btn-secondary" style="background:transparent; color:var(--text-muted); border:1px solid var(--border);"><i class="fas fa-undo"></i> <?= et('Reset Default') ?></button>
                             </div>
                             <input type="hidden" id="existing_file" name="existing_file" value="<?php echo e($current_file); ?>">
                         </div>
@@ -308,8 +315,8 @@ foreach (array_merge(listSignatureTemplates(), is_file($templates_dir . '/email_
                 
                 <section class="card">
                     <div class="card-header">
-                        <h3><i class="fas fa-eye"></i> Live Preview</h3>
-                        <button onclick="updatePreview()" class="btn btn-sm btn-secondary"><i class="fas fa-sync-alt"></i> Refresh</button>
+                        <h3><i class="fas fa-eye"></i> <?= et('Live Preview') ?></h3>
+                        <button onclick="updatePreview()" class="btn btn-sm btn-secondary"><i class="fas fa-sync-alt"></i> <?= et('Refresh') ?></button>
                     </div>
                     <div class="preview-wrapper"><div id="live_preview"></div></div>
                 </section>
@@ -319,6 +326,8 @@ foreach (array_merge(listSignatureTemplates(), is_file($templates_dir . '/email_
     </main>
 
     <script>
+    // Company-wide placeholder values ({{COMPANY}} etc., Admin -> System Configuration)
+    var COMPANY_VALUES = <?= json_encode(companyFields(), JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
     var editorInstance = null;
     
     function isDarkTheme() {
@@ -340,6 +349,8 @@ foreach (array_merge(listSignatureTemplates(), is_file($templates_dir . '/email_
                 height: 450,
                 width: '100%',
                 theme: isDarkTheme() ? 'dark' : 'default',
+                // Editor UI language (Jodit falls back to English if it has no pack).
+                language: <?= tj(['zh' => 'zh_cn', 'pt' => 'pt_br'][currentLang()] ?? currentLang()) ?>,
                 
                 // --- CONFIG FOR LOCAL ACE EDITOR ---
                 useAceEditor: true,
@@ -424,7 +435,7 @@ foreach (array_merge(listSignatureTemplates(), is_file($templates_dir . '/email_
         
         fetch('load_template.php?file=' + encodeURIComponent(filename))
             .then(response => {
-                if(!response.ok) throw new Error('Failed to load');
+                if(!response.ok) throw new Error(<?= tj('Failed to load') ?>);
                 return response.text();
             })
             .then(content => {
@@ -441,7 +452,7 @@ foreach (array_merge(listSignatureTemplates(), is_file($templates_dir . '/email_
                 
                 updatePreview();
             })
-            .catch(err => alert('Error loading template: ' + err));
+            .catch(err => alert(<?= tj('Error loading template: {error}') ?>.replace('{error}', err)));
     }
     
     // Resets content to a hardcoded simple fallback
@@ -460,14 +471,19 @@ foreach (array_merge(listSignatureTemplates(), is_file($templates_dir . '/email_
             ROLE: 'Senior Developer',
             EMAIL: 'john.doe@company.com',
             PHONE: '+49 89 12345678',
-            PHONE_CLEAN: '+498912345678'
+            PHONE_CLEAN: '+498912345678',
+            // Company values as configured; sample text while still empty
+            COMPANY: COMPANY_VALUES.company || 'Example Company Ltd.',
+            WEBSITE: COMPANY_VALUES.website || 'https://example.com',
+            ADDRESS: COMPANY_VALUES.address || 'Example Street 1\n12345 Example City',
+            DISCLAIMER: COMPANY_VALUES.disclaimer || 'This email may contain confidential information.'
         });
 
         document.getElementById('live_preview').innerHTML = SafeHtml.sanitize(preview);
     }
     
     function clearEditor() {
-        if(confirm('Clear all content?')) {
+        if(confirm(<?= tj('Clear all content?') ?>)) {
             if(editorInstance) editorInstance.value = '';
             else document.getElementById('template_content').value = '';
         }
@@ -476,7 +492,7 @@ foreach (array_merge(listSignatureTemplates(), is_file($templates_dir . '/email_
     document.getElementById('editorForm').addEventListener('submit', function(e) {
         if(!document.getElementById('template_name').value.trim()) {
             e.preventDefault();
-            alert('Template Name is required');
+            alert(<?= tj('Template Name is required') ?>);
         }
     });
     </script>

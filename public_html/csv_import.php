@@ -72,9 +72,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if (!$is_admin && $target_user_id !== (int)$user_id) {
         // Permission check: users can only import for themselves.
-        $error = 'Access Denied: You can only import for yourself.';
+        $error = t('Access Denied: You can only import for yourself.');
     } elseif (!importTargetExists($db, $target_user_id)) {
-        $error = 'The selected user does not exist or is not active.';
+        $error = t('The selected user does not exist or is not active.');
     }
     // Action: confirm the import of the previewed rows
     elseif ($action === 'import' && isset($_SESSION['preview_data'])) {
@@ -91,22 +91,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             header('Location: process_import.php');
             exit;
         }
-        $error = 'No valid data to import.';
+        $error = t('No valid data to import.');
     }
     // Action: upload + preview
     elseif ($action === 'preview' && isset($_FILES['csv_file'])) {
         $upload = $_FILES['csv_file'];
         if (empty($upload['tmp_name']) || !is_uploaded_file($upload['tmp_name']) || ($upload['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
-            $error = 'No file selected or upload failed.';
+            $error = t('No file selected or upload failed.');
         } elseif ($upload['size'] > CSV_MAX_FILE_BYTES) {
-            $error = 'File too large (Max 2MB).';
+            $error = t('File too large (Max 2MB).');
         } else {
             $file_type = function_exists('mime_content_type') ? mime_content_type($upload['tmp_name']) : 'text/plain';
             if (!in_array($file_type, ['text/plain', 'text/csv', 'application/csv', 'application/vnd.ms-excel', 'inode/x-empty'], true)
                 || !preg_match('/\.csv$/i', (string)$upload['name'])) {
-                $error = 'Invalid file type. Please upload a CSV file.';
+                $error = t('Invalid file type. Please upload a CSV file.');
             } elseif (($handle = fopen($upload['tmp_name'], 'r')) === false) {
-                $error = 'The file could not be read.';
+                $error = t('The file could not be read.');
             } else {
                 // Skip a UTF-8 BOM and detect the delimiter (Excel in German locales writes ";")
                 $bom = fread($handle, 3);
@@ -118,7 +118,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 $headers = fgetcsv($handle, 4096, $delimiter);
                 if (!$headers) {
-                    $error = 'Empty or invalid CSV file.';
+                    $error = t('Empty or invalid CSV file.');
                 } else {
                     $expected_columns = ['name', 'role', 'email', 'phone'];
                     $column_map = [];
@@ -128,14 +128,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     }
                     $missing = array_diff($expected_columns, array_keys($column_map));
                     if ($missing) {
-                        $error = 'Missing required columns: ' . implode(', ', $missing);
+                        $error = t('Missing required columns: {columns}', ['columns' => implode(', ', $missing)]);
                     } else {
                         $row_num = 1;
                         while (($data = fgetcsv($handle, 4096, $delimiter)) !== false) {
                             $row_num++;
                             if (count(array_filter($data, function ($v) { return trim((string)$v) !== ''; })) === 0) continue; // skip empty lines
                             if (count($preview_data) >= CSV_MAX_ROWS) {
-                                $error = 'Only the first ' . CSV_MAX_ROWS . ' rows are processed per import.';
+                                $error = t('Only the first {max} rows are processed per import.', ['max' => CSV_MAX_ROWS]);
                                 break;
                             }
 
@@ -183,11 +183,12 @@ if (empty($preview_data) && isset($_SESSION['preview_data'])) {
 $csrf_token = generateCSRFToken();
 ?>
 <!DOCTYPE html>
-<html lang="en">
+<html lang="<?= e(currentLang()) ?>" dir="<?= e(langDir()) ?>">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CSV Import - SubSignature</title>
+    <title><?= et('CSV Import') ?> - SubSignature</title>
+    <?= i18nHead() ?>
     <script src="<?= assetUrl('js/theme.js') ?>"></script>
     <link rel="stylesheet" href="<?= assetUrl('css/theme.css') ?>">
     <link rel="stylesheet" href="<?= assetUrl('css/style.css') ?>">
@@ -270,22 +271,23 @@ $csrf_token = generateCSRFToken();
     <aside class="sidebar">
         <?php include 'includes/navbar.php'; ?>
         <div class="sidebar-footer">
+        <?= langSwitcher() ?>
             <div class="user-profile">
                 <div class="avatar"><?php echo strtoupper(substr($_SESSION['username'], 0, 1)); ?></div>
                 <div class="user-info">
                     <div><?php echo e($_SESSION['username']); ?></div>
-                    <span><?php echo isAdmin() ? 'Administrator' : 'User'; ?></span>
+                    <span><?= isAdmin() ? et('Administrator') : et('User') ?></span>
                 </div>
             </div>
-            <a href="logout.php" class="btn-logout"><i class="fas fa-sign-out-alt"></i> <span>Sign Out</span></a>
+            <a href="logout.php" class="btn-logout"><i class="fas fa-sign-out-alt"></i> <span><?= et('Sign Out') ?></span></a>
             </div>
     </aside>
 
     <main class="main-content">
         
         <header class="page-header">
-            <h2>Batch Import</h2>
-            <p>Upload a CSV file to generate multiple signatures at once.</p>
+            <h2><?= et('Batch Import') ?></h2>
+            <p><?= et('Upload a CSV file to generate multiple signatures at once.') ?></p>
         </header>
 
         <?php if ($error): ?>
@@ -293,12 +295,12 @@ $csrf_token = generateCSRFToken();
         <?php endif; ?>
         
         <?php if (isset($_GET['success'])): ?>
-            <div class="alert alert-success"><i class="fas fa-check-circle"></i> Successfully imported <?php echo (int)$_GET['success']; ?> signatures!</div>
+            <div class="alert alert-success"><i class="fas fa-check-circle"></i> <?= et('Successfully imported {count} signatures!', ['count' => (int)$_GET['success']]) ?></div>
         <?php endif; ?>
 
         <section class="card">
             <div class="card-header">
-                <h3><i class="fas fa-cloud-upload-alt"></i> Import Configuration</h3>
+                <h3><i class="fas fa-cloud-upload-alt"></i> <?= et('Import Configuration') ?></h3>
             </div>
             
             <form method="POST" enctype="multipart/form-data" id="uploadForm">
@@ -306,20 +308,20 @@ $csrf_token = generateCSRFToken();
                 
                 <div class="form-grid">
                     <div class="form-group" style="grid-column: 1 / -1;">
-                        <label>CSV File Upload</label>
+                        <label><?= et('CSV File Upload') ?></label>
                         <div class="upload-area" id="dropZone">
                             <input type="file" id="csv_file" name="csv_file" accept=".csv,text/csv" required>
                             
                             <div class="upload-content">
                                 <i class="fas fa-file-csv upload-icon"></i>
-                                <div class="upload-text">Click to upload or drag & drop</div>
-                                <div class="upload-hint">Max file size: 2MB. Format: UTF-8 CSV</div>
+                                <div class="upload-text"><?= et('Click to upload or drag & drop') ?></div>
+                                <div class="upload-hint"><?= et('Max file size: 2MB. Format: UTF-8 CSV') ?></div>
                             </div>
                             
                             <div class="file-selected-info" id="fileInfo">
                                 <i class="fas fa-check-circle file-icon"></i>
                                 <div>
-                                    <div class="filename" id="fileNameDisplay">data.csv</div>
+                                    <div class="filename" id="fileNameDisplay"><?= et('data.csv') ?></div>
                                     <div class="filesize" id="fileSizeDisplay">12 KB</div>
                                 </div>
                             </div>
@@ -327,7 +329,7 @@ $csrf_token = generateCSRFToken();
                     </div>
                     
                     <div class="form-group">
-                        <label for="template">Signature Template</label>
+                        <label for="template"><?= et('Signature Template') ?></label>
                         <select id="template" name="template" required>
                             <?php foreach ($templates as $filename => $display_name): ?>
                                 <option value="<?php echo e($filename); ?>" <?php echo ($filename == $form_template) ? 'selected' : ''; ?>>
@@ -339,7 +341,7 @@ $csrf_token = generateCSRFToken();
 
                     <?php if ($is_admin && !empty($users)): ?>
                     <div class="form-group">
-                        <label for="user_id">Assign to User</label>
+                        <label for="user_id"><?= et('Assign to User') ?></label>
                         <select id="user_id" name="user_id">
                             <?php foreach ($users as $user): ?>
                                 <option value="<?php echo (int)$user['id']; ?>" <?php echo ($user['id'] == $form_user_id) ? 'selected' : ''; ?>>
@@ -355,8 +357,8 @@ $csrf_token = generateCSRFToken();
                 
                 <div class="form-actions">
                     <input type="hidden" name="action" value="preview">
-                    <button type="button" onclick="resetForm()" class="btn btn-danger"><i class="fas fa-trash-alt"></i> Clear</button>
-                    <button type="submit" class="btn btn-primary"><i class="fas fa-eye"></i> Preview Import</button>
+                    <button type="button" onclick="resetForm()" class="btn btn-danger"><i class="fas fa-trash-alt"></i> <?= et('Clear') ?></button>
+                    <button type="submit" class="btn btn-primary"><i class="fas fa-eye"></i> <?= et('Preview Import') ?></button>
                 </div>
             </form>
         </section>
@@ -364,7 +366,7 @@ $csrf_token = generateCSRFToken();
         <?php if ($total_rows > 0): ?>
         <section class="card">
             <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
-                <h3><i class="fas fa-table"></i> Data Validation</h3>
+                <h3><i class="fas fa-table"></i> <?= et('Data Validation') ?></h3>
                 
                 <?php if ($valid_rows > 0): ?>
                 <form method="POST" style="margin:0;">
@@ -374,16 +376,16 @@ $csrf_token = generateCSRFToken();
                     <input type="hidden" name="action" value="import">
                     
                     <button type="submit" class="btn btn-success btn-sm" style="font-size: 0.9rem;">
-                        <i class="fas fa-file-import"></i> Start Import
+                        <i class="fas fa-file-import"></i> <?= et('Start Import') ?>
                     </button>
                 </form>
                 <?php endif; ?>
             </div>
             
             <div class="preview-stats">
-                <div class="stat-badge stat-valid"><i class="fas fa-check-circle"></i> <?php echo $valid_rows; ?> Valid</div>
-                <div class="stat-badge stat-error"><i class="fas fa-exclamation-triangle"></i> <?php echo $total_rows - $valid_rows; ?> Errors</div>
-                <div class="stat-badge stat-total"><i class="fas fa-list"></i> <?php echo $total_rows; ?> Total</div>
+                <div class="stat-badge stat-valid"><i class="fas fa-check-circle"></i> <?= et('{count} Valid', ['count' => $valid_rows]) ?></div>
+                <div class="stat-badge stat-error"><i class="fas fa-exclamation-triangle"></i> <?= et('{count} Errors', ['count' => $total_rows - $valid_rows]) ?></div>
+                <div class="stat-badge stat-total"><i class="fas fa-list"></i> <?= et('{count} Total', ['count' => $total_rows]) ?></div>
             </div>
 
             <div class="table-responsive">
@@ -391,12 +393,12 @@ $csrf_token = generateCSRFToken();
                     <thead>
                         <tr>
                             <th style="width:50px">#</th>
-                            <th>Name</th>
-                            <th>Role</th>
-                            <th>Email</th>
-                            <th>Phone</th>
-                            <th>Status</th>
-                            <th>Issues</th>
+                            <th><?= et('Name') ?></th>
+                            <th><?= et('Role') ?></th>
+                            <th><?= et('Email') ?></th>
+                            <th><?= et('Phone') ?></th>
+                            <th><?= et('Status') ?></th>
+                            <th><?= et('Issues') ?></th>
                         </tr>
                     </thead>
                     <tbody>
@@ -437,8 +439,8 @@ $csrf_token = generateCSRFToken();
                         <input type="hidden" name="template" value="<?php echo e($form_template); ?>">
                         <input type="hidden" name="action" value="import">
                         
-                        <button type="button" onclick="window.location.href='csv_import.php?cancel=1'" class="btn btn-danger"><i class="fas fa-times"></i> Cancel</button>
-                        <button type="submit" class="btn btn-success"><i class="fas fa-file-import"></i> Confirm & Import</button>
+                        <button type="button" onclick="window.location.href='csv_import.php?cancel=1'" class="btn btn-danger"><i class="fas fa-times"></i> <?= et('Cancel') ?></button>
+                        <button type="submit" class="btn btn-success"><i class="fas fa-file-import"></i> <?= et('Confirm & Import') ?></button>
                     </form>
                 </div>
             <?php endif; ?>
@@ -449,11 +451,11 @@ $csrf_token = generateCSRFToken();
             <div class="help-grid">
                 <button onclick="downloadSample()" class="help-card">
                     <span class="help-icon"><i class="fas fa-download"></i></span>
-                    <span class="help-text">Download Sample CSV</span>
+                    <span class="help-text"><?= et('Download Sample CSV') ?></span>
                 </button>
                 <button onclick="showCSVGuide()" class="help-card">
                     <span class="help-icon"><i class="fas fa-info-circle"></i></span>
-                    <span class="help-text">View Format Guide</span>
+                    <span class="help-text"><?= et('View Format Guide') ?></span>
                 </button>
             </div>
         </section>
@@ -476,7 +478,7 @@ $csrf_token = generateCSRFToken();
             
             // Security: Client-side size check
             if (file.size > 2 * 1024 * 1024) {
-                alert('File is too large! Maximum allowed is 2MB.');
+                alert(<?= tj('File is too large! Maximum allowed is 2MB.') ?>);
                 this.value = '';
                 return;
             }
@@ -494,14 +496,25 @@ $csrf_token = generateCSRFToken();
 
     // Reset Form
     function resetForm() {
-        if (confirm('Clear form settings?')) {
+        if (confirm(<?= tj('Clear form settings?') ?>)) {
             window.location.href = 'csv_import.php?cancel=1';
         }
     }
     
     // Help Functions
     function showCSVGuide() {
-        alert(`CSV REQUIREMENTS:\n\n1. Required Headers:\n   name, role, email, phone\n\n2. Format:\n   - Comma separated values\n   - UTF-8 Encoding\n\nExample:\nname,role,email,phone\nJohn Doe,Manager,john@test.com,+123456789`);
+        alert(<?= tj('CSV REQUIREMENTS:
+
+1. Required Headers:
+   name, role, email, phone
+
+2. Format:
+   - Comma separated values
+   - UTF-8 Encoding
+
+Example:
+name,role,email,phone
+John Doe,Manager,john@test.com,+123456789') ?>);
     }
     
     function downloadSample() {
@@ -522,7 +535,7 @@ $csrf_token = generateCSRFToken();
     document.getElementById('uploadForm').addEventListener('submit', function() {
         if(fileInput.files.length === 0) return; // Don't spin if no file
         const btn = this.querySelector('button[type="submit"]');
-        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processing...';
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> ' + <?= tj('Processing...') ?>;
         btn.disabled = true;
     });
     </script>

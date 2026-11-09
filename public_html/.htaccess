@@ -7,7 +7,8 @@ RewriteEngine On
 # Internal directories are never served directly.
 #   includes:  application code and configuration
 #   templates: signature templates (read by PHP only; previews go through load_template.php)
-RewriteRule ^(includes|templates)(/|$) - [F,L]
+#   lang:      translation files (read by PHP only)
+RewriteRule ^(includes|templates|lang)(/|$) - [F,L]
 
 # Never serve dotfiles, databases, logs, keys or backups, wherever they are.
 <FilesMatch "(^\.|\.(db|sqlite|sqlite3|log|key|bak|old|orig|sql|lock|md)$)">

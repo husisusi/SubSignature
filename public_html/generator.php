@@ -30,7 +30,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt->bindValue(5, $fields['phone'], SQLITE3_TEXT);
             $stmt->bindValue(6, $template, SQLITE3_TEXT);
             $stmt->execute();
-            setFlash('success', 'Signature saved successfully!');
+            setFlash('success', t('Signature saved successfully!'));
         }
         header('Location: generator.php');
         exit;
@@ -40,7 +40,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmt = $db->prepare('DELETE FROM user_signatures WHERE user_id = ?');
         $stmt->bindValue(1, $user_id, SQLITE3_INTEGER);
         $stmt->execute();
-        setFlash('success', 'All signatures deleted successfully!');
+        setFlash('success', t('All signatures deleted successfully!'));
         header('Location: generator.php');
         exit;
     }
@@ -111,11 +111,12 @@ while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
 }
 ?>
 <!DOCTYPE html>
-<html lang="en">
+<html lang="<?= e(currentLang()) ?>" dir="<?= e(langDir()) ?>">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Signature Generator</title>
+    <title><?= et('Signature Generator') ?></title>
+    <?= i18nHead() ?>
     <script src="<?= assetUrl('js/theme.js') ?>"></script>
     <link rel="stylesheet" href="<?= assetUrl('css/theme.css') ?>">
     <link rel="stylesheet" href="<?= assetUrl('css/style.css') ?>">
@@ -124,7 +125,7 @@ while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
     
     <style>
         /* --- GENERAL --- */
-        .visually-hidden { position: absolute; left: -9999px; opacity: 0; }
+        .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); opacity: 0; }
         .alert { padding: 1rem; border-radius: 8px; margin-bottom: 1.5rem; display: flex; gap: 0.75rem; align-items: center; }
         .alert-success { background: var(--success-bg); color: var(--success-text); border: 1px solid var(--success-border); }
         .alert-error { background: var(--danger-bg); color: var(--danger-text); border: 1px solid var(--danger-border); }
@@ -224,22 +225,23 @@ while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
     <aside class="sidebar">
         <?php if (file_exists('includes/navbar.php')) include 'includes/navbar.php'; ?>
         <div class="sidebar-footer">
+        <?= langSwitcher() ?>
             <div class="user-profile">
                 <div class="avatar"><?php echo strtoupper(substr($_SESSION['username'], 0, 1)); ?></div>
                 <div class="user-info">
                     <div><?php echo e($_SESSION['username']); ?></div>
-                    <span><?php echo isAdmin() ? 'Administrator' : 'User'; ?></span>
+                    <span><?= isAdmin() ? et('Administrator') : et('User') ?></span>
                 </div>
             </div>
-            <a href="logout.php" class="btn-logout"><i class="fas fa-sign-out-alt"></i> <span>Sign Out</span></a>
+            <a href="logout.php" class="btn-logout"><i class="fas fa-sign-out-alt"></i> <span><?= et('Sign Out') ?></span></a>
         </div>
     </aside>
 
     <main class="main-content">
         
         <header class="page-header">
-            <h2>Signature Generator</h2>
-            <p>Create and manage your email signatures.</p>
+            <h2><?= et('Signature Generator') ?></h2>
+            <p><?= et('Create and manage your email signatures.') ?></p>
         </header>
 
         <?php if ($message): ?>
@@ -251,7 +253,7 @@ while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
 
         <section class="card" id="create-form">
             <div class="card-header">
-                <h3><i class="far fa-edit"></i> New Signature</h3>
+                <h3><i class="far fa-edit"></i> <?= et('New Signature') ?></h3>
             </div>
             
             <form action="generator.php" method="POST" id="signatureForm">
@@ -261,7 +263,7 @@ while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
                     
                     <div class="form-column">
                         <div class="form-group">
-                            <label>Template</label>
+                            <label><?= et('Template') ?></label>
                             <select name="template" id="inp_template" required>
                                 <?php foreach ($templates as $template): ?>
                                     <?php
@@ -276,36 +278,36 @@ while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
                         </div>
 
                         <div class="form-group">
-                            <label>Full Name</label>
+                            <label><?= et('Full Name') ?></label>
                             <input type="text" id="inp_name" name="name" required maxlength="100" 
-                                   value="<?php echo e($defaultName); ?>" placeholder="e.g. Sarah Smith">
+                                   value="<?php echo e($defaultName); ?>" placeholder="<?= et('e.g. Sarah Smith') ?>">
                         </div>
 
                         <div class="form-group">
-                            <label>Job Title / Position</label>
+                            <label><?= et('Job Title / Position') ?></label>
                             <input type="text" id="inp_role" name="role" required maxlength="100" 
-                                   value="<?php echo e($defaultRole); ?>" placeholder="e.g. CEO">
+                                   value="<?php echo e($defaultRole); ?>" placeholder="<?= et('e.g. CEO') ?>">
                         </div>
 
                         <div class="form-group">
-                            <label>Email Address</label>
+                            <label><?= et('Email Address') ?></label>
                             <input type="email" id="inp_email" name="email" required maxlength="254" 
                                    value="<?php echo e($defaultEmail); ?>" placeholder="sarah@company.com">
                         </div>
 
                         <div class="form-group">
-                            <label>Phone Number</label>
+                            <label><?= et('Phone Number') ?></label>
                             <input type="tel" id="inp_phone" name="phone" required maxlength="30" 
                                    value="<?php echo e($defaultPhone); ?>" placeholder="+49 123 456789">
                         </div>
 
                         <div class="form-actions">
                             <button type="submit" name="action" value="save" class="btn btn-primary">
-                                <i class="fas fa-save"></i> Save Signature
+                                <i class="fas fa-save"></i> <?= et('Save Signature') ?>
                             </button>
 
                             <button type="button" id="btn-copy" class="btn btn-secondary">
-                                <i class="fas fa-code"></i> Copy HTML Code
+                                <i class="fas fa-code"></i> <?= et('Copy HTML Code') ?>
                             </button>
                         </div>
                         
@@ -314,12 +316,12 @@ while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
                     <div class="preview-column">
                         <div class="live-preview-box">
                             <div style="width:100%">
-                                <div class="preview-header"><i class="fas fa-eye"></i> Live Preview</div>
+                                <div class="preview-header"><i class="fas fa-eye"></i> <?= et('Live Preview') ?></div>
                                 <div class="preview-paper">
                                     <div id="live-render-area"></div>
                                 </div>
                                 <div style="text-align:center; margin-top:10px; font-size:0.8rem; color:var(--text-faint);">
-                                    Updates automatically as you type
+                                    <?= et('Updates automatically as you type') ?>
                                 </div>
                             </div>
                         </div>
@@ -331,12 +333,12 @@ while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
 
         <section class="card">
             <div class="card-header">
-                <h3>My Signatures (<?php echo $totalSignatures; ?>)</h3>
+                <h3><?= et('My Signatures ({count})', ['count' => $totalSignatures]) ?></h3>
                 <div style="display:flex; gap:0.5rem">
                 <?php if ($totalSignatures > 0): ?>
                     <a href="download_all.php" class="btn btn-sm btn-success"><i class="fas fa-file-archive"></i> ZIP</a>
                     <?php if (empty($search)): ?>
-                    <button type="button" data-post="generator.php" data-params='{"action":"delete_all"}' data-confirm="Delete ALL signatures?" class="btn btn-sm btn-danger"><i class="fas fa-trash-alt"></i> Delete All</button>
+                    <button type="button" data-post="generator.php" data-params='{"action":"delete_all"}' data-confirm="<?= et('Delete ALL signatures?') ?>" class="btn btn-sm btn-danger"><i class="fas fa-trash-alt"></i> <?= et('Delete All') ?></button>
                     <?php endif; ?>
                 <?php endif; ?>
                 </div>
@@ -344,9 +346,9 @@ while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
 
             <div class="search-bar-container">
                 <form method="GET" action="generator.php" style="width:100%; display:flex; gap:10px;">
-                    <input type="text" name="search" class="search-input" placeholder="Search..." value="<?php echo e($search); ?>">
+                    <input type="text" name="search" class="search-input" placeholder="<?= et('Search...') ?>" value="<?php echo e($search); ?>">
                     <button type="submit" class="btn btn-primary"><i class="fas fa-search"></i></button>
-                    <?php if (!empty($search)): ?><a href="generator.php" class="btn btn-secondary">Clear</a><?php endif; ?>
+                    <?php if (!empty($search)): ?><a href="generator.php" class="btn btn-secondary"><?= et('Clear') ?></a><?php endif; ?>
                 </form>
             </div>
 
@@ -369,13 +371,13 @@ while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
                             <div class="sig-actions" style="display:flex; gap:0.5rem;">
                                 <?php if ($encodedHtml !== ''): ?>
                                     <textarea id="source-<?php echo (int)$sig['id']; ?>" class="visually-hidden"><?php echo $encodedHtml; ?></textarea>
-                                    <button data-preview-id="<?php echo (int)$sig['id']; ?>" class="btn btn-sm btn-secondary" style="background:var(--bg-white); border:1px solid var(--border-strong);" title="Preview">
+                                    <button data-preview-id="<?php echo (int)$sig['id']; ?>" class="btn btn-sm btn-secondary" style="background:var(--bg-white); border:1px solid var(--border-strong);" title="<?= et('Preview') ?>">
                                         <i class="fas fa-eye"></i>
                                     </button>
                                 <?php endif; ?>
 
                                 <a href="download.php?id=<?php echo (int)$sig['id']; ?>" class="btn btn-sm btn-primary"><i class="fas fa-download"></i></a>
-                                <button type="button" data-post="generate.php" data-params='{"action":"delete","id":"<?php echo (int)$sig['id']; ?>"}' data-confirm="Delete?" class="btn btn-sm btn-danger"><i class="fas fa-trash"></i></button>
+                                <button type="button" data-post="generate.php" data-params='{"action":"delete","id":"<?php echo (int)$sig['id']; ?>"}' data-confirm="<?= et('Delete?') ?>" class="btn btn-sm btn-danger"><i class="fas fa-trash"></i></button>
                             </div>
                         </div>
                     </div>
@@ -408,14 +410,14 @@ while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
     <div id="previewModal" class="modal-overlay">
         <div class="modal-box">
             <div class="modal-header">
-                <h3 style="margin:0">Signature Preview</h3>
+                <h3 style="margin:0"><?= et('Signature Preview') ?></h3>
                 <button class="close-modal-btn" id="modalCloseX" type="button">&times;</button>
             </div>
             <div class="modal-body">
                 <iframe id="modalFrame" class="modal-iframe" sandbox=""></iframe>
             </div>
             <div class="modal-footer">
-                <button class="btn btn-sm btn-secondary" id="modalCloseBtn" type="button">Close</button>
+                <button class="btn btn-sm btn-secondary" id="modalCloseBtn" type="button"><?= et('Close') ?></button>
             </div>
         </div>
     </div>
@@ -423,6 +425,9 @@ while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
     <script src="<?= assetUrl('js/post-action.js') ?>"></script>
     <script src="<?= assetUrl('js/safe-html.js') ?>"></script>
     <script>
+        // Company-wide placeholder values ({{COMPANY}} etc., Admin -> System Configuration)
+        const COMPANY_VALUES = <?= json_encode(companyFields(), JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
+
         // ---------------------------------------------------------
         // 1. LIVE PREVIEW LOGIC
         // ---------------------------------------------------------
@@ -450,10 +455,14 @@ while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
             // the result is sanitised once more before it is inserted into the page.
             const phone = inputs.phone.value || '+1 234 567 890';
             const html = SafeHtml.fill(template, {
-                NAME: inputs.name.value || 'Your Name',
-                ROLE: inputs.role.value || 'Job Title',
+                NAME: inputs.name.value || <?= tj('Your Name') ?>,
+                ROLE: inputs.role.value || <?= tj('Job Title') ?>,
                 EMAIL: inputs.email.value || 'email@example.com',
                 PHONE: phone,
+                COMPANY: COMPANY_VALUES.company,
+                WEBSITE: COMPANY_VALUES.website,
+                ADDRESS: COMPANY_VALUES.address,
+                DISCLAIMER: COMPANY_VALUES.disclaimer,
                 PHONE_CLEAN: (inputs.phone.value || phone).replace(/[^0-9+]/g, '')
             });
             renderArea.innerHTML = SafeHtml.sanitize(html);
@@ -584,15 +593,15 @@ while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
                     // User Feedback
                     if (successful) {
                         const originalText = btnCopy.innerHTML;
-                        btnCopy.innerHTML = '<i class="fas fa-check"></i> HTML Copied!';
+                        btnCopy.innerHTML = '<i class="fas fa-check"></i> ' + <?= tj('HTML Copied!') ?>;
                         setTimeout(() => btnCopy.innerHTML = originalText, 2000);
                     } else {
-                        alert("Could not copy HTML code. Please copy manually.");
+                        alert(<?= tj('Could not copy HTML code. Please copy manually.') ?>);
                     }
 
                 } catch (err) {
                     console.error('Copy failed:', err);
-                    alert("Error copying code.");
+                    alert(<?= tj('Error copying code.') ?>);
                 }
             });
         }

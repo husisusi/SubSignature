@@ -137,6 +137,44 @@ function cleanText($value, int $maxLength = 255): string
 }
 
 /**
+ * Like cleanText() but keeps line breaks (for addresses, disclaimers).
+ */
+function cleanMultilineText($value, int $maxLength = 1000): string
+{
+    $value = str_replace(["\r\n", "\r"], "\n", (string)$value);
+    // Strip control characters except newline, collapse blank-line runs.
+    $value = preg_replace('/[\x00-\x09\x0B-\x1F\x7F]/u', ' ', $value) ?? '';
+    $lines = array_map(function ($line) {
+        return trim(preg_replace('/[ \t]+/u', ' ', $line) ?? '');
+    }, explode("\n", $value));
+    $value = trim(preg_replace("/\n{3,}/", "\n\n", implode("\n", $lines)) ?? '');
+    if (mb_strlen($value, 'UTF-8') > $maxLength) {
+        $value = mb_substr($value, 0, $maxLength, 'UTF-8');
+    }
+    return $value;
+}
+
+/**
+ * Company-wide values for the placeholders {{COMPANY}}, {{WEBSITE}},
+ * {{ADDRESS}} and {{DISCLAIMER}} (Admin -> System Configuration).
+ * Keys are lower case; values are plain text (escape when rendering).
+ */
+function companyFields(): array
+{
+    static $fields = null;
+    if ($fields === null) {
+        global $db;
+        $fields = ['company' => '', 'website' => '', 'address' => '', 'disclaimer' => ''];
+        if (isset($db) && $db instanceof SQLite3) {
+            foreach ($fields as $key => $_) {
+                $fields[$key] = getSetting($db, 'company_' . $key, '');
+            }
+        }
+    }
+    return $fields;
+}
+
+/**
  * Validates and normalises the four signature fields.
  *
  * @param array $input             Raw input with keys name, role, email, phone
@@ -154,21 +192,21 @@ function validateSignatureFields(array $input, bool $requireRoleAndPhone = true)
     $errors = [];
 
     if ($clean['name'] === '') {
-        $errors[] = 'Name is required.';
+        $errors[] = t('Name is required.');
     }
     if ($requireRoleAndPhone && $clean['role'] === '') {
-        $errors[] = 'Role is required.';
+        $errors[] = t('Role is required.');
     }
     if ($clean['email'] === '' || !filter_var($clean['email'], FILTER_VALIDATE_EMAIL)) {
-        $errors[] = 'A valid email address is required.';
+        $errors[] = t('A valid email address is required.');
     }
     if ($requireRoleAndPhone && $clean['phone'] === '') {
-        $errors[] = 'Phone number is required.';
+        $errors[] = t('Phone number is required.');
     }
     if ($clean['phone'] !== '') {
         $digits = preg_replace('/\D/', '', $clean['phone']);
         if (!preg_match('/^[\+\d\s\-\(\)\/\.]{5,30}$/', $clean['phone']) || strlen($digits) < 3) {
-            $errors[] = 'Invalid phone number format.';
+            $errors[] = t('Invalid phone number format.');
         }
     }
     return [$clean, $errors];
@@ -182,11 +220,11 @@ function validatePasswordPolicy($password): array
 {
     $password = (string)$password;
     $errors = [];
-    if (strlen($password) < 8) $errors[] = 'Password must be at least 8 characters';
-    if (strlen($password) > 200) $errors[] = 'Password must not be longer than 200 characters';
-    if (!preg_match('/[A-Z]/', $password)) $errors[] = 'At least one uppercase letter';
-    if (!preg_match('/[a-z]/', $password)) $errors[] = 'At least one lowercase letter';
-    if (!preg_match('/[0-9]/', $password)) $errors[] = 'At least one number';
+    if (strlen($password) < 8) $errors[] = t('Password must be at least 8 characters');
+    if (strlen($password) > 200) $errors[] = t('Password must not be longer than 200 characters');
+    if (!preg_match('/[A-Z]/', $password)) $errors[] = t('At least one uppercase letter');
+    if (!preg_match('/[a-z]/', $password)) $errors[] = t('At least one lowercase letter');
+    if (!preg_match('/[0-9]/', $password)) $errors[] = t('At least one number');
     return $errors;
 }
 
@@ -325,17 +363,24 @@ function loadSignatureTemplate($name): string
  * replacement happens in a single pass, so a value like "{{EMAIL}}" inside a
  * name is not expanded a second time.
  *
- * Supported placeholders: {{NAME}} {{ROLE}} {{EMAIL}} {{PHONE}} {{PHONE_CLEAN}}
+ * Per-signature placeholders: {{NAME}} {{ROLE}} {{EMAIL}} {{PHONE}} {{PHONE_CLEAN}}
+ * Company-wide placeholders:   {{COMPANY}} {{WEBSITE}} {{ADDRESS}} {{DISCLAIMER}}
+ * (ADDRESS and DISCLAIMER keep their line breaks as <br>.)
  */
 function renderSignatureHtml(string $template, array $fields): string
 {
     $phone = (string)($fields['phone'] ?? '');
+    $company = companyFields();
     return strtr($template, [
         '{{NAME}}'        => e($fields['name'] ?? ''),
         '{{ROLE}}'        => e($fields['role'] ?? ''),
         '{{EMAIL}}'       => e($fields['email'] ?? ''),
         '{{PHONE}}'       => e($phone),
         '{{PHONE_CLEAN}}' => e(preg_replace('/[^0-9+]/', '', $phone)),
+        '{{COMPANY}}'     => e($company['company']),
+        '{{WEBSITE}}'     => e($company['website']),
+        '{{ADDRESS}}'     => nl2br(e($company['address']), false),
+        '{{DISCLAIMER}}'  => nl2br(e($company['disclaimer']), false),
     ]);
 }
 
@@ -533,3 +578,57 @@ function pruneOldLogs($db): void
         }
     }
 }
+
+// ---------------------------------------------------------------------
+// 9. SYSTEM HEALTH (Admin -> System Configuration)
+// ---------------------------------------------------------------------
+
+/**
+ * Runs read-only checks of the installation.
+ *
+ * @return array<int, array{label: string, status: string, detail: string}> status: ok | warn | fail
+ */
+function systemHealthChecks(): array
+{
+    global $db;
+    $rows = [];
+    $add = function (string $label, string $status, string $detail = '') use (&$rows) {
+        $rows[] = ['label' => $label, 'status' => $status, 'detail' => $detail];
+    };
+
+    $add(t('PHP version'), version_compare(PHP_VERSION, '7.4.0', '>=') ? 'ok' : 'fail', PHP_VERSION);
+    foreach (['sqlite3' => true, 'mbstring' => true, 'zip' => true, 'json' => true, 'ldap' => false] as $ext => $required) {
+        $loaded = extension_loaded($ext);
+        $add(t('PHP extension: {name}', ['name' => $ext]), $loaded ? 'ok' : ($required ? 'fail' : 'warn'),
+            $loaded ? t('loaded') : ($required ? t('missing') : t('missing (optional, needed for the LDAP import)')));
+    }
+    $add(t('Password encryption'), function_exists('sodium_crypto_secretbox') ? 'ok' : (extension_loaded('openssl') ? 'ok' : 'fail'),
+        function_exists('sodium_crypto_secretbox') ? 'libsodium' : 'OpenSSL AES-256-GCM');
+
+    $add(t('Data directory writable'), is_writable(BASE_DIR) ? 'ok' : 'fail', BASE_DIR);
+    $insideWebRoot = strpos((string)realpath(BASE_DIR), (string)realpath(APP_ROOT)) === 0;
+    $add(t('Data directory outside the web root'), $insideWebRoot ? 'warn' : 'ok',
+        $insideWebRoot ? t('Inside the web root: only the .htaccess protects it. Move it out or set SUBSIG_DATA_DIR.') : t('yes'));
+
+    if (is_file(SECRET_KEY_FILE)) {
+        $perms = substr(sprintf('%o', fileperms(SECRET_KEY_FILE)), -4);
+        $add(t('Secret key file'), ($perms === '0600' || $perms === '0400') ? 'ok' : 'warn',
+            t('present, mode {mode}. Back it up together with the database.', ['mode' => $perms]));
+    } else {
+        $add(t('Secret key file'), 'warn', t('not created yet (created when the first password is encrypted)'));
+    }
+
+    $add(t('HTTPS'), isHttpsRequest() ? 'ok' : 'warn', isHttpsRequest() ? t('active') : t('This request is not HTTPS. Use HTTPS in production.'));
+    $add(t('Installer removed'), is_file(APP_ROOT . '/install.php') ? 'warn' : 'ok',
+        is_file(APP_ROOT . '/install.php') ? t('install.php is still present. It locks itself, but you can delete it.') : t('yes'));
+    $add(t('Templates directory writable'), is_writable(TEMPLATES_DIR) ? 'ok' : 'warn', TEMPLATES_DIR);
+
+    if ($db instanceof SQLite3) {
+        $add(t('Database schema'), 'ok', 'v' . (int)$db->querySingle('PRAGMA user_version') . ', ' . round((is_file(DB_PATH) ? filesize(DB_PATH) : 0) / 1024) . ' KB');
+    }
+    $add(t('Languages'), 'ok', implode(', ', array_keys(availableLanguages())));
+    $add(t('Application version'), 'ok', APP_VERSION);
+
+    return $rows;
+}
+

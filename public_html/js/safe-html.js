@@ -6,6 +6,7 @@
  *
  *   SafeHtml.escape(text)            -> HTML-escaped text
  *   SafeHtml.fill(template, values)  -> template with {{PLACEHOLDERS}} replaced by escaped values
+ *   (NAME ROLE EMAIL PHONE PHONE_CLEAN and the company-wide COMPANY WEBSITE ADDRESS DISCLAIMER)
  *   SafeHtml.sanitize(html)          -> HTML without scripts, event handlers or script URLs
  */
 (function (global) {
@@ -66,9 +67,10 @@
     function fill(template, values) {
         // One pass with a replacer function: values containing "$&" or
         // "{{EMAIL}}" are inserted literally and never expanded again.
-        return String(template).replace(/\{\{(NAME|ROLE|EMAIL|PHONE_CLEAN|PHONE)\}\}/g, function (match, key) {
-            var v = values[key];
-            return escapeHtml(v === undefined ? '' : v);
+        return String(template).replace(/\{\{(NAME|ROLE|EMAIL|PHONE_CLEAN|PHONE|COMPANY|WEBSITE|ADDRESS|DISCLAIMER)\}\}/g, function (match, key) {
+            var v = escapeHtml(values[key] === undefined ? '' : values[key]);
+            // Multi-line company texts keep their line breaks.
+            return (key === 'ADDRESS' || key === 'DISCLAIMER') ? v.replace(/\r?\n/g, '<br>') : v;
         });
     }
 

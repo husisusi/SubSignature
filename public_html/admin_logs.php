@@ -39,10 +39,11 @@ $loginResult = $db->query("SELECT * FROM login_attempts ORDER BY attempted_at DE
 
 ?>
 <!DOCTYPE html>
-<html lang="en">
+<html lang="<?= e(currentLang()) ?>" dir="<?= e(langDir()) ?>">
 <head>
     <meta charset="UTF-8">
-    <title>System Audit - SubSignature</title>
+    <title><?= et('System Audit') ?> - SubSignature</title>
+    <?= i18nHead() ?>
     <script src="<?= assetUrl('js/theme.js') ?>"></script>
     <link rel="stylesheet" href="<?= assetUrl('css/theme.css') ?>">
     <link rel="stylesheet" href="<?= assetUrl('css/style.css') ?>">
@@ -120,14 +121,15 @@ $loginResult = $db->query("SELECT * FROM login_attempts ORDER BY attempted_at DE
 <aside class="sidebar">
     <?php include 'includes/navbar.php'; ?>
     <div class="sidebar-footer">
+        <?= langSwitcher() ?>
         <div class="user-profile">
             <div class="avatar"><?php echo strtoupper(substr($_SESSION['username'], 0, 1)); ?></div>
             <div class="user-info">
                 <div><?php echo e($_SESSION['username']); ?></div>
-                <span>Administrator</span>
+                <span><?= et('Administrator') ?></span>
             </div>
         </div>
-        <a href="logout.php" class="btn-logout"><i class="fas fa-sign-out-alt"></i> <span>Sign Out</span></a>
+        <a href="logout.php" class="btn-logout"><i class="fas fa-sign-out-alt"></i> <span><?= et('Sign Out') ?></span></a>
     </div>
 </aside>
 
@@ -135,13 +137,13 @@ $loginResult = $db->query("SELECT * FROM login_attempts ORDER BY attempted_at DE
     
     <header class="page-header" style="display:flex; justify-content:space-between; align-items:flex-end;">
         <div>
-            <h2>System Audit</h2>
-            <p>Overview of system health and logs.</p>
+            <h2><?= et('System Audit') ?></h2>
+            <p><?= et('Overview of system health and logs.') ?></p>
         </div>
         
         <form method="GET" class="limit-selector">
             <i class="fas fa-list"></i>
-            <span>Show:</span>
+            <span><?= et('Show:') ?></span>
             <select name="limit" onchange="this.form.submit()">
                 <?php foreach($allowed_limits as $val): ?>
                     <option value="<?php echo $val; ?>" <?php echo ($limit == $val) ? 'selected' : ''; ?>><?php echo $val; ?></option>
@@ -153,7 +155,7 @@ $loginResult = $db->query("SELECT * FROM login_attempts ORDER BY attempted_at DE
     <div class="stats-grid">
         <div class="stat-card">
             <div class="stat-info">
-                <h4>Emails Sent (24h)</h4>
+                <h4><?= et('Emails Sent (24h)') ?></h4>
                 <p><?php echo $stats['mails_sent']; ?></p>
             </div>
             <div class="stat-icon icon-green"><i class="fas fa-paper-plane"></i></div>
@@ -161,7 +163,7 @@ $loginResult = $db->query("SELECT * FROM login_attempts ORDER BY attempted_at DE
 
         <div class="stat-card">
             <div class="stat-info">
-                <h4>Security Alerts (24h)</h4>
+                <h4><?= et('Security Alerts (24h)') ?></h4>
                 <p><?php echo $stats['security_issues']; ?></p>
             </div>
             <div class="stat-icon <?php echo ($stats['security_issues'] > 0) ? 'icon-red' : 'icon-info'; ?>">
@@ -171,7 +173,7 @@ $loginResult = $db->query("SELECT * FROM login_attempts ORDER BY attempted_at DE
 
         <div class="stat-card">
             <div class="stat-info">
-                <h4>Login Failures (24h)</h4>
+                <h4><?= et('Login Failures (24h)') ?></h4>
                 <p><?php echo $stats['failed_logins']; ?></p>
             </div>
             <div class="stat-icon <?php echo ($stats['failed_logins'] > 0) ? 'icon-orange' : 'icon-info'; ?>">
@@ -181,9 +183,9 @@ $loginResult = $db->query("SELECT * FROM login_attempts ORDER BY attempted_at DE
     </div>
 
     <div class="tabs">
-        <button class="tab-btn active" onclick="openTab(event, 'tab-security')"><i class="fas fa-shield-alt"></i> Security Events</button>
-        <button class="tab-btn" onclick="openTab(event, 'tab-email')"><i class="fas fa-envelope"></i> Email Logs</button>
-        <button class="tab-btn" onclick="openTab(event, 'tab-login')"><i class="fas fa-key"></i> Login Attempts</button>
+        <button class="tab-btn active" onclick="openTab(event, 'tab-security')"><i class="fas fa-shield-alt"></i> <?= et('Security Events') ?></button>
+        <button class="tab-btn" onclick="openTab(event, 'tab-email')"><i class="fas fa-envelope"></i> <?= et('Email Logs') ?></button>
+        <button class="tab-btn" onclick="openTab(event, 'tab-login')"><i class="fas fa-key"></i> <?= et('Login Attempts') ?></button>
     </div>
 
     <div id="tab-security" class="tab-content active">
@@ -192,11 +194,11 @@ $loginResult = $db->query("SELECT * FROM login_attempts ORDER BY attempted_at DE
                 <table class="log-table">
                     <thead>
                         <tr>
-                            <th width="150">Time</th>
-                            <th width="140">Type</th>
-                            <th>User</th>
-                            <th>Details</th>
-                            <th width="140">IP Address</th>
+                            <th width="150"><?= et('Time') ?></th>
+                            <th width="140"><?= et('Type') ?></th>
+                            <th><?= et('User') ?></th>
+                            <th><?= et('Details') ?></th>
+                            <th width="140"><?= et('IP Address') ?></th>
                         </tr>
                     </thead>
                     <tbody>
@@ -228,10 +230,10 @@ $loginResult = $db->query("SELECT * FROM login_attempts ORDER BY attempted_at DE
                 <table class="log-table">
                     <thead>
                         <tr>
-                            <th width="150">Time</th>
-                            <th width="100">Status</th>
-                            <th>Recipient</th>
-                            <th>Result Message</th>
+                            <th width="150"><?= et('Time') ?></th>
+                            <th width="100"><?= et('Status') ?></th>
+                            <th><?= et('Recipient') ?></th>
+                            <th><?= et('Result Message') ?></th>
                         </tr>
                     </thead>
                     <tbody>
@@ -241,9 +243,9 @@ $loginResult = $db->query("SELECT * FROM login_attempts ORDER BY attempted_at DE
                                     <td style="color:var(--text-muted);"><?php echo e(date('d.m.Y H:i', strtotime($row['created_at']) ?: time())); ?></td>
                                     <td>
                                         <?php if($row['status'] === 'success'): ?>
-                                            <span class="badge badge-success"><i class="fas fa-check"></i> Sent</span>
+                                            <span class="badge badge-success"><i class="fas fa-check"></i> <?= et('Sent') ?></span>
                                         <?php else: ?>
-                                            <span class="badge badge-danger"><i class="fas fa-exclamation-triangle"></i> Error</span>
+                                            <span class="badge badge-danger"><i class="fas fa-exclamation-triangle"></i> <?= et('Error') ?></span>
                                         <?php endif; ?>
                                     </td>
                                     <td><strong><?php echo e($row['recipient']); ?></strong></td>
@@ -253,7 +255,7 @@ $loginResult = $db->query("SELECT * FROM login_attempts ORDER BY attempted_at DE
                                 </tr>
                             <?php endwhile; ?>
                         <?php else: ?>
-                            <tr><td colspan="4" style="text-align:center; padding:2rem; color:var(--text-muted);">No logs available.</td></tr>
+                            <tr><td colspan="4" style="text-align:center; padding:2rem; color:var(--text-muted);"><?= et('No logs available.') ?></td></tr>
                         <?php endif; ?>
                     </tbody>
                 </table>
@@ -267,11 +269,11 @@ $loginResult = $db->query("SELECT * FROM login_attempts ORDER BY attempted_at DE
                 <table class="log-table">
                     <thead>
                         <tr>
-                            <th width="150">Time</th>
-                            <th width="100">Status</th>
-                            <th>User Attempt</th>
-                            <th width="140">IP Address</th>
-                            <th>User Agent</th>
+                            <th width="150"><?= et('Time') ?></th>
+                            <th width="100"><?= et('Status') ?></th>
+                            <th><?= et('User Attempt') ?></th>
+                            <th width="140"><?= et('IP Address') ?></th>
+                            <th><?= et('User Agent') ?></th>
                         </tr>
                     </thead>
                     <tbody>
@@ -280,9 +282,9 @@ $loginResult = $db->query("SELECT * FROM login_attempts ORDER BY attempted_at DE
                                 <td style="color:var(--text-muted);"><?php echo e(date('d.m.Y H:i', strtotime($row['attempted_at']) ?: time())); ?></td>
                                 <td>
                                     <?php if($row['successful']): ?>
-                                        <span class="badge badge-success"><i class="fas fa-check"></i> Success</span>
+                                        <span class="badge badge-success"><i class="fas fa-check"></i> <?= et('Success') ?></span>
                                     <?php else: ?>
-                                        <span class="badge badge-danger"><i class="fas fa-times"></i> Failed</span>
+                                        <span class="badge badge-danger"><i class="fas fa-times"></i> <?= et('Failed') ?></span>
                                     <?php endif; ?>
                                 </td>
                                 <td><?php echo e($row['username']); ?></td>

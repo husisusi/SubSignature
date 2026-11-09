@@ -55,10 +55,13 @@
     // ------------------------------------------------------------------
     // Switch UI (built with DOM methods only, no HTML strings)
     // ------------------------------------------------------------------
+    // Texts come from the server (window.SUBSIG_I18N, see includes/i18n.php).
+    var I18N = window.SUBSIG_I18N || {};
+    function tr(text) { return I18N[text] || text; }
     var LABELS = {
-        light:  { icon: 'fa-sun',     text: 'Light' },
-        dark:   { icon: 'fa-moon',    text: 'Dark' },
-        system: { icon: 'fa-desktop', text: 'Follow system setting' }
+        light:  { icon: 'fa-sun',     text: tr('Light') },
+        dark:   { icon: 'fa-moon',    text: tr('Dark') },
+        system: { icon: 'fa-desktop', text: tr('Follow system setting') }
     };
     var buttons = [];
 
@@ -72,7 +75,7 @@
         var wrap = document.createElement('div');
         wrap.className = 'theme-switch' + (floating ? ' floating' : '');
         wrap.setAttribute('role', 'group');
-        wrap.setAttribute('aria-label', 'Colour theme');
+        wrap.setAttribute('aria-label', tr('Colour theme'));
 
         MODES.forEach(function (mode) {
             var btn = document.createElement('button');

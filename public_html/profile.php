@@ -42,7 +42,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_profile'])) {
     $email = cleanText($_POST['email'] ?? '', 254);
 
     if ($email !== '' && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
-        $error = 'Invalid email address!';
+        $error = t('Invalid email address!');
     } else {
         // The email address must stay unique (it is also checked at registration).
         $dup = 0;
@@ -54,7 +54,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_profile'])) {
         }
 
         if ($dup > 0) {
-            $error = 'This email address is already used by another account.';
+            $error = t('This email address is already used by another account.');
         } else {
             $stmt = $db->prepare('UPDATE users SET full_name = ?, email = ? WHERE id = ?');
             $stmt->bindValue(1, $full_name, SQLITE3_TEXT);
@@ -65,10 +65,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_profile'])) {
             if (!$is_admin_editing_others) {
                 $_SESSION['full_name'] = $full_name;
                 $_SESSION['email'] = $email;
-                $success = '✅ Profile updated successfully!';
+                $success = t('✅ Profile updated successfully!');
             } else {
                 logSecurityEventToDB($db, 'ADMIN_PROFILE_EDIT', $current_user_id, "Target ID: $target_user_id");
-                $success = '✅ User profile updated successfully (Admin Mode).';
+                $success = t('✅ User profile updated successfully (Admin Mode).');
             }
         }
     }
@@ -83,7 +83,7 @@ $user = $result->fetchArray(SQLITE3_ASSOC);
 
 if (!$user) {
     if ($is_admin_editing_others) {
-        setFlash('error', 'User not found.');
+        setFlash('error', t('User not found.'));
         header('Location: admin_users.php'); // Admin fallback
     } else {
         header('Location: logout.php'); // Self fallback
@@ -98,11 +98,13 @@ $sig_result = $sig_stmt->execute();
 $sig_count = $sig_result->fetchArray(SQLITE3_ASSOC)['count'];
 ?>
 <!DOCTYPE html>
-<html lang="en">
+<html lang="<?= e(currentLang()) ?>" dir="<?= e(langDir()) ?>">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title><?php echo $is_admin_editing_others ? 'Edit User' : 'My Profile'; ?> - SubSignature</title>
+    <title><?= $is_admin_editing_others ? et('Edit User') : et('My Profile') ?> - SubSignature</title>
+    
+    <?= i18nHead() ?>
     
     <script src="<?= assetUrl('js/theme.js') ?>"></script>
     <link rel="stylesheet" href="<?= assetUrl('css/theme.css') ?>">
@@ -147,14 +149,15 @@ $sig_count = $sig_result->fetchArray(SQLITE3_ASSOC)['count'];
     <aside class="sidebar">
         <?php if (file_exists('includes/navbar.php')) include 'includes/navbar.php'; ?>
         <div class="sidebar-footer">
+        <?= langSwitcher() ?>
             <div class="user-profile">
                 <div class="avatar"><?php echo strtoupper(substr($_SESSION['username'], 0, 1)); ?></div>
                 <div class="user-info">
                     <div><?php echo e($_SESSION['username']); ?></div>
-                    <span><?php echo isAdmin() ? 'Administrator' : 'User'; ?></span>
+                    <span><?= isAdmin() ? et('Administrator') : et('User') ?></span>
                 </div>
             </div>
-            <a href="logout.php" class="btn-logout"><i class="fas fa-sign-out-alt"></i> <span>Sign Out</span></a>
+            <a href="logout.php" class="btn-logout"><i class="fas fa-sign-out-alt"></i> <span><?= et('Sign Out') ?></span></a>
         </div>
     </aside>
 
@@ -162,11 +165,11 @@ $sig_count = $sig_result->fetchArray(SQLITE3_ASSOC)['count'];
         
         <header class="page-header">
             <?php if ($is_admin_editing_others): ?>
-                <h2>Edit User: <?php echo e($user['username']); ?></h2>
-                <p>Administrator Mode: Editing another user's profile.</p>
+                <h2><?= et('Edit User: {user}', ['user' => $user['username']]) ?></h2>
+                <p><?= et('Administrator Mode: Editing another user\'s profile.') ?></p>
             <?php else: ?>
-                <h2>My Profile</h2>
-                <p>Manage your account settings and personal information.</p>
+                <h2><?= et('My Profile') ?></h2>
+                <p><?= et('Manage your account settings and personal information.') ?></p>
             <?php endif; ?>
         </header>
 
@@ -176,16 +179,16 @@ $sig_count = $sig_result->fetchArray(SQLITE3_ASSOC)['count'];
             <div class="admin-banner">
                 <i class="fas fa-exclamation-triangle"></i>
                 <div>
-                    <strong>Admin Mode Active:</strong> You are editing the profile of 
-                    <u><?php echo e($user['username']); ?></u> (ID: <?php echo (int)$target_user_id; ?>).
-                    <a href="admin_users.php" style="color:inherit; font-weight:700; margin-left:10px;">Back to List</a>
+                    <strong><?= et('Admin Mode Active:') ?></strong>
+                    <?= eth('You are editing the profile of {user} (ID: {id}).', ['user' => '<u>' . e($user['username']) . '</u>', 'id' => (int)$target_user_id]) ?>
+                    <a href="admin_users.php" style="color:inherit; font-weight:700; margin-left:10px;"><?= et('Back to List') ?></a>
                 </div>
             </div>
             <?php endif; ?>
 
             <div class="settings-card">
                 <h3 style="margin-bottom: 1.5rem; display: flex; align-items: center; gap: 0.5rem;">
-                    <i class="fas fa-user-edit"></i> Edit Details
+                    <i class="fas fa-user-edit"></i> <?= et('Edit Details') ?>
                 </h3>
 
                 <?php if ($success): ?>
@@ -199,36 +202,36 @@ $sig_count = $sig_result->fetchArray(SQLITE3_ASSOC)['count'];
                     <?php echo csrfField(); ?>
 
                     <div class="form-group">
-                        <label for="username">Username</label>
+                        <label for="username"><?= et('Username') ?></label>
                         <input type="text" id="username" 
                                value="<?php echo e($user['username']); ?>" 
                                disabled style="background: var(--bg-subtle); color: var(--text-muted);">
-                        <small style="color: var(--text-muted);">Username cannot be changed.</small>
+                        <small style="color: var(--text-muted);"><?= et('Username cannot be changed.') ?></small>
                     </div>
 
                     <div class="form-group">
-                        <label for="full_name">Full Name</label>
+                        <label for="full_name"><?= et('Full Name') ?></label>
                         <input type="text" id="full_name" name="full_name" 
                                value="<?php echo e($user['full_name'] ?? ''); ?>"
-                               placeholder="e.g. John Doe">
+                               placeholder="<?= et('e.g. John Doe') ?>">
                     </div>
 
                     <div class="form-group">
-                        <label for="email">Email Address</label>
+                        <label for="email"><?= et('Email Address') ?></label>
                         <input type="email" id="email" name="email" 
                                value="<?php echo e($user['email'] ?? ''); ?>"
                                placeholder="john@example.com">
                     </div>
 
                     <div class="form-group">
-                        <label>Role</label>
+                        <label><?= et('Role') ?></label>
                         <input type="text" value="<?php echo e(ucfirst($user['role'])); ?>" 
                                disabled style="background: var(--bg-subtle); color: var(--text-muted);">
                     </div>
 
                     <div class="form-actions">
                         <button type="submit" name="update_profile" class="btn btn-primary">
-                            <i class="fas fa-save"></i> Save Changes
+                            <i class="fas fa-save"></i> <?= et('Save Changes') ?>
                         </button>
                     </div>
                 </form>
@@ -243,26 +246,26 @@ $sig_count = $sig_result->fetchArray(SQLITE3_ASSOC)['count'];
 
                 <div class="stats-list">
                     <div class="stat-row">
-                        <span class="stat-key"><i class="fas fa-calendar-alt"></i> Joined</span>
+                        <span class="stat-key"><i class="fas fa-calendar-alt"></i> <?= et('Joined') ?></span>
                         <span class="stat-val"><?php echo e(date('M Y', strtotime($user['created_at']) ?: time())); ?></span>
                     </div>
                     <div class="stat-row">
-                        <span class="stat-key"><i class="fas fa-clock"></i> Last Login</span>
+                        <span class="stat-key"><i class="fas fa-clock"></i> <?= et('Last Login') ?></span>
                         <span class="stat-val"><?php echo $user['last_login'] ? e(date('d.m.Y', strtotime($user['last_login']) ?: time())) : 'Never'; ?></span>
                     </div>
                     <div class="stat-row">
-                        <span class="stat-key"><i class="fas fa-signature"></i> Signatures</span>
+                        <span class="stat-key"><i class="fas fa-signature"></i> <?= et('Signatures') ?></span>
                         <span class="stat-val"><?php echo $sig_count; ?></span>
                     </div>
                 </div>
 
                 <div class="action-list">
                     <?php if (!$is_admin_editing_others): ?>
-                        <a href="change_password.php" class="action-btn"><i class="fas fa-key"></i> Change Password</a>
-                        <a href="csv_import.php" class="action-btn"><i class="fas fa-file-import"></i> Import Data</a>
+                        <a href="change_password.php" class="action-btn"><i class="fas fa-key"></i> <?= et('Change Password') ?></a>
+                        <a href="csv_import.php" class="action-btn"><i class="fas fa-file-import"></i> <?= et('Import Data') ?></a>
                     <?php else: ?>
                         <div style="text-align:center; padding:0.5rem; color:var(--text-muted); font-size:0.85rem;">
-                            To reset password, use the Admin User List.
+                            <?= et('To reset password, use the Admin User List.') ?>
                         </div>
                     <?php endif; ?>
                 </div>

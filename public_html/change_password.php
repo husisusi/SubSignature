@@ -19,15 +19,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if (rateLimitIsBlocked('change_password', 5, 900, 'uid:' . $user_id)) {
         // Guessing the current password is throttled per account (not per session).
-        $error = 'Too many attempts. Please try again in 15 minutes.';
+        $error = t('Too many attempts. Please try again in 15 minutes.');
     } elseif ($current_password === '' || $new_password === '' || $confirm_password === '') {
-        $error = 'All fields are required!';
+        $error = t('All fields are required!');
     } elseif ($new_password !== $confirm_password) {
-        $error = 'New passwords do not match!';
+        $error = t('New passwords do not match!');
     } elseif ($policyErrors) {
-        $error = 'Password too weak: ' . implode('; ', $policyErrors) . '.';
+        $error = t('Password too weak: {details}.', ['details' => implode('; ', $policyErrors)]);
     } elseif ($new_password === $current_password) {
-        $error = 'The new password must differ from the current one!';
+        $error = t('The new password must differ from the current one!');
     } else {
         $stmt = $db->prepare('SELECT id, password_hash FROM users WHERE id = ?');
         $stmt->bindValue(1, $user_id, SQLITE3_INTEGER);
@@ -47,21 +47,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $_SESSION['pw_fp'] = passwordFingerprint($new_hash);
             rateLimitReset('change_password', 'uid:' . $user_id);
             logSecurityEventToDB($db, 'PASSWORD_CHANGED', $user_id, 'Self-service');
-            $message = '✅ Password successfully changed!';
+            $message = t('✅ Password successfully changed!');
         } else {
             rateLimitHit('change_password', 900, 'uid:' . $user_id);
             usleep(random_int(500000, 1000000));
-            $error = '❌ Current password is incorrect!';
+            $error = t('❌ Current password is incorrect!');
         }
     }
 }
 ?>
 <!DOCTYPE html>
-<html lang="en">
+<html lang="<?= e(currentLang()) ?>" dir="<?= e(langDir()) ?>">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Change Password - SubSignature</title>
+    <title><?= et('Change Password') ?> - SubSignature</title>
+    
+    <?= i18nHead() ?>
     
     <script src="<?= assetUrl('js/theme.js') ?>"></script>
     <link rel="stylesheet" href="<?= assetUrl('css/theme.css') ?>">
@@ -157,17 +159,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         ?>
 
         <div class="sidebar-footer">
+        <?= langSwitcher() ?>
             <div class="user-profile">
                 <div class="avatar">
                     <?php echo strtoupper(substr($_SESSION['username'], 0, 1)); ?>
                 </div>
                 <div class="user-info">
                     <div><?php echo e($_SESSION['username']); ?></div>
-                    <span><?php echo isAdmin() ? 'Administrator' : 'User'; ?></span>
+                    <span><?= isAdmin() ? et('Administrator') : et('User') ?></span>
                 </div>
             </div>
             <a href="logout.php" class="btn-logout">
-                <i class="fas fa-sign-out-alt"></i> <span>Sign Out</span>
+                <i class="fas fa-sign-out-alt"></i> <span><?= et('Sign Out') ?></span>
             </a>
         </div>
     </aside>
@@ -175,8 +178,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <main class="main-content">
         
         <header class="page-header">
-            <h2>Change Password</h2>
-            <p>Update your credentials to keep your account secure.</p>
+            <h2><?= et('Change Password') ?></h2>
+            <p><?= et('Update your credentials to keep your account secure.') ?></p>
         </header>
 
         <?php if ($message): ?>
@@ -195,21 +198,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             
             <section class="card">
                 <div class="card-header">
-                    <h3><i class="fas fa-lock"></i> Security Credentials</h3>
+                    <h3><i class="fas fa-lock"></i> <?= et('Security Credentials') ?></h3>
                 </div>
 
                 <form method="POST">
                     <?php echo csrfField(); ?>
 
                     <div class="form-group">
-                        <label for="current_password">Current Password</label>
+                        <label for="current_password"><?= et('Current Password') ?></label>
                         <input type="password" id="current_password" name="current_password" required>
                     </div>
 
                     <div style="margin: 1.5rem 0; border-bottom: 1px solid var(--border);"></div>
 
                     <div class="form-group">
-                        <label for="new_password">New Password</label>
+                        <label for="new_password"><?= et('New Password') ?></label>
                         <div class="input-with-icon">
                             <input type="password" id="new_password" name="new_password" required 
                                    oninput="checkStrength(this.value)">
@@ -219,11 +222,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         <div class="password-strength-container">
                             <div id="strengthBar" class="strength-bar"></div>
                         </div>
-                        <span id="strengthText" class="strength-label">Enter new password</span>
+                        <span id="strengthText" class="strength-label"><?= et('Enter new password') ?></span>
                     </div>
 
                     <div class="form-group">
-                        <label for="confirm_password">Confirm New Password</label>
+                        <label for="confirm_password"><?= et('Confirm New Password') ?></label>
                         <div class="input-with-icon">
                             <input type="password" id="confirm_password" name="confirm_password" required oninput="checkMatch()">
                              <i class="fas fa-eye toggle-password" onclick="togglePass('confirm_password')"></i>
@@ -233,10 +236,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                     <div class="form-actions">
                         <button type="submit" class="btn btn-primary">
-                            <i class="fas fa-save"></i> Update Password
+                            <i class="fas fa-save"></i> <?= et('Update Password') ?>
                         </button>
                         <a href="profile.php" class="btn btn-danger" style="background:var(--bg-white); color:var(--text-main); border:1px solid var(--border)">
-                            Cancel
+                            <?= et('Cancel') ?>
                         </a>
                     </div>
                 </form>
@@ -244,19 +247,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             <div>
                 <div class="security-tips">
-                    <h4><i class="fas fa-shield-alt"></i> Password Guidelines</h4>
+                    <h4><i class="fas fa-shield-alt"></i> <?= et('Password Guidelines') ?></h4>
                     <ul>
-                        <li>At least 8 characters long</li>
-                        <li>Include uppercase & lowercase letters</li>
-                        <li>Include at least one number</li>
-                        <li>Avoid using your name or email</li>
+                        <li><?= et('At least 8 characters long') ?></li>
+                        <li><?= et('Include uppercase & lowercase letters') ?></li>
+                        <li><?= et('Include at least one number') ?></li>
+                        <li><?= et('Avoid using your name or email') ?></li>
                     </ul>
                 </div>
                 
                 <div class="card" style="margin-top: 1.5rem; text-align: center; padding: 1.5rem;">
                     <i class="fas fa-key" style="font-size: 2.5rem; color: var(--border-strong); margin-bottom: 1rem;"></i>
                     <p style="color: var(--text-muted); font-size: 0.9rem;">
-                        Changing your password will not affect existing signatures, but you will need to use the new password for your next login.
+                        <?= et('Changing your password will not affect existing signatures, but you will need to use the new password for your next login.') ?>
                     </p>
                 </div>
             </div>
@@ -287,15 +290,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         if (strength < 50) {
             bar.style.backgroundColor = '#ef4444';
-            text.textContent = 'Weak';
+            text.textContent = <?= tj('Weak') ?>;
             text.style.color = '#ef4444';
         } else if (strength < 75) {
             bar.style.backgroundColor = '#f59e0b';
-            text.textContent = 'Medium';
+            text.textContent = <?= tj('Medium') ?>;
             text.style.color = '#f59e0b';
         } else {
             bar.style.backgroundColor = '#10b981';
-            text.textContent = 'Strong';
+            text.textContent = <?= tj('Strong') ?>;
             text.style.color = '#10b981';
         }
     }
@@ -311,10 +314,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         if (p1 === p2) {
-            text.textContent = '✓ Passwords match';
+            text.textContent = '✓ ' + <?= tj('Passwords match') ?>;
             text.style.color = '#10b981';
         } else {
-            text.textContent = 'Passwords do not match';
+            text.textContent = <?= tj('Passwords do not match') ?>;
             text.style.color = '#ef4444';
         }
     }

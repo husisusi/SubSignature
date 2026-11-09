@@ -153,3 +153,68 @@ input, select, textarea { color: var(--text-main); }
 
 /* Uploaded images (media library) are shown on white: logos and icons are often dark/transparent. */
 .image-preview, #lightboxImage { background-color: #ffffff; }
+
+
+/* ======================================================================
+   Language selector (includes/i18n.php: langSwitcher())
+   ====================================================================== */
+.sr-only {
+    position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0;
+    overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+}
+.lang-switch { margin: 0 0 0.75rem; }
+.lang-switch-label {
+    display: flex; align-items: center; gap: 0.4rem;
+    padding: 0 0.5rem; height: 34px;
+    background: var(--bg-subtle);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text-muted);
+}
+.lang-switch select {
+    flex: 1; min-width: 0; height: 100%;
+    border: none; background: transparent; color: var(--text-main);
+    font: inherit; font-size: 0.8rem; cursor: pointer; text-overflow: ellipsis;
+    padding: 0;
+}
+.lang-switch select:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; border-radius: 4px; }
+/* Pages without a sidebar: floating next to the floating theme switch. */
+.lang-switch.floating {
+    position: fixed; top: 12px; right: 140px; z-index: 1000; margin: 0; width: 150px;
+}
+.lang-switch.floating .lang-switch-label { background: var(--bg-white); }
+@media (max-width: 1024px) {
+    .sidebar .lang-switch { width: 100%; }
+    .sidebar .lang-switch .fa-language { display: none; }
+    .sidebar .lang-switch select { font-size: 0.7rem; text-align: center; }
+    .sidebar .lang-switch-label { padding: 0 0.25rem; }
+}
+@media (max-width: 768px) {
+    .sidebar .lang-switch { width: auto; margin: 0 0.5rem 0 0; }
+}
+
+/* ======================================================================
+   Right-to-left languages (Arabic): mirror the fixed sidebar layout.
+   Flex/grid layouts flip on their own through dir="rtl" on <html>.
+   ====================================================================== */
+:root[dir="rtl"] .sidebar { left: auto; right: 0; border-right: none; border-left: 1px solid var(--border); }
+:root[dir="rtl"] .main-content { margin-left: 0; margin-right: var(--sidebar-width); }
+:root[dir="rtl"] .theme-switch.floating { right: auto; left: 12px; }
+:root[dir="rtl"] .lang-switch.floating { right: auto; left: 140px; }
+@media (max-width: 1024px) {
+    :root[dir="rtl"] .main-content { margin-left: 0; margin-right: 70px; }
+}
+@media (max-width: 768px) {
+    :root[dir="rtl"] .sidebar { border-left: none; }
+    :root[dir="rtl"] .main-content { margin-right: 0; }
+}
+/* Technical values stay left-to-right inside RTL pages. */
+:root[dir="rtl"] input[type="email"], :root[dir="rtl"] input[type="url"], :root[dir="rtl"] input[type="password"],
+:root[dir="rtl"] input[name="username"], :root[dir="rtl"] code, :root[dir="rtl"] pre, :root[dir="rtl"] .mono {
+    direction: ltr; text-align: left;
+}
+
+/* Mirror toggle switches (admin configuration) and keep signature previews left-to-right. */
+:root[dir="rtl"] .slider:before { left: auto; right: 3px; }
+:root[dir="rtl"] input:checked + .slider:before { transform: translateX(-18px); }
+.preview-paper, #renderArea, #live_preview, .preview-box { direction: ltr; text-align: left; }

@@ -23,7 +23,7 @@ $rows     = array_slice((array)($import_data['rows'] ?? []), 0, 2000);
 // Authorization: admins may import for any user, everybody else only for themselves.
 if (!isAdmin() && $user_id !== (int)$_SESSION['user_id']) {
     logSecurityEventToDB($db, 'IMPORT_DENIED', (int)$_SESSION['user_id'], 'Target user: ' . $user_id);
-    setFlash('error', 'Access denied.');
+    setFlash('error', t('Access denied.'));
     header('Location: csv_import.php');
     exit;
 }
@@ -50,7 +50,7 @@ try {
         [$clean, $rowErrors] = validateSignatureFields((array)$row, true);
         if ($rowErrors) {
             $error_count++;
-            $errors[] = 'Row ' . $row_num . ': ' . implode(' ', $rowErrors);
+            $errors[] = t('Row {row}: {details}', ['row' => $row_num, 'details' => implode(' ', $rowErrors)]);
             continue;
         }
         $insert->reset();
@@ -67,7 +67,7 @@ try {
 } catch (Exception $e) {
     $db->exec('ROLLBACK');
     error_log('CSV import failed: ' . $e->getMessage());
-    $errors[] = 'The import failed and was rolled back. No rows were saved.';
+    $errors[] = t('The import failed and was rolled back. No rows were saved.');
     $error_count += $success_count;
     $success_count = 0;
 }
@@ -77,11 +77,13 @@ logSecurityEventToDB($db, 'CSV_IMPORT', (int)$_SESSION['user_id'], "Target user:
 $template_display = templateDisplayName($template);
 ?>
 <!DOCTYPE html>
-<html lang="en">
+<html lang="<?= e(currentLang()) ?>" dir="<?= e(langDir()) ?>">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Import Results - SubSignature</title>
+    <title><?= et('Import Results') ?> - SubSignature</title>
+    
+    <?= i18nHead() ?>
     
     <script src="<?= assetUrl('js/theme.js') ?>"></script>
     <link rel="stylesheet" href="<?= assetUrl('css/theme.css') ?>">
@@ -181,17 +183,18 @@ $template_display = templateDisplayName($template);
         <?php include 'includes/navbar.php'; ?>
 
         <div class="sidebar-footer">
+        <?= langSwitcher() ?>
             <div class="user-profile">
                 <div class="avatar">
                     <?php echo strtoupper(substr($_SESSION['username'], 0, 1)); ?>
                 </div>
                 <div class="user-info">
                     <div><?php echo e($_SESSION['username']); ?></div>
-                    <span><?php echo isAdmin() ? 'Administrator' : 'User'; ?></span>
+                    <span><?= isAdmin() ? et('Administrator') : et('User') ?></span>
                 </div>
             </div>
             <a href="logout.php" class="btn-logout">
-                <i class="fas fa-sign-out-alt"></i> <span>Sign Out</span>
+                <i class="fas fa-sign-out-alt"></i> <span><?= et('Sign Out') ?></span>
             </a>
         </div>
     </aside>
@@ -199,25 +202,25 @@ $template_display = templateDisplayName($template);
     <main class="main-content">
         
         <header class="page-header">
-            <h2>Import Results</h2>
-            <p>Processing complete for <?php echo count($rows); ?> records.</p>
+            <h2><?= et('Import Results') ?></h2>
+            <p><?= et('Processing complete for {count} records.', ['count' => count($rows)]) ?></p>
         </header>
 
         <div class="result-stats-grid">
             <div class="result-card success">
-                <span class="result-label">Success</span>
+                <span class="result-label"><?= et('Success') ?></span>
                 <span class="result-number" style="color: var(--success-text);"><?php echo $success_count; ?></span>
                 <i class="fas fa-check-circle" style="color: var(--success-text);"></i>
             </div>
             
             <div class="result-card error">
-                <span class="result-label">Failed</span>
+                <span class="result-label"><?= et('Failed') ?></span>
                 <span class="result-number" style="color: var(--danger-text);"><?php echo $error_count; ?></span>
                 <i class="fas fa-times-circle" style="color: var(--danger-text);"></i>
             </div>
             
             <div class="result-card total">
-                <span class="result-label">Total Processed</span>
+                <span class="result-label"><?= et('Total Processed') ?></span>
                 <span class="result-number" style="color: var(--primary);"><?php echo count($rows); ?></span>
                 <i class="fas fa-file-csv" style="color: var(--primary);"></i>
             </div>
@@ -225,23 +228,23 @@ $template_display = templateDisplayName($template);
 
         <section class="card">
             <div class="card-header">
-                <h3><i class="fas fa-info-circle"></i> Import Summary</h3>
+                <h3><i class="fas fa-info-circle"></i> <?= et('Import Summary') ?></h3>
             </div>
             
             <div style="padding: 1rem 0;">
                 <ul class="details-list">
                     <li>
-                        <span><strong>Assigned User:</strong></span>
+                        <span><strong><?= et('Assigned User:') ?></strong></span>
                         <span>
                             <?php echo e($user_info['full_name'] ?: $user_info['username']); ?>
                         </span>
                     </li>
                     <li>
-                        <span><strong>Template Used:</strong></span>
+                        <span><strong><?= et('Template Used:') ?></strong></span>
                         <span><?php echo e($template_display); ?></span>
                     </li>
                     <li>
-                        <span><strong>Timestamp:</strong></span>
+                        <span><strong><?= et('Timestamp:') ?></strong></span>
                         <span><?php echo date('d.m.Y H:i:s'); ?></span>
                     </li>
                 </ul>
@@ -249,7 +252,7 @@ $template_display = templateDisplayName($template);
 
             <?php if (!empty($errors)): ?>
                 <div class="error-log">
-                    <h4 style="color:var(--danger-text); margin-bottom:1rem;"><i class="fas fa-exclamation-triangle"></i> Import Errors</h4>
+                    <h4 style="color:var(--danger-text); margin-bottom:1rem;"><i class="fas fa-exclamation-triangle"></i> <?= et('Import Errors') ?></h4>
                     <?php foreach ($errors as $error): ?>
                         <div class="error-item">
                             <?php echo e($error); ?>
@@ -260,24 +263,24 @@ $template_display = templateDisplayName($template);
         </section>
 
         <section>
-            <h3 style="margin-top:2rem; margin-bottom:1rem; font-size:1.2rem;">What would you like to do next?</h3>
+            <h3 style="margin-top:2rem; margin-bottom:1rem; font-size:1.2rem;"><?= et('What would you like to do next?') ?></h3>
             <div class="action-cards">
                 <a href="all_signatures.php" class="action-card">
                     <i class="fas fa-list-ul action-icon"></i>
-                    <strong>View Signatures</strong>
-                    <span style="font-size:0.85rem; color:var(--text-muted);">See all created signatures</span>
+                    <strong><?= et('View Signatures') ?></strong>
+                    <span style="font-size:0.85rem; color:var(--text-muted);"><?= et('See all created signatures') ?></span>
                 </a>
                 
                 <a href="csv_import.php" class="action-card">
                     <i class="fas fa-file-upload action-icon"></i>
-                    <strong>Import More</strong>
-                    <span style="font-size:0.85rem; color:var(--text-muted);">Upload another CSV file</span>
+                    <strong><?= et('Import More') ?></strong>
+                    <span style="font-size:0.85rem; color:var(--text-muted);"><?= et('Upload another CSV file') ?></span>
                 </a>
                 
                 <a href="download_all.php" class="action-card">
                     <i class="fas fa-download action-icon"></i>
-                    <strong>Download All</strong>
-                    <span style="font-size:0.85rem; color:var(--text-muted);">Get ZIP of all signatures</span>
+                    <strong><?= et('Download All') ?></strong>
+                    <span style="font-size:0.85rem; color:var(--text-muted);"><?= et('Get ZIP of all signatures') ?></span>
                 </a>
             </div>
         </section>
