@@ -1,1 +1,9 @@
+# Runtime data (database, secret key, logs, sessions) must never be committed.
 private_data/*
+!private_data/.htaccess
+!private_data/config.local.php.example
+
+# Local test data and archives
+*.zip
+*.db
+*.log
