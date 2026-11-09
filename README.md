@@ -37,6 +37,9 @@ The focus is privacy and security. The application runs entirely on your server:
 * **CSV import / export** of signatures (delimiter `,` or `;`, formula-injection safe export).
 * **LDAP / Active Directory import** of users and their attributes (import only, no LDAP login). See [LDAP import](#ldap--active-directory-import).
 * **Read-only API with bearer tokens** to prepare a desktop agent for Outlook and Thunderbird. See [API](#api-for-the-desktop-agent).
+* **17 languages** (English, Deutsch, Español, Français, Italiano, Português, Nederlands, Polski, Türkçe, Русский, Українська, العربية (RTL), हिन्दी, Bahasa Indonesia, 中文, 日本語, 한국어): one JSON file per language in `public_html/lang/`, automatic detection from the browser, switcher in the sidebar and on the login page, per-user choice, system-wide default. See [Languages](#languages).
+* **Company-wide placeholders** `{{COMPANY}}`, `{{WEBSITE}}`, `{{ADDRESS}}`, `{{DISCLAIMER}}`: maintained once in Admin -> Configuration and filled into every signature.
+* **System status** panel (Admin -> Configuration): PHP version and extensions, writable directories, data directory outside the web root, secret key, installer leftovers.
 * **Light, dark and system theme:** switch in the sidebar (or top right on the login page); the choice is remembered per browser, "system" follows the operating system. Signature previews always stay on white. Static files are versioned automatically (`?v=<mtime>`), so a new release shows up without clearing the browser cache.
 * **Security by default:** CSRF protection, strict CSP, hardened sessions, brute-force protection, encrypted secrets, audit log. See [Security](#security).
 * **Self-hosted, SQLite:** no MySQL/PostgreSQL required.
@@ -113,6 +116,12 @@ A planned C++ agent for Windows and Linux will fetch signatures from the server 
 
 Full documentation with implementation notes for the agent: [docs/API.md](docs/API.md).
 
+## Languages
+
+The interface language is chosen in this order: the user's saved choice (cookie / profile), the browser's `Accept-Language` header, the default language set by the administrator (Admin -> Configuration), English. Missing translations fall back to English, so a partly translated language never breaks a page. Arabic is rendered right-to-left.
+
+Each language is a single file `public_html/lang/<code>.json`. To add or improve a language see [docs/TRANSLATING.md](docs/TRANSLATING.md); a command line helper (`php tools/i18n.php`) creates, syncs and checks the files. The shipped translations are machine-quality and welcome a review by native speakers (pull requests are appreciated).
+
 ## Roles
 
 * **Admins:** manage users, templates, images, configuration, LDAP import, API tokens, logs; import/export all data; send signatures.
@@ -139,7 +148,7 @@ An overview of the protections and the results of the security review is in [doc
 * Run PHP with `expose_php=Off`, `display_errors=Off`, `session.use_strict_mode=1`.
 * Restrict access to the admin pages by network (VPN / IP allow list) if possible.
 * Use a dedicated read-only LDAP service account and LDAPS with certificate verification.
-* Nginx: deny `/includes/`, `/templates/`, dotfiles and `*.db|*.log|*.key`; forward the `Authorization` header (`fastcgi_param HTTP_AUTHORIZATION $http_authorization;`); route `/api/v1/*` to `api/v1/index.php`; send `Cache-Control: no-cache` for `*.css` and `*.js` (the Apache `.htaccess` does this already).
+* Nginx: deny `/includes/`, `/templates/`, `/lang/`, dotfiles and `*.db|*.log|*.key`; forward the `Authorization` header (`fastcgi_param HTTP_AUTHORIZATION $http_authorization;`); route `/api/v1/*` to `api/v1/index.php`; send `Cache-Control: no-cache` for `*.css` and `*.js` (the Apache `.htaccess` does this already).
 * Report vulnerabilities privately (GitHub security advisories) instead of opening a public issue.
 
 ## Credits & Third-Party Assets
