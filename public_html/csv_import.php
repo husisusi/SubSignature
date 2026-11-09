@@ -5,6 +5,7 @@
  */
 
 require_once 'includes/config.php';
+require_once 'includes/tag_picker.php';
 requireLogin();
 
 // --- CANCEL LOGIC (Reset Session) ---
@@ -43,6 +44,7 @@ $total_rows = 0;
 $valid_rows = 0;
 $form_user_id = $user_id;
 $form_template = getDefaultTemplateName();
+$form_tag = ['id' => 0, 'new' => '', 'color' => 'blue', 'error' => ''];
 
 const CSV_MAX_FILE_BYTES = 2097152;  // 2 MB
 const CSV_MAX_ROWS       = 2000;
@@ -69,6 +71,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     $form_user_id = $target_user_id;
     $form_template = $template;
+    // Optional tag (administrators only). On "import" the choice made at upload time is used.
+    $tagChoice = ($action === 'import' && isset($_SESSION['import_params']['tag']))
+        ? $_SESSION['import_params']['tag']
+        : resolveImportTagChoice($db, $_POST);
+    $form_tag = $tagChoice;
 
     if (!$is_admin && $target_user_id !== (int)$user_id) {
         // Permission check: users can only import for themselves.
@@ -77,6 +84,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $error = t('The selected user does not exist or is not active.');
     }
     // Action: confirm the import of the previewed rows
+    elseif ($tagChoice['error'] !== '') {
+        $error = $tagChoice['error'];
+    }
     elseif ($action === 'import' && isset($_SESSION['preview_data'])) {
         $preview_data = $_SESSION['preview_data'];
         $valid_data = array_filter($preview_data, function ($row) { return !empty($row['is_valid']); });
@@ -85,6 +95,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $_SESSION['import_data'] = [
                 'user_id'  => $target_user_id,
                 'template' => $template,
+                'tag'      => $tagChoice,
                 'rows'     => array_values($valid_data),
             ];
             unset($_SESSION['preview_data'], $_SESSION['import_params']);
@@ -160,7 +171,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         fclose($handle);
 
                         $_SESSION['preview_data'] = $preview_data;
-                        $_SESSION['import_params'] = ['user_id' => $target_user_id, 'template' => $template];
+                        $_SESSION['import_params'] = ['user_id' => $target_user_id, 'template' => $template, 'tag' => $tagChoice];
                         $total_rows = count($preview_data);
                     }
                 }
@@ -177,6 +188,7 @@ if (empty($preview_data) && isset($_SESSION['preview_data'])) {
     if (isset($_SESSION['import_params'])) {
         $form_user_id = $_SESSION['import_params']['user_id'];
         $form_template = $_SESSION['import_params']['template'];
+        $form_tag = $_SESSION['import_params']['tag'] ?? $form_tag;
     }
 }
 
@@ -353,6 +365,13 @@ $csrf_token = generateCSRFToken();
                     <?php else: ?>
                         <input type="hidden" name="user_id" value="<?php echo (int)$user_id; ?>">
                     <?php endif; ?>
+
+                    <?php if ($is_admin): ?>
+                    <div class="form-group">
+                        <label><?= et('Tag for imported signatures') ?></label>
+                        <?php echo renderTagPicker($db, $form_tag, ''); ?>
+                    </div>
+                    <?php endif; ?>
                 </div>
                 
                 <div class="form-actions">
@@ -367,6 +386,10 @@ $csrf_token = generateCSRFToken();
         <section class="card">
             <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
                 <h3><i class="fas fa-table"></i> <?= et('Data Validation') ?></h3>
+                <?php $previewTag = ($form_tag['new'] !== '') ? $form_tag['new'] : importTagName($db, (int)$form_tag['id']); ?>
+                <?php if ($previewTag !== ''): ?>
+                <span style="font-size:0.85rem; color:var(--text-muted);"><i class="fas fa-tag"></i> <?= et('Tag') ?>: <strong><?php echo e($previewTag); ?></strong></span>
+                <?php endif; ?>
                 
                 <?php if ($valid_rows > 0): ?>
                 <form method="POST" style="margin:0;">

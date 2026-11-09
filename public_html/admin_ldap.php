@@ -9,12 +9,15 @@
 require_once 'includes/config.php';
 require_once 'includes/LdapService.php';
 require_once 'includes/LdapImporter.php';
+require_once 'includes/tag_picker.php';
 requireAdmin();
 
 $admin_id = (int)$_SESSION['user_id'];
 $ldap_available = function_exists('ldap_connect');
 $message = popFlash('success');
 $error = popFlash('error');
+$importResult = json_decode(popFlash('ldap_result'), true); // summary of the last import (green panel)
+if (!is_array($importResult)) $importResult = null;
 $plan_token = '';
 
 $cfg = LdapConfig::load($db);
@@ -94,6 +97,7 @@ function ldapBuildView(LdapImporter $importer, array $stored, array $in, array $
     return [
         'rows' => $ev['rows'], 'counts' => $ev['counts'], 'truncated' => !empty($stored['truncated']),
         'target' => $target, 'template' => $template, 'apply_template' => $applyTemplate, 'selected' => $selection,
+        'tag' => resolveImportTagChoice($GLOBALS['db'], $in),
     ];
 }
 
@@ -172,17 +176,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $selection = array_values(array_filter($selection, function ($i) use ($importable) { return isset($importable[$i]); }));
             $view['selected'] = $selection;
 
-            if (!$selection) {
+            if ($view['tag']['error'] !== '') {
+                $error = $view['tag']['error'];
+            } elseif (!$selection) {
                 $error = t('No entries selected.');
             } else {
                 try {
-                    $result = $importer->applyPlan($stored['rows'], $view['target'], $view['template'], $view['apply_template'], $selection);
+                    $tagId = applyImportTagChoice($db, $view['tag']);
+                    $result = $importer->applyPlan($stored['rows'], $view['target'], $view['template'], $view['apply_template'], $selection, $tagId);
                     @unlink(ldapPlanPath($plan_token));
-                    logSecurityEventToDB($db, 'LDAP_IMPORT', $admin_id, json_encode($result + ['target' => $view['target']]));
-                    setFlash('success', t(
-                        'Import finished: {created} signatures created, {updated} updated, {unchanged} unchanged.',
-                        ['created' => $result['created'], 'updated' => $result['updated'], 'unchanged' => $result['unchanged']]
-                    ));
+                    logSecurityEventToDB($db, 'LDAP_IMPORT', $admin_id, json_encode($result + ['target' => $view['target'], 'tag' => $tagId]));
+                    setFlash('ldap_result', json_encode($result + ['tag_name' => importTagName($db, $tagId)], JSON_UNESCAPED_UNICODE));
                     header('Location: admin_ldap.php');
                     exit;
                 } catch (Exception $e) {
@@ -245,6 +249,20 @@ $presetsJson = json_encode(LdapConfig::PRESETS, JSON_HEX_TAG | JSON_HEX_AMP | JS
         .tag-skip { background: var(--danger-bg); color: var(--danger-text); }
         .plan-toolbar { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; margin: 1rem 0 0.75rem; }
         .btn-sm { padding: 0.4rem 0.8rem; font-size: 0.82rem; }
+        .alert { padding: 1rem 1.25rem; border-radius: 10px; margin-bottom: 1.5rem; display: flex; gap: 0.75rem; align-items: center; }
+        .alert-success { background: var(--success-bg); color: var(--success-text); border: 1px solid var(--success-border); }
+        .alert-error { background: var(--danger-bg); color: var(--danger-text); border: 1px solid var(--danger-border); }
+        .import-success { background: var(--success-bg); border: 1px solid var(--success-border); border-radius: 12px; padding: 1.25rem 1.5rem; margin-bottom: 1.5rem; }
+        .import-success h3 { color: var(--success-text); font-size: 1.15rem; display: flex; gap: 0.6rem; align-items: center; margin: 0 0 1rem; }
+        .import-success .stat-box { background: var(--bg-white); }
+        .import-success a { color: var(--success-text); font-weight: 600; }
+        .import-success p { margin: 0.75rem 0 0; color: var(--success-text); font-size: 0.88rem; }
+        .plan-table th .sort-btn { background: none; border: none; font: inherit; font-weight: 700; color: inherit; cursor: pointer; padding: 0; display: inline-flex; gap: 0.35rem; align-items: center; }
+        .plan-table th .sort-btn:hover { color: var(--primary); }
+        .plan-table th .sort-ind { font-size: 0.7rem; opacity: 0.35; }
+        .plan-table th[aria-sort] .sort-ind { opacity: 1; color: var(--primary); }
+        .tag-picker { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; }
+        .tag-picker .form-input { width: auto; min-width: 150px; }
         .warn-box { background: var(--warning-bg); border: 1px solid var(--warning-border); color: var(--warning-text); padding: 0.9rem 1rem; border-radius: 8px; margin-bottom: 1.5rem; font-size: 0.9rem; }
     </style>
 </head>
@@ -271,6 +289,20 @@ $presetsJson = json_encode(LdapConfig::PRESETS, JSON_HEX_TAG | JSON_HEX_AMP | JS
             <p><?= et('Create signatures from your directory data (name, role, email, phone) and assign them to a user. No user accounts are created.') ?></p>
         </header>
 
+        <?php if ($importResult !== null): ?>
+            <div class="import-success" role="status">
+                <h3><i class="fas fa-check-circle"></i> <?= et('Import successful') ?></h3>
+                <div class="stat-row" style="margin-bottom:0;">
+                    <div class="stat-box"><strong style="color:var(--success-text);"><?php echo (int)($importResult['created'] ?? 0); ?></strong><span><?= et('Signatures created') ?></span></div>
+                    <div class="stat-box"><strong style="color:var(--info-text);"><?php echo (int)($importResult['updated'] ?? 0); ?></strong><span><?= et('Updated') ?></span></div>
+                    <div class="stat-box"><strong><?php echo (int)($importResult['unchanged'] ?? 0); ?></strong><span><?= et('Unchanged') ?></span></div>
+                    <?php if ((string)($importResult['tag_name'] ?? '') !== ''): ?>
+                    <div class="stat-box"><strong><?php echo (int)($importResult['tagged'] ?? 0); ?></strong><span><?= et('Tagged') ?>: <?php echo e((string)$importResult['tag_name']); ?></span></div>
+                    <?php endif; ?>
+                </div>
+                <p><a href="all_signatures.php?source=ldap"><i class="fas fa-list-ul"></i> <?= et('View Signatures') ?></a></p>
+            </div>
+        <?php endif; ?>
         <?php if ($message): ?>
             <div class="alert alert-success"><i class="fas fa-check-circle"></i> <?php echo e($message); ?></div>
         <?php endif; ?>
@@ -331,6 +363,12 @@ $presetsJson = json_encode(LdapConfig::PRESETS, JSON_HEX_TAG | JSON_HEX_AMP | JS
                         </div>
                     </div>
 
+                    <div style="margin-bottom:1rem;">
+                        <label class="form-label"><?= et('Tag for imported signatures') ?></label>
+                        <?php echo renderTagPicker($db, $view['tag'], 'form-input'); ?>
+                        <span class="form-hint"><?= et('Optional. Put a tag on every imported signature so you can filter them later.') ?></span>
+                    </div>
+
                     <div class="plan-toolbar">
                         <input type="search" id="planFilter" class="form-input" style="max-width:260px;" placeholder="<?= et('Filter by name or email') ?>" autocomplete="off">
                         <button type="button" class="btn btn-secondary btn-sm" data-select="all"><?= et('Select all') ?></button>
@@ -342,7 +380,7 @@ $presetsJson = json_encode(LdapConfig::PRESETS, JSON_HEX_TAG | JSON_HEX_AMP | JS
                     <div style="overflow-x:auto; max-height:460px; overflow-y:auto;">
                         <table class="plan-table" id="planTable">
                             <thead><tr>
-                                <th style="width:34px;"></th><th><?= et('Status') ?></th><th><?= et('Name') ?></th><th><?= et('Email') ?></th><th><?= et('Role') ?></th><th><?= et('Phone') ?></th><th><?= et('Assigned to') ?></th><th><?= et('Note') ?></th>
+                                <th style="width:34px;"></th><th aria-sort="none" data-col="1"><button type="button" class="sort-btn" data-sort-col="1"><?= et('Status') ?> <span class="sort-ind" aria-hidden="true">&#8693;</span></button></th><th aria-sort="none" data-col="2"><button type="button" class="sort-btn" data-sort-col="2"><?= et('Name') ?> <span class="sort-ind" aria-hidden="true">&#8693;</span></button></th><th aria-sort="none" data-col="3"><button type="button" class="sort-btn" data-sort-col="3"><?= et('Email') ?> <span class="sort-ind" aria-hidden="true">&#8693;</span></button></th><th aria-sort="none" data-col="4"><button type="button" class="sort-btn" data-sort-col="4"><?= et('Role') ?> <span class="sort-ind" aria-hidden="true">&#8693;</span></button></th><th aria-sort="none" data-col="5"><button type="button" class="sort-btn" data-sort-col="5"><?= et('Phone') ?> <span class="sort-ind" aria-hidden="true">&#8693;</span></button></th><th aria-sort="none" data-col="6"><button type="button" class="sort-btn" data-sort-col="6"><?= et('Assigned to') ?> <span class="sort-ind" aria-hidden="true">&#8693;</span></button></th><th><?= et('Note') ?></th>
                             </tr></thead>
                             <tbody>
                             <?php
@@ -610,6 +648,40 @@ $presetsJson = json_encode(LdapConfig::PRESETS, JSON_HEX_TAG | JSON_HEX_AMP | JS
                 });
                 planForm.addEventListener('submit', refresh);
                 refresh();
+
+                // Sortable columns (client side; row selection is tied to data-idx and survives sorting).
+                var table = document.getElementById('planTable');
+                var tbody = table.querySelector('tbody');
+                var statusOrder = { create: 0, update: 1, unchanged: 2, skip: 3 };
+                var collator = (window.Intl && Intl.Collator) ? new Intl.Collator(document.documentElement.lang || undefined, { numeric: true, sensitivity: 'base' }) : null;
+                function cellValue(tr, col) {
+                    if (col === 1) { var a = tr.getAttribute('data-action'); return statusOrder.hasOwnProperty(a) ? statusOrder[a] : 9; }
+                    return (tr.cells[col].textContent || '').trim();
+                }
+                table.querySelectorAll('[data-sort-col]').forEach(function (btn) {
+                    btn.addEventListener('click', function () {
+                        var col = parseInt(btn.getAttribute('data-sort-col'), 10);
+                        var th = btn.closest('th');
+                        var dir = th.getAttribute('aria-sort') === 'ascending' ? -1 : 1;
+                        table.querySelectorAll('th[data-col]').forEach(function (h) {
+                            h.setAttribute('aria-sort', 'none');
+                            h.querySelector('.sort-ind').innerHTML = '&#8693;';
+                        });
+                        th.setAttribute('aria-sort', dir === 1 ? 'ascending' : 'descending');
+                        th.querySelector('.sort-ind').innerHTML = dir === 1 ? '&#9650;' : '&#9660;';
+                        var list = Array.prototype.slice.call(tbody.rows);
+                        var keyed = list.map(function (tr, i) { return { tr: tr, v: cellValue(tr, col), i: i }; });
+                        keyed.sort(function (x, y) {
+                            var c;
+                            if (typeof x.v === 'number' && typeof y.v === 'number') { c = x.v - y.v; }
+                            else if (x.v === '' && y.v !== '') { return 1; }   // empty values always last
+                            else if (y.v === '' && x.v !== '') { return -1; }
+                            else { c = collator ? collator.compare(String(x.v), String(y.v)) : String(x.v).localeCompare(String(y.v)); }
+                            return c !== 0 ? c * dir : x.i - y.i;
+                        });
+                        keyed.forEach(function (k) { tbody.appendChild(k.tr); });
+                    });
+                });
             }
 
             // Confirmation for buttons with data-confirm inside forms.

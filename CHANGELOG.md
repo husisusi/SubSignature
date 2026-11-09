@@ -3,7 +3,7 @@
 ## 1.5.0
 
 ### Added
-- **Multi-language interface (17 languages):** en, de, es, fr, it, pt, nl, pl, tr, ru, uk, ar (right-to-left), hi, id, zh, ja, ko. One JSON file per language in `public_html/lang/`; English text is the key, missing keys fall back to English. New module `includes/i18n.php` (`t()`, `et()`, `eth()`, `tj()`, `langSwitcher()`, ...).
+- **Multi-language interface (18 languages):** en, de, es, fr, it, pt, nl, pl, tr, ru, uk, ar (right-to-left), hi, id, zh, ja, ko and bs (Bosanski). One JSON file per language in `public_html/lang/`; English text is the key, missing keys fall back to English. New module `includes/i18n.php` (`t()`, `et()`, `eth()`, `tj()`, `langSwitcher()`, ...).
 - Language detection (cookie, then browser, then administrator default), language switcher in the sidebar and on the login / install pages (`set_language.php`, POST + CSRF), per-user language stored in `users.language`, system-wide default language in Admin -> Configuration.
 - RTL layout support (`dir="rtl"`, mirrored sidebar and controls); signature previews always stay left-to-right.
 - Template editor follows the interface language (Jodit).
@@ -11,6 +11,12 @@
 - **System status** panel in Admin -> Configuration (PHP version/extensions, writable directories, data directory location, secret key, installer leftovers).
 - Drop-in languages: a new `lang/<code>.json` appears in the menu automatically once `"name"` (and optionally `"dir": "rtl"`) is set in its `@meta` block; no code change needed.
 - Contributor tooling: `tools/i18n.php` (`extract`, `check`, `new <code>`, `sync`) and `docs/TRANSLATING.md`.
+
+### Added (imports)
+- **Tag for imports:** the CSV import and the LDAP import can put an existing or a new tag on every imported signature (administrators only; a new tag is created when the import runs, not while previewing). The tag shows up in All Signatures and can be used as a filter.
+- **LDAP import: sortable preview** - click a column header (status, name, email, role, phone, assigned user) to sort; the selection is kept.
+- **LDAP import: green "Import successful" summary** with created / updated / unchanged / tagged counts and a link to the imported signatures. (The message was shown before, but the page had no styling for it.)
+- Docs: the desktop agent is now planned in **Python** for **Windows, Linux and macOS** (docs/API.md rewritten accordingly); Bosnian (`bs.json`) is listed as the 18th language.
 
 ### Added (signature overview)
 - The sidebar entry **"My Signatures" is now "All Signatures"**.

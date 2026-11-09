@@ -73,6 +73,7 @@ function builtinLanguages(): array
         'zh'    => ['简体中文', 'ltr'],
         'ja'    => ['日本語', 'ltr'],
         'ko'    => ['한국어', 'ltr'],
+        'bs'    => ['Bosanski', 'ltr'],
     ];
 }
 

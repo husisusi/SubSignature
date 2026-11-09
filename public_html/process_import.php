@@ -4,6 +4,7 @@
  * The data comes from the session (set by csv_import.php) and is validated again here.
  */
 require_once 'includes/config.php';
+require_once 'includes/tag_picker.php';
 requireLogin();
 
 // Direct access without a prepared import: back to the upload page.
@@ -19,6 +20,8 @@ unset($_SESSION['import_data']);
 $user_id  = (int)$import_data['user_id'];
 $template = resolveTemplateName($import_data['template'] ?? '');
 $rows     = array_slice((array)($import_data['rows'] ?? []), 0, 2000);
+$tagChoice = (array)($import_data['tag'] ?? ['id' => 0, 'new' => '', 'color' => 'blue']);
+$tagChoice += ['id' => 0, 'new' => '', 'color' => 'blue'];
 
 // Authorization: admins may import for any user, everybody else only for themselves.
 if (!isAdmin() && $user_id !== (int)$_SESSION['user_id']) {
@@ -42,8 +45,11 @@ $error_count = 0;
 $errors = [];
 
 // All rows or none: a failure in the middle must not leave a half import behind.
+$tag_id = 0;
 $db->exec('BEGIN IMMEDIATE');
 try {
+    // Optional tag (administrators only; a new tag is created here, inside the transaction).
+    $tag_id = applyImportTagChoice($db, $tagChoice);
     $insert = $db->prepare("INSERT INTO user_signatures (user_id, name, role, email, phone, template, source) VALUES (?, ?, ?, ?, ?, ?, 'csv')");
     foreach ($rows as $index => $row) {
         $row_num = (int)($row['row'] ?? ($index + 1));
@@ -61,6 +67,7 @@ try {
         $insert->bindValue(5, $clean['phone'], SQLITE3_TEXT);
         $insert->bindValue(6, $template, SQLITE3_TEXT);
         $insert->execute();
+        tagSignature($db, (int)$db->lastInsertRowID(), $tag_id);
         $success_count++;
     }
     $db->exec('COMMIT');
@@ -70,9 +77,10 @@ try {
     $errors[] = t('The import failed and was rolled back. No rows were saved.');
     $error_count += $success_count;
     $success_count = 0;
+    $tag_id = 0;
 }
 
-logSecurityEventToDB($db, 'CSV_IMPORT', (int)$_SESSION['user_id'], "Target user: $user_id, imported: $success_count, failed: $error_count");
+logSecurityEventToDB($db, 'CSV_IMPORT', (int)$_SESSION['user_id'], "Target user: $user_id, imported: $success_count, failed: $error_count" . ($tag_id > 0 ? ", tag: $tag_id" : ''));
 
 $template_display = templateDisplayName($template);
 ?>
@@ -243,6 +251,12 @@ $template_display = templateDisplayName($template);
                         <span><strong><?= et('Template Used:') ?></strong></span>
                         <span><?php echo e($template_display); ?></span>
                     </li>
+                    <?php $tagName = importTagName($db, $tag_id); if ($tagName !== ''): ?>
+                    <li>
+                        <span><strong><?= et('Tag:') ?></strong></span>
+                        <span><?php echo e($tagName); ?></span>
+                    </li>
+                    <?php endif; ?>
                     <li>
                         <span><strong><?= et('Timestamp:') ?></strong></span>
                         <span><?php echo date('d.m.Y H:i:s'); ?></span>

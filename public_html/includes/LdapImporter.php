@@ -253,6 +253,22 @@ class LdapImporter
         return ['rows' => $out, 'counts' => $counts];
     }
 
+    /** Puts the optional import tag on one signature (inside the import transaction). */
+    private function tagRow(int $signatureId, int $tagId, array &$result): void
+    {
+        if ($tagId <= 0 || $signatureId <= 0) {
+            return;
+        }
+        $st = $this->db->prepare('INSERT OR IGNORE INTO signature_tag_map (signature_id, tag_id)
+                                  SELECT id, ? FROM user_signatures WHERE id = ?');
+        $st->bindValue(1, $tagId, SQLITE3_INTEGER);
+        $st->bindValue(2, $signatureId, SQLITE3_INTEGER);
+        $st->execute();
+        if ($this->db->changes() > 0) {
+            $result['tagged']++;
+        }
+    }
+
     /**
      * Writes the selected rows. Everything happens in one transaction: all or nothing.
      * The rows are evaluated again inside the transaction, because the preview may be
@@ -260,15 +276,16 @@ class LdapImporter
      *
      * @param array $rows     rows from fetchRows()
      * @param int[] $selected row indices (idx) chosen by the administrator
-     * @return array counts: created, updated, unchanged, skipped
+     * @param int   $tagId    optional tag (signature_tags.id) put on every imported signature, 0 = none
+     * @return array counts: created, updated, unchanged, skipped, tagged
      * @throws Exception
      */
-    public function applyPlan(array $rows, string $target, string $template, bool $applyTemplate, array $selected): array
+    public function applyPlan(array $rows, string $target, string $template, bool $applyTemplate, array $selected, int $tagId = 0): array
     {
         $db = $this->db;
         $effectiveTemplate = $template !== '' ? resolveTemplateName($template) : getDefaultTemplateName();
         $chosen = array_fill_keys(array_map('intval', $selected), true);
-        $result = ['created' => 0, 'updated' => 0, 'unchanged' => 0, 'skipped' => 0];
+        $result = ['created' => 0, 'updated' => 0, 'unchanged' => 0, 'skipped' => 0, 'tagged' => 0];
 
         $db->exec('BEGIN IMMEDIATE');
         try {
@@ -291,6 +308,7 @@ class LdapImporter
                         $in->bindValue(7, $row['key'], SQLITE3_TEXT);
                         $in->execute();
                         $result['created']++;
+                        $this->tagRow((int)$db->lastInsertRowID(), $tagId, $result);
                         break;
 
                     case self::ACTION_UPDATE:
@@ -311,10 +329,12 @@ class LdapImporter
                         $up->bindValue($n++, $row['user_id'], SQLITE3_INTEGER);
                         $up->execute();
                         $result['updated']++;
+                        $this->tagRow((int)$row['sig_id'], $tagId, $result);
                         break;
 
                     case self::ACTION_UNCHANGED:
                         $result['unchanged']++;
+                        $this->tagRow((int)$row['sig_id'], $tagId, $result);
                         break;
 
                     default:

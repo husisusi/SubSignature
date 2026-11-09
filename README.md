@@ -35,10 +35,10 @@ The focus is privacy and security. The application runs entirely on your server:
 * **Signature rollout:** administrators can send signatures to users by email (SMTP).
 * **User management** with roles (admin / user), activation, optional self-registration.
 * **All Signatures overview** (sidebar): search, filter by user, **template**, **tag** and **source** (manual / CSV / LDAP), sort, bulk actions (delete, send, change template, add or remove tags). See [All Signatures](#all-signatures-overview).
-* **CSV import / export** of signatures (delimiter `,` or `;`, formula-injection safe export).
+* **CSV import / export** of signatures (delimiter `,` or `;`, formula-injection safe export); administrators can put a **tag** on every imported signature.
 * **LDAP / Active Directory import** of signatures from directory data with selection in a preview, target user and template (import only, no accounts are created, no LDAP login). See [LDAP import](#ldap--active-directory-import).
 * **Read-only API with bearer tokens** to prepare a desktop agent for Outlook and Thunderbird. See [API](#api-for-the-desktop-agent).
-* **17 languages** (English, Deutsch, Español, Français, Italiano, Português, Nederlands, Polski, Türkçe, Русский, Українська, العربية (RTL), हिन्दी, Bahasa Indonesia, 中文, 日本語, 한국어): one JSON file per language in `public_html/lang/`, automatic detection from the browser, switcher in the sidebar and on the login page, per-user choice, system-wide default. See [Languages](#languages).
+* **18 languages** (English, Deutsch, Español, Français, Italiano, Português, Nederlands, Polski, Türkçe, Русский, Українська, العربية (RTL), हिन्दी, Bahasa Indonesia, 中文, 日本語, 한국어, Bosanski): one JSON file per language in `public_html/lang/`, automatic detection from the browser, switcher in the sidebar and on the login page, per-user choice, system-wide default. See [Languages](#languages).
 * **Company-wide placeholders** `{{COMPANY}}`, `{{WEBSITE}}`, `{{ADDRESS}}`, `{{DISCLAIMER}}`: maintained once in Admin -> Configuration and filled into every signature.
 * **System status** panel (Admin -> Configuration): PHP version and extensions, writable directories, data directory outside the web root, secret key, installer leftovers.
 * **Light, dark and system theme:** switch in the sidebar (or top right on the login page); the choice is remembered per browser, "system" follows the operating system. Signature previews always stay on white. Static files are versioned automatically (`?v=<mtime>`), so a new release shows up without clearing the browser cache.
@@ -86,13 +86,15 @@ Back up the whole `private_data/` directory **including `secret.key`**. The key 
 
 **Admin → LDAP Import** creates **signatures** from directory data (name, role, email, phone) and assigns them to existing SubSignature users. It is an **import only**: **no user accounts are created** and directory users cannot log in with their directory password.
 
-Workflow: configure → *Test connection* → *Preview* → choose entries, target user and template → *Import selected*. Nothing is written before you have reviewed the preview, and the import runs in a single database transaction.
+Workflow: configure → *Test connection* → *Preview* → choose entries, target user, template and an optional tag → *Import selected*. A green **Import successful** summary (created / updated / unchanged / tagged) is shown afterwards. Nothing is written before you have reviewed the preview, and the import runs in a single database transaction.
 
 In the preview you can
 
 * **select exactly the entries** to import (checkboxes, filter by name or email, *Select all*, *Only new and changed*, *Select none*),
 * choose with a **dropdown** which SubSignature user receives the signatures: one specific user, or *Automatically by email address* (each signature goes to the active user with the same email address; entries without a matching user are skipped),
 * choose the **template** the new signatures use (default: the system default template),
+* optionally put a **tag** (existing or new) on every imported signature, so the batch can be found again under *All Signatures*,
+* **sort the table** by clicking a column header (status, name, email, role, phone, assigned user); your selection is kept while sorting,
 * optionally apply the chosen template to signatures that were imported before,
 * change target or template and click *Update preview* - the directory is not queried again.
 
@@ -140,7 +142,7 @@ If the PHP `ldap` extension is missing, the page shows a notice; the settings ca
 
 ## API for the desktop agent
 
-A planned C++ agent for Windows and Linux will fetch signatures from the server and install them in Outlook and Thunderbird. The server side is ready:
+A planned **Python** agent for **Windows, Linux and macOS** will fetch signatures from the server and install them in Outlook and Thunderbird. The server side is ready:
 
 * Create a token under **Admin → API Tokens** (scope `signatures:read`, optional expiry, revocable, only the hash is stored).
 * `GET /api/v1/signatures` returns rendered, sanitized HTML plus the raw fields, a plain-text variant and a hash for change detection; filters `username`, `email`, `updated_since`, paging.
@@ -152,7 +154,7 @@ Full documentation with implementation notes for the agent: [docs/API.md](docs/A
 
 The interface language is chosen in this order: the user's saved choice (cookie / profile), the browser's `Accept-Language` header, the default language set by the administrator (Admin -> Configuration), English. Missing translations fall back to English, so a partly translated language never breaks a page. Arabic is rendered right-to-left.
 
-Each language is a single file `public_html/lang/<code>.json`. To add or improve a language see [docs/TRANSLATING.md](docs/TRANSLATING.md); a command line helper (`php tools/i18n.php`) creates, syncs and checks the files. The shipped translations are machine-quality and welcome a review by native speakers (pull requests are appreciated).
+Each language is a single file `public_html/lang/<code>.json` (`en`, `de`, `es`, `fr`, `it`, `pt`, `nl`, `pl`, `tr`, `ru`, `uk`, `ar`, `hi`, `id`, `zh`, `ja`, `ko` and `bs` = Bosanski). To add or improve a language see [docs/TRANSLATING.md](docs/TRANSLATING.md); a command line helper (`php tools/i18n.php`) creates, syncs and checks the files. The shipped translations are machine-quality and welcome a review by native speakers (pull requests are appreciated).
 
 ## Roles
 
@@ -191,7 +193,7 @@ An overview of the protections and the results of the security review is in [doc
 
 ## Roadmap
 
-* SubSignature desktop agent (Python, Windows/Linux) that installs signatures in Outlook and Thunderbird using the API above.
+* SubSignature desktop agent (Python, Windows, Linux and macOS) that installs signatures in Outlook and Thunderbird using the API above.
 * Optional LDAP import scheduling (cron/CLI).
 
 ## Contributing

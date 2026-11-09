@@ -49,6 +49,7 @@ not part of this review.
 * Creating, deleting and assigning tags is administrator-only (403 for others), POST + CSRF; tag names are restricted to letters, digits, spaces and `. _ - / &`, unique case-insensitively, and escaped on output. Colours are keys that map to CSS classes - no user-controlled CSS.
 * "Delete All" uses the same WHERE clause as the list, so it removes exactly what is shown; destructive admin actions are audit-logged.
 * Template changes only accept names of existing template files (no path input).
+* The tag option of the CSV and LDAP import is administrator-only on the server too (ignored for everybody else); a new tag name goes through the same validation, the tag is created inside the import transaction (CSV) or right before it (LDAP), and the tag id is always bound as a parameter.
 
 **Token API**
 
