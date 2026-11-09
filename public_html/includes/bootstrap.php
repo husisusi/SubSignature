@@ -36,7 +36,7 @@ define('TMP_DIR', BASE_DIR . '/tmp');
 define('SECRET_KEY_FILE', BASE_DIR . '/secret.key');
 
 // Current database schema version (see runMigrations()).
-define('SCHEMA_VERSION', 3);
+define('SCHEMA_VERSION', 5);
 
 // ---------------------------------------------------------------------
 // 2. DIRECTORY CHECKS
@@ -218,8 +218,8 @@ function runMigrations(SQLite3 $db): void
         )");
 
         // ---- Version 2: LDAP import, API tokens, DB-backed rate limits ---
-        // Accounts created by the LDAP import cannot log in with LDAP (login is
-        // not implemented); auth_source/external_id/ldap_dn prepare for that.
+        // Accounts created by the LDAP import of earlier releases cannot log in
+        // with LDAP (login is not implemented); the columns are kept for them.
         addColumnIfMissing($db, 'users', 'auth_source', "TEXT DEFAULT 'local'");
         addColumnIfMissing($db, 'users', 'external_id', 'TEXT');
         addColumnIfMissing($db, 'users', 'ldap_dn', 'TEXT');
@@ -250,6 +250,32 @@ function runMigrations(SQLite3 $db): void
 
         // ---- Version 3: per-user interface language ----------------------
         addColumnIfMissing($db, 'users', 'language', 'TEXT');
+
+        // ---- Version 4: LDAP import creates signatures only ---------------
+        // ldap_key = directory unique ID (or DN) of the entry a signature was
+        // imported from, so a repeated import updates instead of duplicating.
+        addColumnIfMissing($db, 'user_signatures', 'ldap_key', 'TEXT');
+        $db->exec('CREATE INDEX IF NOT EXISTS idx_sig_ldap_key ON user_signatures(user_id, ldap_key)');
+
+        // ---- Version 5: signature tags + filter indexes -------------------
+        // Tags are global labels managed by administrators; the map table links
+        // them to signatures (rows disappear with the signature or the tag).
+        $db->exec("CREATE TABLE IF NOT EXISTS signature_tags (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL COLLATE NOCASE UNIQUE,
+            color TEXT NOT NULL DEFAULT 'blue',
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )");
+        $db->exec("CREATE TABLE IF NOT EXISTS signature_tag_map (
+            signature_id INTEGER NOT NULL,
+            tag_id INTEGER NOT NULL,
+            PRIMARY KEY (signature_id, tag_id),
+            FOREIGN KEY (signature_id) REFERENCES user_signatures(id) ON DELETE CASCADE,
+            FOREIGN KEY (tag_id) REFERENCES signature_tags(id) ON DELETE CASCADE
+        )");
+        $db->exec('CREATE INDEX IF NOT EXISTS idx_tagmap_tag ON signature_tag_map(tag_id)');
+        $db->exec('CREATE INDEX IF NOT EXISTS idx_sig_template ON user_signatures(template)');
+        $db->exec('CREATE INDEX IF NOT EXISTS idx_sig_source ON user_signatures(source)');
 
         $db->exec('CREATE INDEX IF NOT EXISTS idx_sig_user ON user_signatures(user_id)');
         $db->exec('CREATE INDEX IF NOT EXISTS idx_sig_email ON user_signatures(email COLLATE NOCASE)');

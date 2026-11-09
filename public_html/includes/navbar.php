@@ -21,7 +21,7 @@ $current_page = basename($_SERVER['PHP_SELF']);
     </a>
     
     <a href="all_signatures.php" class="nav-link <?php echo ($current_page == 'all_signatures.php') ? 'active' : ''; ?>">
-        <i class="fas fa-signature"></i> <span><?= et('My Signatures') ?></span>
+        <i class="fas fa-signature"></i> <span><?= et('All Signatures') ?></span>
     </a>
 
     <span class="nav-label" style="font-weight: 800; color: var(--text-main);"><?= et('Data') ?></span>

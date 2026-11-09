@@ -12,14 +12,33 @@
 - Drop-in languages: a new `lang/<code>.json` appears in the menu automatically once `"name"` (and optionally `"dir": "rtl"`) is set in its `@meta` block; no code change needed.
 - Contributor tooling: `tools/i18n.php` (`extract`, `check`, `new <code>`, `sync`) and `docs/TRANSLATING.md`.
 
+### Added (signature overview)
+- The sidebar entry **"My Signatures" is now "All Signatures"**.
+- **New filters** in All Signatures: by **template** (only templates in use, with counts), by **tag** (including "Without tag") and by **source** (manual / CSV / LDAP), plus sorting (newest, oldest, name, email, template). The filter state survives infinite scroll, deleting and bulk actions; template and source badges on each signature are clickable filters.
+- **Tags:** coloured labels managed by administrators (Manage tags; 1-32 characters, 8 colours, max. 100), bulk *Add tag* / *Remove tag*, shown as chips on each signature. Normal users see the tags of their own signatures read-only.
+- **Bulk "Change template"** for the selected signatures (administrators: any, users: their own).
+- Database schema v5: tables `signature_tags` and `signature_tag_map`, indexes on `template` and `source`; migrated automatically.
+
+### Security / behaviour
+- **"Delete All" now deletes exactly the signatures the current filter shows** (previously the whole selected user scope, even when a search was active). The audit log records the scope and the number of deleted signatures.
+- Tag operations are administrator-only on the server side (403 otherwise), POST + CSRF, prepared statements only; colour and sort values are whitelisted, tag names are validated and always escaped; template changes accept only existing template files.
+
 ### Changed
+- **LDAP import reworked - signatures only.** The import no longer creates, updates or deactivates user accounts; it creates signatures from the directory data (name, role, email, phone). The options "Create a signature for each user", "New accounts are active" and "Deactivate accounts missing in the directory" were removed.
+- **Selection in the preview:** choose which directory entries are imported (checkboxes, filter, *Select all* / *Only new and changed* / *Select none*, live counter).
+- **Target user dropdown:** assign the imported signatures to a specific SubSignature user, or *Automatically by email address* (matches the active user with the same email, others are skipped). Preselected from the new configuration value "Assign signatures to".
+- **Template dropdown:** choose the template for imported signatures (default: system default template); optionally apply it to signatures that were imported earlier.
+- Re-import is idempotent: imported signatures remember the directory's unique ID (or DN) and are updated instead of duplicated; manually created and CSV-imported signatures are never touched. The target/template can be changed in the preview without querying the directory again.
+- The directory result is limited to 5000 entries per run, with a notice when truncated.
+- Database schema v4 (`user_signatures.ldap_key`); migrated automatically on first request.
 - Database schema v3 (`users.language`); migrated automatically on first request.
 - `.htaccess` also denies direct access to `/lang/`.
 - README credits list the licence of each third-party asset.
 
 ### Upgrade notes
-- Copy the files (for example `rsync -avc`), keep `private_data/`, reload once with Ctrl+F5. The migration to schema v3 runs automatically.
+- Copy the files (for example `rsync -avc`), keep `private_data/`, reload once with Ctrl+F5. The migrations to schema v3, v4 and v5 run automatically.
 - Nginx users: add `/lang/` to the deny list.
+- Users that were created by an earlier LDAP import stay as they are (they can be kept or deleted under Admin -> Users); the import does not touch accounts any more.
 - The translations are machine-quality; native-speaker review is welcome.
 
 ## 1.4.0

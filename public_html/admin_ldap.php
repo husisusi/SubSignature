@@ -1,8 +1,9 @@
 <?php
 /**
- * admin_ldap.php - LDAP / Active Directory IMPORT (read-only, no LDAP login).
+ * admin_ldap.php - LDAP / Active Directory IMPORT of signatures (read-only, no LDAP login).
  *
- * Workflow: configure -> test connection -> preview -> confirm import.
+ * Workflow: configure -> test connection -> preview -> choose entries, target user
+ * and template -> import. Only signatures are created; no user accounts.
  * Nothing is written before the administrator has seen the preview.
  */
 require_once 'includes/config.php';
@@ -14,14 +15,15 @@ $admin_id = (int)$_SESSION['user_id'];
 $ldap_available = function_exists('ldap_connect');
 $message = popFlash('success');
 $error = popFlash('error');
-$plan = null;
 $plan_token = '';
 
 $cfg = LdapConfig::load($db);
 
 // ---------------------------------------------------------------------
 // Plan files (preview results) live in the private tmp directory, bound to
-// the administrator that created them, and expire after 30 minutes.
+// the administrator that created them, and expire after 30 minutes. They
+// contain the validated directory rows only; target user, template and the
+// selection are chosen on the preview page.
 // ---------------------------------------------------------------------
 function ldapPlanPath(string $token): ?string
 {
@@ -35,11 +37,21 @@ function ldapLoadPlan(string $token, int $adminId): ?array
         return null;
     }
     $data = json_decode((string)file_get_contents($path), true);
-    if (!is_array($data) || (int)($data['admin_id'] ?? 0) !== $adminId || time() - (int)($data['created'] ?? 0) > 1800) {
+    if (!is_array($data) || (int)($data['admin_id'] ?? 0) !== $adminId || time() - (int)($data['created'] ?? 0) > 1800
+        || !isset($data['plan']['rows']) || !is_array($data['plan']['rows'])) {
         @unlink($path);
         return null;
     }
-    return $data['plan'] ?? null;
+    return $data['plan'];
+}
+
+/** "3,7,12" -> [3, 7, 12] (one field instead of one input per row: max_input_vars!) */
+function ldapParseSelection($raw): array
+{
+    if (!is_string($raw) || !preg_match('/^\d+(,\d+)*$/', $raw)) {
+        return [];
+    }
+    return array_values(array_unique(array_map('intval', explode(',', $raw))));
 }
 
 // Remove abandoned preview files (older than one hour).
@@ -47,6 +59,42 @@ foreach (glob(TMP_DIR . '/ldap_plan_*.json') ?: [] as $stale) {
     if (is_file($stale) && time() - (int)filemtime($stale) > 3600) {
         @unlink($stale);
     }
+}
+
+// Active users the signatures can be assigned to.
+$assignableUsers = [];
+$res = $db->query("SELECT id, username, full_name FROM users WHERE is_active = 1 ORDER BY LOWER(COALESCE(NULLIF(full_name, ''), username)), username");
+while ($u = $res->fetchArray(SQLITE3_ASSOC)) {
+    $assignableUsers[(int)$u['id']] = trim((string)$u['full_name']) !== '' && $u['full_name'] !== $u['username']
+        ? $u['full_name'] . ' (' . $u['username'] . ')' : $u['username'];
+}
+
+// What the preview page shows (filled by the actions below).
+$view = null; // ['rows','counts','truncated','target','template','apply_template','selected']
+
+/** Builds the data for the preview page from stored rows and the chosen settings. */
+function ldapBuildView(LdapImporter $importer, array $stored, array $in, array $cfg, int $adminId, ?array $selection): array
+{
+    $target = $importer->normalizeTarget((string)($in['target'] ?? ''));
+    if ($target === null) {
+        $target = $importer->normalizeTarget((string)$cfg['target']) ?? (string)$adminId;
+    }
+    $template = isValidTemplateName($in['template'] ?? '') ? $in['template'] : '';
+    $applyTemplate = ($in['apply_template'] ?? '0') === '1';
+
+    $ev = $importer->evaluate($stored['rows'], $target, $template, $applyTemplate);
+    if ($selection === null) { // default: everything that would change something
+        $selection = [];
+        foreach ($ev['rows'] as $r) {
+            if ($r['action'] === LdapImporter::ACTION_CREATE || $r['action'] === LdapImporter::ACTION_UPDATE) {
+                $selection[] = $r['idx'];
+            }
+        }
+    }
+    return [
+        'rows' => $ev['rows'], 'counts' => $ev['counts'], 'truncated' => !empty($stored['truncated']),
+        'target' => $target, 'template' => $template, 'apply_template' => $applyTemplate, 'selected' => $selection,
+    ];
 }
 
 // ---------------------------------------------------------------------
@@ -84,47 +132,65 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $sample = $service->search($cfg['base_dn'], $cfg['user_filter'], $importer->requestedAttributes(), 5);
                     $message = t('Connection successful. The filter returned entries (sample of up to 5 read: {count}).', ['count' => count($sample)]);
                 } else {
-                    $plan = $importer->buildPlan($service);
+                    $stored = $importer->fetchRows($service);
                     $plan_token = bin2hex(random_bytes(16));
                     file_put_contents(ldapPlanPath($plan_token), json_encode([
                         'admin_id' => $admin_id,
                         'created'  => time(),
-                        'plan'     => $plan,
+                        'plan'     => $stored,
                     ], JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE), LOCK_EX);
                     @chmod(ldapPlanPath($plan_token), 0600);
-                    logSecurityEventToDB($db, 'LDAP_PREVIEW', $admin_id, 'Entries: ' . $plan['counts']['total']);
+                    $view = ldapBuildView($importer, $stored, [], $cfg, $admin_id, null);
+                    logSecurityEventToDB($db, 'LDAP_PREVIEW', $admin_id, 'Entries: ' . $view['counts']['total']);
                 }
             } catch (Exception $e) {
                 error_log(t('LDAP error: {message}', ['message' => $e->getMessage()]));
                 $error = 'LDAP error: ' . $e->getMessage();
             }
         }
-    } elseif ($action === 'apply') {
-        $token = (string)($_POST['plan_token'] ?? '');
-        $stored = ldapLoadPlan($token, $admin_id);
+    } elseif ($action === 'retarget' || $action === 'apply') {
+        // Both work on the stored preview rows; the directory is not queried again.
+        $plan_token = (string)($_POST['plan_token'] ?? '');
+        $stored = ldapLoadPlan($plan_token, $admin_id);
         if ($stored === null) {
             setFlash('error', t('The preview has expired. Please run the preview again.'));
-        } else {
-            try {
-                $importer = new LdapImporter($db, $cfg);
-                $result = $importer->applyPlan($stored);
-                @unlink(ldapPlanPath($token));
-                logSecurityEventToDB($db, 'LDAP_IMPORT', $admin_id, json_encode($result));
-                setFlash('success', t(
-                    'Import finished: {created} created, {updated} updated, {signatures} signatures written, {deactivated} deactivated, {skipped} skipped.',
-                    [
-                        'created' => $result['created'], 'updated' => $result['updated'],
-                        'signatures' => $result['signatures'], 'deactivated' => $result['deactivated'],
-                        'skipped' => $result['skipped'],
-                    ]
-                ));
-            } catch (Exception $e) {
-                error_log('LDAP import failed: ' . $e->getMessage());
-                setFlash('error', t('The import failed and was rolled back. See the PHP error log.'));
+            header('Location: admin_ldap.php');
+            exit;
+        }
+        $importer = new LdapImporter($db, $cfg);
+        $selection = ldapParseSelection($_POST['selected'] ?? '');
+        $view = ldapBuildView($importer, $stored, $_POST, $cfg, $admin_id, $selection);
+
+        if ($action === 'apply') {
+            // Only rows that are really importable can be selected.
+            $importable = [];
+            foreach ($view['rows'] as $r) {
+                if ($r['action'] !== LdapImporter::ACTION_SKIP) {
+                    $importable[$r['idx']] = true;
+                }
+            }
+            $selection = array_values(array_filter($selection, function ($i) use ($importable) { return isset($importable[$i]); }));
+            $view['selected'] = $selection;
+
+            if (!$selection) {
+                $error = t('No entries selected.');
+            } else {
+                try {
+                    $result = $importer->applyPlan($stored['rows'], $view['target'], $view['template'], $view['apply_template'], $selection);
+                    @unlink(ldapPlanPath($plan_token));
+                    logSecurityEventToDB($db, 'LDAP_IMPORT', $admin_id, json_encode($result + ['target' => $view['target']]));
+                    setFlash('success', t(
+                        'Import finished: {created} signatures created, {updated} updated, {unchanged} unchanged.',
+                        ['created' => $result['created'], 'updated' => $result['updated'], 'unchanged' => $result['unchanged']]
+                    ));
+                    header('Location: admin_ldap.php');
+                    exit;
+                } catch (Exception $e) {
+                    error_log('LDAP import failed: ' . $e->getMessage());
+                    $error = t('The import failed and was rolled back. See the PHP error log.');
+                }
             }
         }
-        header('Location: admin_ldap.php');
-        exit;
     } elseif ($action === 'cancel') {
         $path = ldapPlanPath((string)($_POST['plan_token'] ?? ''));
         if ($path !== null && is_file($path)) {
@@ -177,6 +243,8 @@ $presetsJson = json_encode(LdapConfig::PRESETS, JSON_HEX_TAG | JSON_HEX_AMP | JS
         .tag-update { background: var(--info-bg); color: var(--info-text); }
         .tag-unchanged { background: var(--bg-subtle); color: var(--text-muted); }
         .tag-skip { background: var(--danger-bg); color: var(--danger-text); }
+        .plan-toolbar { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; margin: 1rem 0 0.75rem; }
+        .btn-sm { padding: 0.4rem 0.8rem; font-size: 0.82rem; }
         .warn-box { background: var(--warning-bg); border: 1px solid var(--warning-border); color: var(--warning-text); padding: 0.9rem 1rem; border-radius: 8px; margin-bottom: 1.5rem; font-size: 0.9rem; }
     </style>
 </head>
@@ -200,7 +268,7 @@ $presetsJson = json_encode(LdapConfig::PRESETS, JSON_HEX_TAG | JSON_HEX_AMP | JS
     <main class="main-content">
         <header class="page-header">
             <h2><?= et('LDAP / Active Directory Import') ?></h2>
-            <p><?= et('Import users, email addresses and other attributes from your directory. Directory accounts cannot log in to SubSignature.') ?></p>
+            <p><?= et('Create signatures from your directory data (name, role, email, phone) and assign them to a user. No user accounts are created.') ?></p>
         </header>
 
         <?php if ($message): ?>
@@ -215,61 +283,97 @@ $presetsJson = json_encode(LdapConfig::PRESETS, JSON_HEX_TAG | JSON_HEX_AMP | JS
             </div>
         <?php endif; ?>
 
-        <?php if ($plan !== null): ?>
+        <?php if ($view !== null): ?>
         <section class="card" style="margin-bottom:1.5rem;">
             <div class="card-header"><h3><i class="fas fa-clipboard-list"></i> <?= et('Import Preview') ?></h3></div>
             <div style="padding:1.5rem;">
                 <div class="stat-row">
-                    <div class="stat-box"><strong><?php echo (int)$plan['counts']['total']; ?></strong><span><?= et('Directory entries') ?></span></div>
-                    <div class="stat-box"><strong style="color:var(--success-text);"><?php echo (int)$plan['counts']['create']; ?></strong><span><?= et('To create') ?></span></div>
-                    <div class="stat-box"><strong style="color:var(--info-text);"><?php echo (int)$plan['counts']['update']; ?></strong><span><?= et('To update') ?></span></div>
-                    <div class="stat-box"><strong><?php echo (int)$plan['counts']['unchanged']; ?></strong><span><?= et('Unchanged') ?></span></div>
-                    <div class="stat-box"><strong style="color:var(--danger-text);"><?php echo (int)$plan['counts']['skip']; ?></strong><span><?= et('Skipped') ?></span></div>
-                    <div class="stat-box"><strong style="color:var(--warning-text);"><?php echo (int)$plan['counts']['deactivate']; ?></strong><span><?= et('To deactivate') ?></span></div>
+                    <div class="stat-box"><strong><?php echo (int)$view['counts']['total']; ?></strong><span><?= et('Directory entries') ?></span></div>
+                    <div class="stat-box"><strong style="color:var(--success-text);"><?php echo (int)$view['counts']['create']; ?></strong><span><?= et('New signatures') ?></span></div>
+                    <div class="stat-box"><strong style="color:var(--info-text);"><?php echo (int)$view['counts']['update']; ?></strong><span><?= et('To update') ?></span></div>
+                    <div class="stat-box"><strong><?php echo (int)$view['counts']['unchanged']; ?></strong><span><?= et('Unchanged') ?></span></div>
+                    <div class="stat-box"><strong style="color:var(--danger-text);"><?php echo (int)$view['counts']['skip']; ?></strong><span><?= et('Skipped') ?></span></div>
                 </div>
 
-                <?php
-                    // Changes and problems first, unchanged rows last; the table is capped for large directories.
-                    $order = ['create' => 0, 'update' => 1, 'skip' => 2, 'unchanged' => 3];
-                    $rowsView = $plan['rows'];
-                    usort($rowsView, function ($a, $b) use ($order) { return $order[$a['action']] <=> $order[$b['action']]; });
-                    $rowsShown = array_slice($rowsView, 0, 300);
-                ?>
-                <div style="overflow-x:auto; max-height:420px; overflow-y:auto;">
-                    <table class="plan-table">
-                        <thead><tr><th><?= et('Action') ?></th><th><?= et('Username') ?></th><th><?= et('Name') ?></th><th><?= et('Email') ?></th><th><?= et('Role') ?></th><th><?= et('Phone') ?></th><th><?= et('Note') ?></th></tr></thead>
-                        <tbody>
-                        <?php foreach ($rowsShown as $r): ?>
-                            <tr>
-                                <td><span class="tag tag-<?php echo e($r['action']); ?>"><?php echo e($r['action']); ?></span></td>
-                                <td><?php echo e($r['username']); ?></td>
-                                <td><?php echo e($r['name']); ?></td>
-                                <td><?php echo e($r['email']); ?></td>
-                                <td><?php echo e($r['role']); ?></td>
-                                <td><?php echo e($r['phone']); ?></td>
-                                <td style="color:var(--danger-text);"><?php echo e($r['reason']); ?></td>
-                            </tr>
-                        <?php endforeach; ?>
-                        </tbody>
-                    </table>
-                </div>
-                <?php if (count($rowsView) > count($rowsShown)): ?>
-                    <p class="form-hint"><?= et('Showing the first {shown} of {total} entries. The import applies to all of them.', ['shown' => count($rowsShown), 'total' => count($rowsView)]) ?></p>
+                <?php if ($view['truncated']): ?>
+                    <div class="warn-box"><?= et('Only the first {max} directory entries are shown. Narrow the user filter or the base DN to reach the others.', ['max' => LdapImporter::MAX_ENTRIES]) ?></div>
                 <?php endif; ?>
 
-                <?php if ($plan['counts']['deactivate'] > 0): ?>
-                    <div class="warn-box" style="margin-top:1rem;">
-                        <?= et('{count} previously imported account(s) are no longer in the directory result and will be deactivated.', ['count' => (int)$plan['counts']['deactivate']]) ?>
-                        <?= et('Check the filter and base DN if this looks wrong.') ?>
-                    </div>
-                <?php endif; ?>
-
-                <form method="POST" action="admin_ldap.php" class="actions-row">
+                <form method="POST" action="admin_ldap.php" id="planForm">
                     <?php echo csrfField(); ?>
                     <input type="hidden" name="plan_token" value="<?php echo e($plan_token); ?>">
-                    <button type="submit" name="action" value="apply" class="btn btn-primary"
-                            data-confirm="<?= et('Apply this import now?') ?>"><i class="fas fa-check"></i> <?= et('Apply Import') ?></button>
-                    <button type="submit" name="action" value="cancel" class="btn btn-secondary"><?= et('Cancel') ?></button>
+                    <input type="hidden" name="selected" id="selectedField" value="">
+
+                    <div class="form-group-grid" style="align-items:start;">
+                        <div>
+                            <label class="form-label" for="planTarget"><?= et('Assign signatures to') ?></label>
+                            <select name="target" id="planTarget" class="form-input">
+                                <option value="auto" <?php echo $view['target'] === 'auto' ? 'selected' : ''; ?>><?= et('Automatically by email address') ?></option>
+                                <?php foreach ($assignableUsers as $uid => $label): ?>
+                                    <option value="<?php echo (int)$uid; ?>" <?php echo $view['target'] === (string)$uid ? 'selected' : ''; ?>><?php echo e($label); ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                            <span class="form-hint"><?= et('Automatic: each signature goes to the user with the same email address; entries without a matching user are skipped.') ?></span>
+                        </div>
+                        <div>
+                            <label class="form-label" for="planTemplate"><?= et('Template') ?></label>
+                            <select name="template" id="planTemplate" class="form-input">
+                                <option value=""><?= et('System default') ?></option>
+                                <?php foreach ($templates as $t): ?>
+                                    <option value="<?php echo e($t); ?>" <?php echo $view['template'] === $t ? 'selected' : ''; ?>><?php echo e(templateDisplayName($t)); ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                            <label style="display:flex; gap:0.5rem; align-items:center; margin-top:0.5rem; font-size:0.85rem;">
+                                <input type="hidden" name="apply_template" value="0">
+                                <input type="checkbox" name="apply_template" value="1" id="planApplyTemplate" <?php echo $view['apply_template'] ? 'checked' : ''; ?>>
+                                <?= et('Also apply the template to signatures that already exist') ?>
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="plan-toolbar">
+                        <input type="search" id="planFilter" class="form-input" style="max-width:260px;" placeholder="<?= et('Filter by name or email') ?>" autocomplete="off">
+                        <button type="button" class="btn btn-secondary btn-sm" data-select="all"><?= et('Select all') ?></button>
+                        <button type="button" class="btn btn-secondary btn-sm" data-select="changes"><?= et('Only new and changed') ?></button>
+                        <button type="button" class="btn btn-secondary btn-sm" data-select="none"><?= et('Select none') ?></button>
+                        <span class="form-hint" id="selectedCount" style="margin:0 0 0 auto;"></span>
+                    </div>
+
+                    <div style="overflow-x:auto; max-height:460px; overflow-y:auto;">
+                        <table class="plan-table" id="planTable">
+                            <thead><tr>
+                                <th style="width:34px;"></th><th><?= et('Status') ?></th><th><?= et('Name') ?></th><th><?= et('Email') ?></th><th><?= et('Role') ?></th><th><?= et('Phone') ?></th><th><?= et('Assigned to') ?></th><th><?= et('Note') ?></th>
+                            </tr></thead>
+                            <tbody>
+                            <?php
+                                $selectedSet = array_flip($view['selected']);
+                                $actionLabel = [
+                                    'create' => t('New'), 'update' => t('To update'), 'unchanged' => t('Unchanged'), 'skip' => t('Skipped'),
+                                ];
+                            ?>
+                            <?php foreach ($view['rows'] as $r): ?>
+                                <tr data-idx="<?php echo (int)$r['idx']; ?>" data-action="<?php echo e($r['action']); ?>"
+                                    data-search="<?php echo e(mb_strtolower($r['name'] . ' ' . $r['email'] . ' ' . $r['username'], 'UTF-8')); ?>">
+                                    <td><input type="checkbox" class="row-check" <?php echo $r['action'] === 'skip' ? 'disabled' : (isset($selectedSet[$r['idx']]) ? 'checked' : ''); ?> aria-label="<?= et('Select') ?>"></td>
+                                    <td><span class="tag tag-<?php echo e($r['action']); ?>"><?php echo e($actionLabel[$r['action']] ?? $r['action']); ?></span></td>
+                                    <td><?php echo e($r['name']); ?></td>
+                                    <td dir="ltr" style="text-align:start;"><?php echo e($r['email']); ?></td>
+                                    <td><?php echo e($r['role']); ?></td>
+                                    <td dir="ltr" style="text-align:start;"><?php echo e($r['phone']); ?></td>
+                                    <td><?php echo e($r['user']); ?></td>
+                                    <td style="color:var(--danger-text);"><?php echo e($r['reason']); ?></td>
+                                </tr>
+                            <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div class="actions-row">
+                        <button type="submit" name="action" value="apply" class="btn btn-primary" id="applyBtn"
+                                data-confirm="<?= et('Import the selected signatures now?') ?>"><i class="fas fa-check"></i> <?= et('Import selected') ?></button>
+                        <button type="submit" name="action" value="retarget" class="btn btn-secondary"><i class="fas fa-sync-alt"></i> <?= et('Update preview') ?></button>
+                        <button type="submit" name="action" value="cancel" class="btn btn-secondary"><?= et('Cancel') ?></button>
+                    </div>
                 </form>
             </div>
         </section>
@@ -381,7 +485,7 @@ $presetsJson = json_encode(LdapConfig::PRESETS, JSON_HEX_TAG | JSON_HEX_AMP | JS
                             <input type="text" name="attr_phone" id="attr_phone" class="form-input" maxlength="70" placeholder="<?= et('telephoneNumber') ?>" value="<?php echo e($cfg['attr_phone']); ?>">
                         </div>
                     </div>
-                    <span class="form-hint"><?= eth('Any directory attribute can be mapped (e.g. {examples}). The unique ID keeps accounts linked when a username changes.', ['examples' => '<code>mobile</code>, <code>department</code>, <code>co</code>']) ?></span>
+                    <span class="form-hint"><?= eth('Any directory attribute can be mapped (e.g. {examples}). The unique ID keeps imported signatures linked to their directory entry (the DN is used if it is empty).', ['examples' => '<code>mobile</code>, <code>department</code>, <code>co</code>']) ?></span>
                 </section>
 
                 <section class="config-card">
@@ -389,21 +493,22 @@ $presetsJson = json_encode(LdapConfig::PRESETS, JSON_HEX_TAG | JSON_HEX_AMP | JS
 
                     <div class="config-item">
                         <div>
-                            <h4 style="margin:0; font-size:0.95rem;"><?= et('Create a signature for each user') ?></h4>
-                            <p style="margin:0; color:var(--text-muted); font-size:0.8rem;"><?= et('Uses name, role, email and phone from the directory.') ?></p>
+                            <h4 style="margin:0; font-size:0.95rem;"><?= et('Assign signatures to') ?></h4>
+                            <p style="margin:0; color:var(--text-muted); font-size:0.8rem;"><?= et('Preselected in the preview, where it can be changed.') ?></p>
                         </div>
-                        <label class="switch">
-                            <input type="hidden" name="create_signatures" value="0">
-                            <input type="checkbox" name="create_signatures" value="1" <?php echo $cfg['create_signatures'] ? 'checked' : ''; ?>>
-                            <span class="slider"></span>
-                        </label>
+                        <select name="target" class="form-input" style="max-width:240px;">
+                            <option value="auto" <?php echo $cfg['target'] === 'auto' ? 'selected' : ''; ?>><?= et('Automatically by email address') ?></option>
+                            <?php foreach ($assignableUsers as $uid => $label): ?>
+                                <option value="<?php echo (int)$uid; ?>" <?php echo ($cfg['target'] === (string)$uid || ($cfg['target'] === '' && $uid === $admin_id)) ? 'selected' : ''; ?>><?php echo e($label); ?></option>
+                            <?php endforeach; ?>
+                        </select>
                     </div>
 
                     <div class="config-item">
                         <div>
                             <h4 style="margin:0; font-size:0.95rem;"><?= et('Template for new signatures') ?></h4>
                         </div>
-                        <select name="template" class="form-input" style="max-width:220px;">
+                        <select name="template" class="form-input" style="max-width:240px;">
                             <option value=""><?= et('System default') ?></option>
                             <?php foreach ($templates as $t): ?>
                                 <option value="<?php echo e($t); ?>" <?php echo $cfg['template'] === $t ? 'selected' : ''; ?>><?php echo e(templateDisplayName($t)); ?></option>
@@ -411,32 +516,8 @@ $presetsJson = json_encode(LdapConfig::PRESETS, JSON_HEX_TAG | JSON_HEX_AMP | JS
                         </select>
                     </div>
 
-                    <div class="config-item">
-                        <div>
-                            <h4 style="margin:0; font-size:0.95rem;"><?= et('New accounts are active') ?></h4>
-                            <p style="margin:0; color:var(--text-muted); font-size:0.8rem;"><?= et('Imported accounts always have the role "user".') ?></p>
-                        </div>
-                        <label class="switch">
-                            <input type="hidden" name="default_active" value="0">
-                            <input type="checkbox" name="default_active" value="1" <?php echo $cfg['default_active'] ? 'checked' : ''; ?>>
-                            <span class="slider"></span>
-                        </label>
-                    </div>
-
-                    <div class="config-item">
-                        <div>
-                            <h4 style="margin:0; font-size:0.95rem;"><?= et('Deactivate accounts missing in the directory') ?></h4>
-                            <p style="margin:0; color:var(--text-muted); font-size:0.8rem;"><?= et('Only previously imported accounts are affected.') ?></p>
-                        </div>
-                        <label class="switch">
-                            <input type="hidden" name="deactivate_missing" value="0">
-                            <input type="checkbox" name="deactivate_missing" value="1" <?php echo $cfg['deactivate_missing'] ? 'checked' : ''; ?>>
-                            <span class="slider"></span>
-                        </label>
-                    </div>
-
                     <p class="form-hint" style="margin-top:1rem;">
-                        <?= et('Local accounts are never modified: a directory entry with the same username or email as a local account is skipped.') ?>
+                        <?= et('Signatures that were created manually are never changed. Imported signatures are recognised by their directory ID and updated on the next import.') ?>
                     </p>
                 </section>
             </div>
@@ -474,6 +555,62 @@ $presetsJson = json_encode(LdapConfig::PRESETS, JSON_HEX_TAG | JSON_HEX_AMP | JS
                 if (this.value === 'ldaps' && port.value === '389') { port.value = '636'; }
                 if (this.value !== 'ldaps' && port.value === '636') { port.value = '389'; }
             });
+
+
+            // ---- Preview: selection, filter, assignment --------------------
+            var planForm = document.getElementById('planForm');
+            if (planForm) {
+                var rows = Array.prototype.slice.call(document.querySelectorAll('#planTable tbody tr'));
+                var counter = document.getElementById('selectedCount');
+                var field = document.getElementById('selectedField');
+                var tplLabel = <?= tj('{selected} of {total} selected') ?>;
+
+                function checks() { return rows.map(function (r) { return r.querySelector('.row-check'); }); }
+                function refresh() {
+                    var n = 0, ids = [];
+                    rows.forEach(function (r) {
+                        var c = r.querySelector('.row-check');
+                        if (c && c.checked && !c.disabled) { n++; ids.push(r.getAttribute('data-idx')); }
+                    });
+                    field.value = ids.join(',');
+                    counter.textContent = tplLabel.replace('{selected}', n).replace('{total}', rows.length);
+                }
+                function visible(r) { return r.style.display !== 'none'; }
+
+                planForm.addEventListener('change', function (e) {
+                    if (e.target.classList.contains('row-check')) { refresh(); }
+                });
+                planForm.querySelectorAll('[data-select]').forEach(function (btn) {
+                    btn.addEventListener('click', function () {
+                        var mode = btn.getAttribute('data-select');
+                        rows.forEach(function (r) {
+                            var c = r.querySelector('.row-check');
+                            if (!c || c.disabled || !visible(r)) { return; }
+                            var a = r.getAttribute('data-action');
+                            c.checked = mode === 'all' ? true : (mode === 'none' ? false : (a === 'create' || a === 'update'));
+                        });
+                        refresh();
+                    });
+                });
+                document.getElementById('planFilter').addEventListener('input', function () {
+                    var q = this.value.trim().toLowerCase();
+                    rows.forEach(function (r) {
+                        r.style.display = (q === '' || r.getAttribute('data-search').indexOf(q) !== -1) ? '' : 'none';
+                    });
+                });
+                // The status column depends on the target user and template: re-evaluate on change.
+                ['planTarget', 'planTemplate', 'planApplyTemplate'].forEach(function (id) {
+                    document.getElementById(id).addEventListener('change', function () {
+                        refresh();
+                        var h = document.createElement('input');
+                        h.type = 'hidden'; h.name = 'action'; h.value = 'retarget';
+                        planForm.appendChild(h);
+                        planForm.submit();
+                    });
+                });
+                planForm.addEventListener('submit', refresh);
+                refresh();
+            }
 
             // Confirmation for buttons with data-confirm inside forms.
             document.querySelectorAll('button[data-confirm]').forEach(function (btn) {

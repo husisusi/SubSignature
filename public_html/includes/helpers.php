@@ -632,3 +632,50 @@ function systemHealthChecks(): array
     return $rows;
 }
 
+
+// ---------------------------------------------------------------------
+// 9. SIGNATURE TAGS (labels for the signature overview)
+// ---------------------------------------------------------------------
+
+const MAX_SIGNATURE_TAGS = 100;
+
+/**
+ * Colour keys a tag may use. The key is mapped to a CSS class, so no free
+ * text ever reaches a style attribute.
+ */
+function signatureTagColors(): array
+{
+    return ['blue', 'green', 'amber', 'red', 'purple', 'teal', 'pink', 'gray'];
+}
+
+function signatureTagColorLabel(string $color): string
+{
+    switch ($color) {
+        case 'blue':   return t('Blue');
+        case 'green':  return t('Green');
+        case 'amber':  return t('Amber');
+        case 'red':    return t('Red');
+        case 'purple': return t('Purple');
+        case 'teal':   return t('Teal');
+        case 'pink':   return t('Pink');
+        default:       return t('Gray');
+    }
+}
+
+function normalizeTagColor($color): string
+{
+    return in_array($color, signatureTagColors(), true) ? $color : 'gray';
+}
+
+/**
+ * Validates a tag name; returns the cleaned name or '' if it is not allowed.
+ * Letters, digits, spaces and a few separators, 1-32 characters.
+ */
+function normalizeTagName($name): string
+{
+    $name = cleanText($name, 64);
+    if (mb_strlen($name, 'UTF-8') > 32) {
+        return '';
+    }
+    return preg_match('/^[\p{L}\p{N}][\p{L}\p{N} ._\-\/&]*$/u', $name) === 1 ? $name : '';
+}

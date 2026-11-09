@@ -202,7 +202,7 @@ class LdapConfig
     private const KEYS = [
         'host', 'port', 'encryption', 'verify_cert', 'ca_file', 'bind_dn', 'bind_pass', 'base_dn',
         'preset', 'user_filter', 'attr_username', 'attr_email', 'attr_name', 'attr_role', 'attr_phone', 'attr_id',
-        'create_signatures', 'template', 'default_active', 'deactivate_missing',
+        'template', 'target',
     ];
 
     public static function defaults(): array
@@ -210,7 +210,7 @@ class LdapConfig
         return array_merge([
             'host' => '', 'port' => 636, 'encryption' => 'ldaps', 'verify_cert' => true, 'ca_file' => '',
             'bind_dn' => '', 'bind_pass' => '', 'base_dn' => '', 'preset' => 'ad',
-            'create_signatures' => true, 'template' => '', 'default_active' => true, 'deactivate_missing' => false,
+            'template' => '', 'target' => '',
         ], array_diff_key(self::PRESETS['ad'], ['label' => 1]));
     }
 
@@ -233,9 +233,6 @@ class LdapConfig
                     $cfg[$key] = (int)$value;
                     break;
                 case 'verify_cert':
-                case 'create_signatures':
-                case 'default_active':
-                case 'deactivate_missing':
                     $cfg[$key] = $value === '1';
                     break;
                 case 'bind_pass':
@@ -312,10 +309,11 @@ class LdapConfig
             }
         }
 
-        $cfg['create_signatures'] = ($in['create_signatures'] ?? '0') === '1';
         $cfg['template'] = isValidTemplateName($in['template'] ?? '') ? $in['template'] : '';
-        $cfg['default_active'] = ($in['default_active'] ?? '1') === '1';
-        $cfg['deactivate_missing'] = ($in['deactivate_missing'] ?? '0') === '1';
+        // Default assignment of imported signatures: "auto" (by email) or a user id.
+        // Whether the user still exists is checked when the preview is built.
+        $target = (string)($in['target'] ?? '');
+        $cfg['target'] = ($target === 'auto' || preg_match('/^[1-9]\d{0,9}$/', $target)) ? $target : '';
 
         return [$cfg, $errors];
     }

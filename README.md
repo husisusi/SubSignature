@@ -34,8 +34,9 @@ The focus is privacy and security. The application runs entirely on your server:
 * **Template editor** (WYSIWYG + code editor), image manager, template backup (ZIP).
 * **Signature rollout:** administrators can send signatures to users by email (SMTP).
 * **User management** with roles (admin / user), activation, optional self-registration.
+* **All Signatures overview** (sidebar): search, filter by user, **template**, **tag** and **source** (manual / CSV / LDAP), sort, bulk actions (delete, send, change template, add or remove tags). See [All Signatures](#all-signatures-overview).
 * **CSV import / export** of signatures (delimiter `,` or `;`, formula-injection safe export).
-* **LDAP / Active Directory import** of users and their attributes (import only, no LDAP login). See [LDAP import](#ldap--active-directory-import).
+* **LDAP / Active Directory import** of signatures from directory data with selection in a preview, target user and template (import only, no accounts are created, no LDAP login). See [LDAP import](#ldap--active-directory-import).
 * **Read-only API with bearer tokens** to prepare a desktop agent for Outlook and Thunderbird. See [API](#api-for-the-desktop-agent).
 * **17 languages** (English, Deutsch, Español, Français, Italiano, Português, Nederlands, Polski, Türkçe, Русский, Українська, العربية (RTL), हिन्दी, Bahasa Indonesia, 中文, 日本語, 한국어): one JSON file per language in `public_html/lang/`, automatic detection from the browser, switcher in the sidebar and on the login page, per-user choice, system-wide default. See [Languages](#languages).
 * **Company-wide placeholders** `{{COMPANY}}`, `{{WEBSITE}}`, `{{ADDRESS}}`, `{{DISCLAIMER}}`: maintained once in Admin -> Configuration and filled into every signature.
@@ -83,9 +84,17 @@ Back up the whole `private_data/` directory **including `secret.key`**. The key 
 
 ## LDAP / Active Directory import
 
-**Admin → LDAP Import** reads users from a directory and creates or updates accounts in SubSignature. It is an **import only**: directory users cannot log in with their directory password.
+**Admin → LDAP Import** creates **signatures** from directory data (name, role, email, phone) and assigns them to existing SubSignature users. It is an **import only**: **no user accounts are created** and directory users cannot log in with their directory password.
 
-Workflow: configure → *Test connection* → *Preview import* → *Apply import*. Nothing is written before you have reviewed the preview, and the import runs in a single database transaction.
+Workflow: configure → *Test connection* → *Preview* → choose entries, target user and template → *Import selected*. Nothing is written before you have reviewed the preview, and the import runs in a single database transaction.
+
+In the preview you can
+
+* **select exactly the entries** to import (checkboxes, filter by name or email, *Select all*, *Only new and changed*, *Select none*),
+* choose with a **dropdown** which SubSignature user receives the signatures: one specific user, or *Automatically by email address* (each signature goes to the active user with the same email address; entries without a matching user are skipped),
+* choose the **template** the new signatures use (default: the system default template),
+* optionally apply the chosen template to signatures that were imported before,
+* change target or template and click *Update preview* - the directory is not queried again.
 
 | Setting | Notes |
 |---------|-------|
@@ -93,18 +102,41 @@ Workflow: configure → *Test connection* → *Preview import* → *Apply import
 | Encryption | LDAPS (default, port 636) or STARTTLS. Certificates are verified by default; a private CA file can be configured. Plain LDAP is possible but not recommended. |
 | Bind account | Use a **read-only** service account. Its password is stored encrypted. |
 | Base DN / filter | The AD default filter excludes disabled accounts. |
-| Create signatures | Optionally creates one signature per user from name, role, email and phone. |
-| Deactivate missing | Optionally deactivates previously imported accounts that disappeared from the directory. |
+| Assign signatures to | Default target in the preview (a user or *Automatically by email address*). |
+| Template | Default template for new imported signatures. |
+
+Re-import behaviour:
+
+* Imported signatures are marked `source = ldap` and remember the directory's unique ID (or the DN if the ID attribute is empty). Importing again **updates** them instead of creating duplicates; unchanged entries are reported as *Unchanged*.
+* Signatures that were created manually or by CSV import are **never modified**.
+* Signatures are never deleted by the import.
+* At most 5000 directory entries are read per run; a notice is shown if the result was truncated (narrow the filter or base DN).
 
 Safety rules built into the importer:
 
-* Imported accounts always get the role `user` and an unusable random password. Directory data can never create administrators.
-* Existing **local** accounts are never modified: an entry with the same username or email is skipped and reported in the preview.
-* Users are matched by the directory's unique ID first (so renames are followed), then by username.
-* Usernames, emails and phone numbers are validated; invalid values are dropped or the entry is skipped with a reason.
+* The target of a signature is always an existing, active user; directory data can never create users or change roles.
+* Names, emails and phone numbers are validated; invalid values are dropped or the entry is skipped with a reason. Duplicate directory entries (same ID or same email) are skipped.
+* The preview plan is stored server side (random token, bound to the administrator, 30 minutes); the apply step re-checks everything inside a transaction.
 * Paged search, referrals disabled, binary attributes are never interpreted as text.
 
 If the PHP `ldap` extension is missing, the page shows a notice; the settings can still be edited.
+
+## All Signatures overview
+
+**All Signatures** (sidebar) lists signatures and combines the following filters; the state is kept in the URL, in the infinite scroll and after every action:
+
+| Filter | Notes |
+|--------|-------|
+| Search | Name, email or role. |
+| User | Administrators can pick one user or *All Users*; normal users only ever see their own signatures. |
+| Template | Lists the templates that are actually used, with a count. A click on the template badge of a signature filters by it. |
+| Tag | A tag, *All tags* or *Without tag*. |
+| Source | Manual, CSV import or LDAP import (the badge on each signature is clickable too). |
+| Sort | Newest / oldest first, name, email or template. |
+
+**Tags** are coloured labels (for example `Sales`, `Management`, `To review`) that administrators create under *Manage tags* (1-32 characters, 8 colours, max. 100 tags). Select signatures, choose a tag and click *Add tag* / *Remove tag*. Normal users see the tags of their own signatures read-only. Deleting a tag removes it from all signatures; the signatures stay.
+
+**Bulk actions** on the selected signatures: *Send*, *Delete*, *Change template* (administrators for any signature, users for their own), *Add tag* / *Remove tag* (administrators). *Delete All* removes exactly the signatures the current filter shows.
 
 ## API for the desktop agent
 

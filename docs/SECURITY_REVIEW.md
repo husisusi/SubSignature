@@ -38,9 +38,17 @@ not part of this review.
 * Import only - no code path authenticates against the directory.
 * TLS certificate verification is on by default; LDAPS/STARTTLS; bind with an empty password is refused (it would be an anonymous bind).
 * Attribute names and the filter are validated before use; the filter is a configuration value controlled by administrators, not by users.
-* Directory data can only create/update accounts with `auth_source = 'ldap'` and role `user`; local accounts (including administrators) are never touched; new accounts have an unusable random password.
-* Preview/apply separation: the plan is stored server side (private temp directory, random token, bound to the admin, 30 min lifetime); the import is a single transaction.
+* The import creates **signatures only** - never users, roles or passwords. A signature is assigned only to an existing, active user (chosen by the administrator or matched by email); only signatures with `source = 'ldap'` are ever updated, manually created signatures are never touched.
+* Preview/apply separation: the plan is stored server side (private temp directory, random token, bound to the admin, 30 min lifetime); the selection is validated against the stored plan (only validated directory rows can be selected) and re-evaluated inside a transaction at apply time.
 * All directory values are validated and escaped on output like any other input.
+
+**All Signatures (filters, tags, bulk actions)**
+
+* Every filter value is validated (whitelists for sort, source and colour, numeric tag id, length-limited text) and only bound as a prepared-statement parameter; the sort clause comes from a fixed map, never from user text.
+* Normal users are always scoped to their own `user_id` on the server, whatever `user_id` says in the URL; bulk delete / template change add `AND user_id = ?` for them.
+* Creating, deleting and assigning tags is administrator-only (403 for others), POST + CSRF; tag names are restricted to letters, digits, spaces and `. _ - / &`, unique case-insensitively, and escaped on output. Colours are keys that map to CSS classes - no user-controlled CSS.
+* "Delete All" uses the same WHERE clause as the list, so it removes exactly what is shown; destructive admin actions are audit-logged.
+* Template changes only accept names of existing template files (no path input).
 
 **Token API**
 
@@ -53,7 +61,7 @@ not part of this review.
 * **Run behind HTTPS.** Without it, session cookies lose the `Secure` flag and the API refuses to work by design.
 * **Admins are trusted.** Administrators can edit templates (HTML) and configure the LDAP filter. Sanitizing is defence in depth, not a substitute for admin trust. Restrict admin access by network if possible.
 * **`secret.key` protects stored secrets.** Anyone who can read both the database and `secret.key` can decrypt the SMTP/LDAP passwords. Keep `private_data/` outside the web root with mode 0750 and back both up together.
-* **Imported LDAP users have no usable password.** An administrator can set one if a directory user should also use the local login.
+* **Directory users do not get accounts.** Users who should log in to SubSignature must be created locally (or register); the LDAP import only fills their signatures.
 * **Bundled JavaScript libraries** (Jodit, Ace, Font Awesome) are third-party code and need to be updated by the project maintainers; they were not audited here.
 * **`install.php` is reachable until the first administrator exists.** Create the admin right after deployment, or remove the file.
 * **No two-factor authentication** is implemented. Consider SSO/VPN in front of the application for sensitive environments.
