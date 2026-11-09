@@ -144,9 +144,9 @@ An overview of the protections and the results of the security review is in [doc
 
 ## Credits & Third-Party Assets
 
-* **Jodit Editor:** WYSIWYG editor for template creation.
-* **Ace Editor:** standalone code editor written in JavaScript.
-* **Font Awesome (Free):** UI icons, hosted locally to ensure privacy compliance.
+* **Jodit Editor** (MIT): WYSIWYG editor for template creation.
+* **Ace Editor** (BSD-3-Clause): standalone code editor written in JavaScript.
+* **Font Awesome Free** (Icons CC BY 4.0, Fonts SIL OFL 1.1, Code MIT): UI icons, hosted locally.
 
 ## Roadmap
 
