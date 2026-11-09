@@ -1,5 +1,26 @@
 # Changelog
 
+## 1.5.0
+
+### Added
+- **Multi-language interface (17 languages):** en, de, es, fr, it, pt, nl, pl, tr, ru, uk, ar (right-to-left), hi, id, zh, ja, ko. One JSON file per language in `public_html/lang/`; English text is the key, missing keys fall back to English. New module `includes/i18n.php` (`t()`, `et()`, `eth()`, `tj()`, `langSwitcher()`, ...).
+- Language detection (cookie, then browser, then administrator default), language switcher in the sidebar and on the login / install pages (`set_language.php`, POST + CSRF), per-user language stored in `users.language`, system-wide default language in Admin -> Configuration.
+- RTL layout support (`dir="rtl"`, mirrored sidebar and controls); signature previews always stay left-to-right.
+- Template editor follows the interface language (Jodit).
+- **Company-wide placeholders** `{{COMPANY}}`, `{{WEBSITE}}`, `{{ADDRESS}}`, `{{DISCLAIMER}}`, maintained in Admin -> Configuration -> Company details; usable in every template, in the generator preview, downloads and mails.
+- **System status** panel in Admin -> Configuration (PHP version/extensions, writable directories, data directory location, secret key, installer leftovers).
+- Contributor tooling: `tools/i18n.php` (`extract`, `check`, `new <code>`, `sync`) and `docs/TRANSLATING.md`.
+
+### Changed
+- Database schema v3 (`users.language`); migrated automatically on first request.
+- `.htaccess` also denies direct access to `/lang/`.
+- README credits list the licence of each third-party asset.
+
+### Upgrade notes
+- Copy the files (for example `rsync -avc`), keep `private_data/`, reload once with Ctrl+F5. The migration to schema v3 runs automatically.
+- Nginx users: add `/lang/` to the deny list.
+- The translations are machine-quality; native-speaker review is welcome.
+
 ## 1.4.0
 
 ### Added
