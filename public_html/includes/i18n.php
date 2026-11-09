@@ -21,10 +21,39 @@ const I18N_DEFAULT = 'en';
 
 /**
  * All languages the application knows: code => [native name, text direction].
- * A language is offered only if its file lang/<code>.json exists (English is
- * built in and needs no file).
+ * Built-in ones plus drop-in files (see below). A language is offered only if
+ * its file lang/<code>.json exists (English is built in and needs no file).
  */
 function languageRegistry(): array
+{
+    static $all = null;
+    if ($all !== null) {
+        return $all;
+    }
+    $all = builtinLanguages();
+
+    // Drop-in languages: any lang/<code>.json that is not built in is
+    // registered from its "@meta" block ({"code": "sv", "name": "Svenska",
+    // "dir": "ltr"}). "name" is required, "dir" defaults to ltr.
+    foreach (glob(__DIR__ . '/../lang/*.json') ?: [] as $file) {
+        $code = basename($file, '.json');
+        if (isset($all[$code]) || !preg_match('/^[a-z]{2,3}$/', $code)) {
+            continue;
+        }
+        $data = json_decode((string)@file_get_contents($file), true);
+        $meta = is_array($data) && is_array($data['@meta'] ?? null) ? $data['@meta'] : [];
+        $name = isset($meta['name']) && is_string($meta['name']) ? trim($meta['name']) : '';
+        if ($name === '' || $name === strtoupper($code)) {
+            continue; // not named yet (placeholder from "tools/i18n.php new")
+        }
+        $dir = (($meta['dir'] ?? 'ltr') === 'rtl') ? 'rtl' : 'ltr';
+        $all[$code] = [mb_substr($name, 0, 40), $dir];
+    }
+    return $all;
+}
+
+/** Languages shipped with the application: code => [native name, direction]. */
+function builtinLanguages(): array
 {
     return [
         'en'    => ['English', 'ltr'],

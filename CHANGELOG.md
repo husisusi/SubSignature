@@ -9,6 +9,7 @@
 - Template editor follows the interface language (Jodit).
 - **Company-wide placeholders** `{{COMPANY}}`, `{{WEBSITE}}`, `{{ADDRESS}}`, `{{DISCLAIMER}}`, maintained in Admin -> Configuration -> Company details; usable in every template, in the generator preview, downloads and mails.
 - **System status** panel in Admin -> Configuration (PHP version/extensions, writable directories, data directory location, secret key, installer leftovers).
+- Drop-in languages: a new `lang/<code>.json` appears in the menu automatically once `"name"` (and optionally `"dir": "rtl"`) is set in its `@meta` block; no code change needed.
 - Contributor tooling: `tools/i18n.php` (`extract`, `check`, `new <code>`, `sync`) and `docs/TRANSLATING.md`.
 
 ### Changed

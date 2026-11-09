@@ -92,8 +92,8 @@ switch ($cmd) {
             exit("$file already exists. Use 'sync' to add new texts.\n");
         }
         $entries = array_fill_keys(array_keys($texts), '');
-        writeLang($file, ['code' => $code, 'name' => strtoupper($code)], $entries);
-        echo "Created $file with " . count($entries) . " empty entries.\nAdd the language to languageRegistry() in public_html/includes/i18n.php.\n";
+        writeLang($file, ['code' => $code, 'name' => strtoupper($code), 'dir' => 'ltr'], $entries);
+        echo "Created $file with " . count($entries) . " empty entries.\nSet \"name\" (native language name) and, for right-to-left languages, \"dir\": \"rtl\" in the @meta block; the language then appears in the menu automatically.\n";
         break;
 
     case 'sync':

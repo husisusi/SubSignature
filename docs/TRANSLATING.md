@@ -4,7 +4,7 @@ SubSignature uses the English UI text itself as the translation key (gettext sty
 
 ```json
 {
-  "@meta": { "code": "de", "name": "Deutsch" },
+  "@meta": { "code": "de", "name": "Deutsch", "dir": "ltr" },
   "Create account": "Konto erstellen",
   "Created {count} signatures": "{count} Signaturen erstellt"
 }
@@ -32,8 +32,8 @@ php tools/i18n.php sync           # add newly found keys (empty) to every langua
 
 1. `php tools/i18n.php new <code>` (for example `sv`, `cs`, `vi`).
 2. Translate the values in `public_html/lang/<code>.json`. Leave a value empty (or remove the key) to fall back to English.
-3. Register the language in `languageRegistry()` in `public_html/includes/i18n.php`: code, native name and direction (`ltr` or `rtl`; the direction is defined there, not in the JSON file).
-4. If the editor (Jodit) uses a different locale code, add it to the map in `template_editor.php` (currently `zh` -> `zh_cn`, `pt` -> `pt_br`).
+3. Edit the `@meta` block at the top of the file: `"name"` is the language's own name as shown in the menu (for example `"Svenska"`), `"dir"` is `"rtl"` for right-to-left languages, otherwise `"ltr"`. As soon as the name is set the language shows up in the menu, no code change needed. (Languages that ship with the application are listed in `builtinLanguages()` in `includes/i18n.php`; their `@meta` is ignored.)
+4. If the editor (Jodit) needs a different locale code, add it to the map in `template_editor.php` (currently `zh` -> `zh_cn`, `pt` -> `pt_br`).
 5. `php tools/i18n.php check` must report `0 placeholder mismatches`.
 6. Open the pages in the new language, in light and dark mode, and check long texts in the sidebar and buttons.
 
