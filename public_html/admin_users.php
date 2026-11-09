@@ -93,8 +93,10 @@ $admin_users = array_filter($users, function ($u) { return $u['role'] == 'admin'
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>User Management - SubSignature</title>
-    <link rel="stylesheet" href="css/style.css">
-    <link rel="stylesheet" href="css/all.min.css">
+    <script src="<?= assetUrl('js/theme.js') ?>"></script>
+    <link rel="stylesheet" href="<?= assetUrl('css/theme.css') ?>">
+    <link rel="stylesheet" href="<?= assetUrl('css/style.css') ?>">
+    <link rel="stylesheet" href="<?= assetUrl('css/all.min.css') ?>">
     <?php echo csrfMeta(); ?>
     <style>
         /* --- Layout Fixes --- */
@@ -110,30 +112,30 @@ $admin_users = array_filter($users, function ($u) { return $u['role'] == 'admin'
         .page-header-title p { margin: 0; color: var(--text-muted); }
 
         .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1.5rem; margin-bottom: 2rem; }
-        .stat-card { background: white; padding: 1.5rem; border-radius: 12px; border: 1px solid var(--border); box-shadow: 0 1px 3px rgba(0,0,0,0.05); display: flex; flex-direction: column; }
+        .stat-card { background: var(--bg-white); padding: 1.5rem; border-radius: 12px; border: 1px solid var(--border); box-shadow: 0 1px 3px rgba(0,0,0,0.05); display: flex; flex-direction: column; }
         .stat-label { color: var(--text-muted); font-size: 0.85rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.5rem; }
         .stat-value { font-size: 2rem; font-weight: 700; color: var(--text-main); }
         .stat-icon { float: right; color: var(--primary); opacity: 0.2; font-size: 2rem; margin-top: -2.5rem; }
         
         .users-table { width: 100%; border-collapse: collapse; font-size: 0.95rem; }
-        .users-table th { text-align: left; padding: 1rem; background: #f8fafc; border-bottom: 1px solid var(--border); color: var(--text-muted); font-weight: 600; font-size: 0.85rem; text-transform: uppercase; }
+        .users-table th { text-align: left; padding: 1rem; background: var(--bg-subtle); border-bottom: 1px solid var(--border); color: var(--text-muted); font-weight: 600; font-size: 0.85rem; text-transform: uppercase; }
         .users-table td { padding: 1rem; border-bottom: 1px solid var(--border); vertical-align: middle; }
-        .users-table tr:hover { background: #f8fafc; }
+        .users-table tr:hover { background: var(--bg-subtle); }
         
         .badge { padding: 0.25rem 0.6rem; border-radius: 99px; font-size: 0.75rem; font-weight: 600; text-transform: uppercase; }
-        .badge-admin { background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; }
-        .badge-user { background: #eff6ff; color: #2563eb; border: 1px solid #dbeafe; }
+        .badge-admin { background: var(--danger-bg); color: var(--danger-text); border: 1px solid var(--danger-border); }
+        .badge-user { background: var(--bg-hover); color: var(--primary); border: 1px solid var(--info-border); }
         .status-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
-        .status-active { color: #166534; } .dot-active { background: #16a34a; }
-        .status-inactive { color: #991b1b; } .dot-inactive { background: #dc2626; }
+        .status-active { color: var(--success-text); } .dot-active { background: #16a34a; }
+        .status-inactive { color: var(--danger-text); } .dot-inactive { background: #dc2626; }
         
-        .badge-self { background: #f3f4f6; color: #4b5563; font-size: 0.7rem; padding: 2px 6px; border-radius: 4px; margin-left: 0.5rem; border: 1px solid #e5e7eb; }
+        .badge-self { background: var(--bg-subtle); color: var(--text-muted); font-size: 0.7rem; padding: 2px 6px; border-radius: 4px; margin-left: 0.5rem; border: 1px solid var(--border); }
         
         .btn-icon { width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; border-radius: 6px; border: 1px solid transparent; color: var(--text-muted); transition: all 0.2s; text-decoration: none; cursor: pointer; }
-        .btn-icon:hover { background: #f1f5f9; color: var(--primary); }
-        .btn-icon.danger:hover { background: #fef2f2; color: #dc2626; border-color: #fecaca; }
-        .btn-icon.warning:hover { background: #fffbeb; color: #d97706; border-color: #fde68a; }
-        .btn-icon.success:hover { background: #dcfce7; color: #166534; border-color: #bbf7d0; }
+        .btn-icon:hover { background: var(--bg-subtle); color: var(--primary); }
+        .btn-icon.danger:hover { background: var(--danger-bg); color: var(--danger-text); border-color: var(--danger-border); }
+        .btn-icon.warning:hover { background: var(--warning-bg); color: var(--warning-text); border-color: var(--warning-border); }
+        .btn-icon.success:hover { background: var(--success-bg); color: var(--success-text); border-color: var(--success-border); }
         
         .username-link { color: var(--text-main); font-weight: 600; text-decoration: none; display: inline-flex; align-items: center; }
         .username-link:hover { color: var(--primary); text-decoration: underline; }
@@ -141,7 +143,7 @@ $admin_users = array_filter($users, function ($u) { return $u['role'] == 'admin'
 
         /* Modal Styles */
         .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.5); display: none; justify-content: center; align-items: center; z-index: 1000; backdrop-filter: blur(2px); }
-        .modal-box { background: white; width: 90%; max-width: 400px; padding: 2rem; border-radius: 12px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1); position: relative; }
+        .modal-box { background: var(--bg-white); width: 90%; max-width: 400px; padding: 2rem; border-radius: 12px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1); position: relative; }
         .modal-header h3 { margin: 0; color: var(--text-main); font-size: 1.25rem; }
         .modal-close { position: absolute; top: 1rem; right: 1rem; cursor: pointer; color: var(--text-muted); font-size: 1.2rem; }
         
@@ -179,10 +181,10 @@ $admin_users = array_filter($users, function ($u) { return $u['role'] == 'admin'
         </div>
 
         <?php if ($message): ?>
-            <div class="alert alert-success" style="padding: 1rem; background: #dcfce7; color: #166534; border-radius: 8px; margin-bottom: 1.5rem;"><i class="fas fa-check-circle"></i> <?php echo e($message); ?></div>
+            <div class="alert alert-success" style="padding: 1rem; background: var(--success-bg); color: var(--success-text); border-radius: 8px; margin-bottom: 1.5rem;"><i class="fas fa-check-circle"></i> <?php echo e($message); ?></div>
         <?php endif; ?>
         <?php if ($error): ?>
-            <div class="alert alert-error" style="padding: 1rem; background: #fee2e2; color: #991b1b; border-radius: 8px; margin-bottom: 1.5rem;"><i class="fas fa-exclamation-circle"></i> <?php echo e($error); ?></div>
+            <div class="alert alert-error" style="padding: 1rem; background: var(--danger-bg); color: var(--danger-text); border-radius: 8px; margin-bottom: 1.5rem;"><i class="fas fa-exclamation-circle"></i> <?php echo e($error); ?></div>
         <?php endif; ?>
 
         <div class="stats-grid">
@@ -304,7 +306,7 @@ $admin_users = array_filter($users, function ($u) { return $u['role'] == 'admin'
         <div class="modal-box">
             <span class="modal-close" id="resetModalClose">&times;</span>
             <div class="modal-header">
-                <h3><i class="fas fa-key warning" style="color:#d97706;"></i> Reset Password</h3>
+                <h3><i class="fas fa-key warning" style="color:var(--warning-text);"></i> Reset Password</h3>
                 <p style="color:var(--text-muted); font-size:0.9rem; margin-top:0.5rem;">
                     Set a new password for user: <strong id="modalUsername"></strong>
                 </p>
@@ -322,14 +324,14 @@ $admin_users = array_filter($users, function ($u) { return $u['role'] == 'admin'
                 </div>
                 
                 <div style="display:flex; justify-content:flex-end; gap:0.5rem;">
-                    <button type="button" class="btn btn-danger" style="background:white; color:var(--text-main); border:1px solid var(--border);" id="resetModalCancel">Cancel</button>
+                    <button type="button" class="btn btn-danger" style="background:var(--bg-white); color:var(--text-main); border:1px solid var(--border);" id="resetModalCancel">Cancel</button>
                     <button type="submit" class="btn btn-primary">Set Password</button>
                 </div>
             </form>
         </div>
     </div>
 
-    <script src="js/post-action.js"></script>
+    <script src="<?= assetUrl('js/post-action.js') ?>"></script>
     <script>
         const modal = document.getElementById('resetModal');
         const modalUserSpan = document.getElementById('modalUsername');

@@ -125,6 +125,8 @@ if ($allRequirementsMet && $_SERVER['REQUEST_METHOD'] === 'POST') {
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <script src="<?= 'js/theme.js?v=' . (int)@filemtime(__DIR__ . '/js/theme.js') ?>"></script>
+    <link rel="stylesheet" href="<?= 'css/theme.css?v=' . (int)@filemtime(__DIR__ . '/css/theme.css') ?>">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Installation - SubSignature</title>
     
@@ -136,56 +138,56 @@ if ($allRequirementsMet && $_SERVER['REQUEST_METHOD'] === 'POST') {
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: linear-gradient(135deg, #f5f7fa 0%, #e4edf5 100%);
+            background: linear-gradient(135deg, var(--bg-body) 0%, var(--border) 100%);
             min-height: 100vh;
             display: flex; align-items: center; justify-content: center; padding: 20px;
         }
         .install-box {
-            background: white; border-radius: 16px; box-shadow: 0 10px 40px rgba(0, 0, 0, 0.08);
-            width: 100%; max-width: 500px; padding: 40px; border: 1px solid #eaeaea;
+            background: var(--bg-white); border-radius: 16px; box-shadow: 0 10px 40px rgba(0, 0, 0, 0.08);
+            width: 100%; max-width: 500px; padding: 40px; border: 1px solid var(--border);
         }
         .header { text-align: center; margin-bottom: 30px; }
-        .title { font-size: 1.8rem; font-weight: 700; color: #2c3e50; margin-top: 10px; }
-        .subtitle { color: #718096; margin-top: 5px; }
+        .title { font-size: 1.8rem; font-weight: 700; color: var(--text-main); margin-top: 10px; }
+        .subtitle { color: var(--text-muted); margin-top: 5px; }
         
-        .section { margin-bottom: 25px; border-bottom: 1px solid #eee; padding-bottom: 20px; }
-        .section-title { font-weight: 600; color: #2d3748; margin-bottom: 15px; display: flex; align-items: center; gap: 8px; }
+        .section { margin-bottom: 25px; border-bottom: 1px solid var(--border); padding-bottom: 20px; }
+        .section-title { font-weight: 600; color: var(--text-main); margin-bottom: 15px; display: flex; align-items: center; gap: 8px; }
         
         /* SVG Icons Style */
         .icon { width: 1.2em; height: 1.2em; fill: currentColor; display: inline-block; vertical-align: text-bottom; }
         .text-green { color: #10b981; }
-        .text-red { color: #ef4444; }
+        .text-red { color: var(--danger-text); }
         
         .req-list { list-style: none; }
-        .req-item { display: flex; justify-content: space-between; padding: 8px 0; font-size: 0.9rem; border-bottom: 1px dashed #f0f0f0; }
+        .req-item { display: flex; justify-content: space-between; padding: 8px 0; font-size: 0.9rem; border-bottom: 1px dashed var(--border); }
         .req-item:last-child { border-bottom: none; }
         .status { font-weight: 600; display:flex; align-items:center; gap:5px; }
         .status.ok { color: #10b981; }
-        .status.fail { color: #ef4444; }
+        .status.fail { color: var(--danger-text); }
         
         .input-group { margin-bottom: 15px; }
-        .label { display: block; margin-bottom: 6px; font-weight: 500; font-size: 0.9rem; color: #4a5568; }
-        .input { width: 100%; padding: 10px; border: 2px solid #e2e8f0; border-radius: 8px; transition: 0.2s; }
+        .label { display: block; margin-bottom: 6px; font-weight: 500; font-size: 0.9rem; color: var(--text-muted); }
+        .input { width: 100%; padding: 10px; border: 2px solid var(--border); border-radius: 8px; transition: 0.2s; }
         .input:focus { border-color: #4a6cf7; outline: none; }
         
         .btn { width: 100%; padding: 12px; background: #4a6cf7; color: white; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; transition: 0.2s; font-size: 1rem; display:flex; align-items:center; justify-content:center; gap:8px;}
         .btn:hover:not(:disabled) { background: #3b5bdb; transform: translateY(-1px); }
-        .btn:disabled { background: #cbd5e1; cursor: not-allowed; }
+        .btn:disabled { background: var(--border-strong); cursor: not-allowed; }
         
         .alert { padding: 12px; border-radius: 8px; margin-bottom: 20px; font-size: 0.9rem; }
-        .alert-error { background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }
+        .alert-error { background: var(--danger-bg); color: var(--danger-text); border: 1px solid var(--danger-border); }
         
         /* Success Animation Styles */
         .success-container { text-align: center; padding: 20px 0; }
         .success-icon-wrap { width: 80px; height: 80px; margin: 0 auto 20px; color: #10b981; animation: popIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
-        .success-title { font-size: 1.5rem; color: #1e293b; margin-bottom: 10px; font-weight: 700; }
-        .success-text { color: #64748b; margin-bottom: 20px; }
-        .progress-bar { width: 100%; height: 4px; background: #e2e8f0; border-radius: 2px; overflow: hidden; margin-top: 20px; }
+        .success-title { font-size: 1.5rem; color: var(--text-main); margin-bottom: 10px; font-weight: 700; }
+        .success-text { color: var(--text-muted); margin-bottom: 20px; }
+        .progress-bar { width: 100%; height: 4px; background: var(--border); border-radius: 2px; overflow: hidden; margin-top: 20px; }
         .progress-fill { height: 100%; background: #10b981; width: 0%; transition: width 3s linear; }
         
         @keyframes popIn { 0% { transform: scale(0); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
         
-        .hint { font-size: 0.8rem; color: #64748b; margin-top: 5px; }
+        .hint { font-size: 0.8rem; color: var(--text-muted); margin-top: 5px; }
     </style>
 </head>
 <body>

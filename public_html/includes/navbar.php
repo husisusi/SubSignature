@@ -14,7 +14,7 @@ $current_page = basename($_SERVER['PHP_SELF']);
 </a>
 
 <nav class="nav-menu">
-    <span class="nav-label" style="font-weight: 800; color: #334155;">Main</span>
+    <span class="nav-label" style="font-weight: 800; color: var(--text-main);">Main</span>
     
     <a href="generator.php" class="nav-link <?php echo ($current_page == 'generator.php') ? 'active' : ''; ?>">
         <i class="fas fa-pen-nib"></i> <span>Generator</span>
@@ -24,7 +24,7 @@ $current_page = basename($_SERVER['PHP_SELF']);
         <i class="fas fa-signature"></i> <span>My Signatures</span>
     </a>
 
-    <span class="nav-label" style="font-weight: 800; color: #334155;">Data</span>
+    <span class="nav-label" style="font-weight: 800; color: var(--text-main);">Data</span>
     
     <a href="csv_import.php" class="nav-link <?php echo ($current_page == 'csv_import.php') ? 'active' : ''; ?>">
         <i class="fas fa-file-import"></i> <span>Import</span>
@@ -35,7 +35,7 @@ $current_page = basename($_SERVER['PHP_SELF']);
     </a>
 
     <?php if (isAdmin()): ?>
-    <span class="nav-label" style="font-weight: 800; color: #334155;">Admin</span>
+    <span class="nav-label" style="font-weight: 800; color: var(--text-main);">Admin</span>
     
     <a href="template_editor.php" class="nav-link <?php echo ($current_page == 'template_editor.php') ? 'active' : ''; ?>">
         <i class="fas fa-code"></i> <span>Add/Edit Templates</span>
@@ -83,7 +83,7 @@ $current_page = basename($_SERVER['PHP_SELF']);
 
     <?php endif; ?>
 
-    <span class="nav-label" style="font-weight: 800; color: #334155;">Account</span>
+    <span class="nav-label" style="font-weight: 800; color: var(--text-main);">Account</span>
     
     <a href="profile.php" class="nav-link <?php echo ($current_page == 'profile.php') ? 'active' : ''; ?>">
         <i class="fas fa-user-cog"></i> <span>Profile</span>

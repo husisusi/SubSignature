@@ -63,14 +63,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Change Password - SubSignature</title>
     
-    <link rel="stylesheet" href="css/style.css">
-    <link rel="stylesheet" href="css/all.min.css">    
+    <script src="<?= assetUrl('js/theme.js') ?>"></script>
+    <link rel="stylesheet" href="<?= assetUrl('css/theme.css') ?>">
+    <link rel="stylesheet" href="<?= assetUrl('css/style.css') ?>">
+    <link rel="stylesheet" href="<?= assetUrl('css/all.min.css') ?>">    
     
     <style>
         /* Page styles (unchanged UI) */
         .password-strength-container {
             margin-top: 0.5rem;
-            background: #f1f5f9;
+            background: var(--bg-subtle);
             height: 4px;
             border-radius: 2px;
             overflow: hidden;
@@ -109,14 +111,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         .toggle-password:hover { color: var(--primary); }
 
         .security-tips {
-            background: #f0fdf4;
-            border: 1px solid #bbf7d0;
+            background: var(--success-bg);
+            border: 1px solid var(--success-border);
             border-radius: 8px;
             padding: 1.5rem;
             margin-top: 2rem;
         }
         .security-tips h4 {
-            color: #166534;
+            color: var(--success-text);
             margin-bottom: 0.75rem;
             font-size: 1rem;
             display: flex;
@@ -126,7 +128,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         .security-tips ul {
             padding-left: 1.25rem;
             margin: 0;
-            color: #15803d;
+            color: var(--success-text);
             font-size: 0.9rem;
         }
         .security-tips li { margin-bottom: 0.25rem; }
@@ -233,7 +235,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         <button type="submit" class="btn btn-primary">
                             <i class="fas fa-save"></i> Update Password
                         </button>
-                        <a href="profile.php" class="btn btn-danger" style="background:white; color:var(--text-main); border:1px solid var(--border)">
+                        <a href="profile.php" class="btn btn-danger" style="background:var(--bg-white); color:var(--text-main); border:1px solid var(--border)">
                             Cancel
                         </a>
                     </div>
@@ -252,7 +254,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 </div>
                 
                 <div class="card" style="margin-top: 1.5rem; text-align: center; padding: 1.5rem;">
-                    <i class="fas fa-key" style="font-size: 2.5rem; color: #cbd5e1; margin-bottom: 1rem;"></i>
+                    <i class="fas fa-key" style="font-size: 2.5rem; color: var(--border-strong); margin-bottom: 1rem;"></i>
                     <p style="color: var(--text-muted); font-size: 0.9rem;">
                         Changing your password will not affect existing signatures, but you will need to use the new password for your next login.
                     </p>

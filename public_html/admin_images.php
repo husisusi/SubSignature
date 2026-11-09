@@ -178,8 +178,10 @@ if (isset($_GET['error'])) $error = $_GET['error'];
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Image Management - SubSignature</title>
-    <link rel="stylesheet" href="css/style.css">
-    <link rel="stylesheet" href="css/all.min.css">
+    <script src="<?= assetUrl('js/theme.js') ?>"></script>
+    <link rel="stylesheet" href="<?= assetUrl('css/theme.css') ?>">
+    <link rel="stylesheet" href="<?= assetUrl('css/style.css') ?>">
+    <link rel="stylesheet" href="<?= assetUrl('css/all.min.css') ?>">
     <?php echo csrfMeta(); ?>
     
     <style>
@@ -188,7 +190,7 @@ if (isset($_GET['error'])) $error = $_GET['error'];
             height: 50px; 
             object-fit: cover; 
             border-radius: 6px; 
-            border: 1px solid #e2e8f0; 
+            border: 1px solid var(--border); 
             cursor: zoom-in; 
             transition: transform 0.2s ease, box-shadow 0.2s ease;
         }
@@ -199,20 +201,20 @@ if (isset($_GET['error'])) $error = $_GET['error'];
         
         /* Modal Styles */
         .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.5); display: none; justify-content: center; align-items: center; z-index: 1000; backdrop-filter: blur(2px); }
-        .modal-box { background: white; width: 90%; max-width: 500px; padding: 2rem; border-radius: 12px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1); position: relative; }
+        .modal-box { background: var(--bg-white); width: 90%; max-width: 500px; padding: 2rem; border-radius: 12px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1); position: relative; }
         .modal-header h3 { margin: 0; color: var(--text-main); font-size: 1.25rem; }
         .modal-close { position: absolute; top: 1rem; right: 1rem; cursor: pointer; color: var(--text-muted); font-size: 1.2rem; }
         
         /* Lightbox Styles */
         #lightboxOverlay { background: rgba(0, 0, 0, 0.85); z-index: 2000; flex-direction: column; }
         #lightboxClose { position: absolute; top: 20px; right: 30px; color: white; font-size: 3rem; cursor: pointer; transition: color 0.2s; }
-        #lightboxClose:hover { color: #cbd5e1; }
+        #lightboxClose:hover { color: var(--border-strong); }
         .lightbox-img { max-width: 90%; max-height: 80vh; border-radius: 8px; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5); object-fit: contain; }
         .lightbox-caption { color: white; margin-top: 15px; font-family: monospace; font-size: 1.1rem; background: rgba(0,0,0,0.5); padding: 5px 15px; border-radius: 20px;}
 
         /* Upload Area */
-        .upload-area { border: 2px dashed #cbd5e1; border-radius: 8px; padding: 2rem; text-align: center; cursor: pointer; transition: all 0.2s; background: #f8fafc; position: relative; margin-top: 1rem; }
-        .upload-area:hover { border-color: var(--primary); background: #eff6ff; }
+        .upload-area { border: 2px dashed var(--border-strong); border-radius: 8px; padding: 2rem; text-align: center; cursor: pointer; transition: all 0.2s; background: var(--bg-subtle); position: relative; margin-top: 1rem; }
+        .upload-area:hover { border-color: var(--primary); background: var(--bg-hover); }
         .upload-input { position: absolute; width: 100%; height: 100%; top: 0; left: 0; opacity: 0; cursor: pointer; }
     </style>
 </head>
@@ -249,8 +251,8 @@ if (isset($_GET['error'])) $error = $_GET['error'];
 
         <div class="form-grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); margin-bottom: 2rem;">
             <div class="card" style="padding: 1.5rem; text-align:center;">
-                <div style="color: #64748b; margin-bottom: 0.5rem;">Total Images</div>
-                <div style="font-size: 2rem; font-weight: 700; color: #1e293b;"><?php echo count($images); ?></div>
+                <div style="color: var(--text-muted); margin-bottom: 0.5rem;">Total Images</div>
+                <div style="font-size: 2rem; font-weight: 700; color: var(--text-main);"><?php echo count($images); ?></div>
             </div>
         </div>
 
@@ -270,7 +272,7 @@ if (isset($_GET['error'])) $error = $_GET['error'];
             <div style="overflow-x: auto;">
                 <table style="width: 100%; border-collapse: collapse;">
                     <thead>
-                        <tr style="background: #f8fafc; text-align: left; border-bottom: 1px solid #e2e8f0;">
+                        <tr style="background: var(--bg-subtle); text-align: left; border-bottom: 1px solid var(--border);">
                             <th style="padding: 1rem; width: 60px;">Preview</th>
                             <th style="padding: 1rem;">Filename</th>
                             <th style="padding: 1rem;">Size</th>
@@ -280,11 +282,11 @@ if (isset($_GET['error'])) $error = $_GET['error'];
                     </thead>
                     <tbody>
                         <?php if (empty($images)): ?>
-                            <tr><td colspan="5" style="padding: 2rem; text-align: center; color: #64748b;">No images uploaded yet.</td></tr>
+                            <tr><td colspan="5" style="padding: 2rem; text-align: center; color: var(--text-muted);">No images uploaded yet.</td></tr>
                         <?php endif; ?>
                         
                         <?php foreach ($images as $img): ?>
-                        <tr style="border-bottom: 1px solid #e2e8f0;">
+                        <tr style="border-bottom: 1px solid var(--border);">
                             
                             <td style="padding: 0.5rem 1rem;">
                                 <!-- Enhanced Clickable Preview -->
@@ -298,9 +300,9 @@ if (isset($_GET['error'])) $error = $_GET['error'];
                                 <code><?php echo e($img['filename']); ?></code>
                             </td>
                             
-                            <td style="padding: 1rem; color: #64748b;"><?php echo $img['size']; ?></td>
+                            <td style="padding: 1rem; color: var(--text-muted);"><?php echo $img['size']; ?></td>
                             
-                            <td style="padding: 1rem; color: #64748b;">
+                            <td style="padding: 1rem; color: var(--text-muted);">
                                 <?php echo date('d.m.Y H:i', $img['time']); ?>
                             </td>
                             
@@ -337,7 +339,7 @@ if (isset($_GET['error'])) $error = $_GET['error'];
                 
                 <div class="upload-area" id="dropZone">
                     <input type="file" name="image_files[]" class="upload-input" accept="image/*" multiple required onchange="showFileCount(this)">
-                    <i class="fas fa-file-image" style="font-size: 2.5rem; color: #cbd5e1; margin-bottom: 1rem;"></i>
+                    <i class="fas fa-file-image" style="font-size: 2.5rem; color: var(--border-strong); margin-bottom: 1rem;"></i>
                     <div id="uploadText" style="font-weight: 500; color: var(--text-main);">
                         Click or drag files here
                     </div>
@@ -347,7 +349,7 @@ if (isset($_GET['error'])) $error = $_GET['error'];
                 </div>
                 
                 <div style="display:flex; justify-content:flex-end; gap:0.5rem; margin-top: 1.5rem;">
-                    <button type="button" class="btn btn-danger" style="background:white; color:var(--text-main); border:1px solid var(--border);" onclick="closeImportModal()">Cancel</button>
+                    <button type="button" class="btn btn-danger" style="background:var(--bg-white); color:var(--text-main); border:1px solid var(--border);" onclick="closeImportModal()">Cancel</button>
                     <button type="submit" class="btn btn-primary">Upload</button>
                 </div>
             </form>
@@ -361,7 +363,7 @@ if (isset($_GET['error'])) $error = $_GET['error'];
         <div id="lightboxCaption" class="lightbox-caption"></div>
     </div>
 
-    <script src="js/post-action.js"></script>
+    <script src="<?= assetUrl('js/post-action.js') ?>"></script>
     <script>
     // --- JS: Upload Modal Logic ---
     const modal = document.getElementById('importModal');
@@ -395,7 +397,7 @@ if (isset($_GET['error'])) $error = $_GET['error'];
         const text = document.getElementById('uploadText');
         if (input.files && input.files.length > 0) {
             text.innerHTML = `<strong>${input.files.length}</strong> file(s) selected`;
-            text.style.color = '#166534';
+            text.style.color = 'var(--success-text)';
         } else {
             text.innerHTML = 'Click or drag files here';
             text.style.color = 'var(--text-main)';
@@ -407,17 +409,17 @@ if (isset($_GET['error'])) $error = $_GET['error'];
     dropZone.addEventListener('dragover', (e) => {
         e.preventDefault();
         dropZone.style.borderColor = 'var(--primary)';
-        dropZone.style.background = '#eff6ff';
+        dropZone.style.background = 'var(--bg-hover)';
     });
     dropZone.addEventListener('dragleave', (e) => {
         e.preventDefault();
-        dropZone.style.borderColor = '#cbd5e1';
-        dropZone.style.background = '#f8fafc';
+        dropZone.style.borderColor = 'var(--border-strong)';
+        dropZone.style.background = 'var(--bg-subtle)';
     });
     dropZone.addEventListener('drop', (e) => {
         e.preventDefault();
-        dropZone.style.borderColor = '#166534'; // Success green
-        dropZone.style.background = '#f0fdf4';
+        dropZone.style.borderColor = 'var(--success-text)'; // Success green
+        dropZone.style.background = 'var(--success-bg)';
         
         const input = dropZone.querySelector('input');
         input.files = e.dataTransfer.files;

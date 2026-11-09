@@ -23,22 +23,22 @@ function renderSignatureItem($sig, $target_user_id, $search, $show_owner_name = 
                     <div style="display:flex; align-items:center; gap:8px;">
                         <h4><?php echo e($sig['name']); ?></h4>
                         <?php if ($show_owner_name && !empty($sig['username'])): ?>
-                        <span style="background:#e0f2fe; color:#0369a1; font-size:0.7rem; padding:2px 6px; border-radius:4px; border:1px solid #bae6fd;">
+                        <span style="background:var(--info-bg); color:var(--info-text); font-size:0.7rem; padding:2px 6px; border-radius:4px; border:1px solid var(--info-border);">
                             <i class="fas fa-user"></i> <?php echo e($sig['username']); ?>
                         </span>
                         <?php endif; ?>
                     </div>
                     <p><?php echo e($sig['role']); ?> &bull; <?php echo e($sig['email']); ?></p>
-                    <p style="font-size:0.75rem; color:#94a3b8; margin-top:0.25rem">
+                    <p style="font-size:0.75rem; color:var(--text-faint); margin-top:0.25rem">
                         <i class="far fa-clock"></i> <?php echo e(date('M d, Y', strtotime($sig['created_at']) ?: time())); ?>
-                        &bull; <span style="background:#f1f5f9; padding:2px 6px; border-radius:4px; font-family:monospace;"><?php echo e($sig['template']); ?></span>
+                        &bull; <span style="background:var(--bg-subtle); padding:2px 6px; border-radius:4px; font-family:monospace;"><?php echo e($sig['template']); ?></span>
                     </p>
                 </div>
 
                 <div class="sig-actions" style="display:flex; gap:0.5rem; align-items:center;">
                     <?php if ($encodedHtml !== ''): ?>
                     <textarea id="source-<?php echo (int)$sig['id']; ?>" class="visually-hidden"><?php echo $encodedHtml; ?></textarea>
-                    <button type="button" onclick="openModal(<?php echo (int)$sig['id']; ?>)" class="btn btn-sm btn-secondary" style="background:white; border:1px solid #cbd5e1;" title="Preview"><i class="fas fa-eye"></i></button>
+                    <button type="button" onclick="openModal(<?php echo (int)$sig['id']; ?>)" class="btn btn-sm btn-secondary" style="background:var(--bg-white); border:1px solid var(--border-strong);" title="Preview"><i class="fas fa-eye"></i></button>
                     <?php endif; ?>
                     <a href="download.php?id=<?php echo (int)$sig['id']; ?>" class="btn btn-sm btn-primary" title="Download"><i class="fas fa-download"></i></a>
                     <button type="button" data-post="<?php echo e($deleteUrl); ?>" data-params='{"action":"delete_one","id":"<?php echo (int)$sig['id']; ?>"}'
@@ -174,14 +174,16 @@ $message = popFlash('success');
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>All Signatures - SubSignature</title>
-<link rel="stylesheet" href="css/style.css">
-<link rel="stylesheet" href="css/all.min.css">
+<script src="<?= assetUrl('js/theme.js') ?>"></script>
+<link rel="stylesheet" href="<?= assetUrl('css/theme.css') ?>">
+<link rel="stylesheet" href="<?= assetUrl('css/style.css') ?>">
+<link rel="stylesheet" href="<?= assetUrl('css/all.min.css') ?>">
 <?php echo csrfMeta(); ?>
 <style>
     .visually-hidden { position: absolute; left: -9999px; opacity: 0; }
     .alert { padding: 1rem; border-radius: 8px; margin-bottom: 1.5rem; display: flex; gap: 0.75rem; align-items: center; }
-    .alert-success { background: #dcfce7; color: #166534; border: 1px solid #bbf7d0; }
-    .empty-state { text-align: center; padding: 4rem 1rem; color: #94a3b8; }
+    .alert-success { background: var(--success-bg); color: var(--success-text); border: 1px solid var(--success-border); }
+    .empty-state { text-align: center; padding: 4rem 1rem; color: var(--text-faint); }
 
     /* MODAL STYLES - UPDATED FOR LARGER PREVIEW */
     .modal-overlay { 
@@ -191,7 +193,7 @@ $message = popFlash('success');
         backdrop-filter: blur(3px); 
     }
     .modal-box { 
-        background: white; 
+        background: var(--bg-white); 
         width: 95%; /* Wider on small screens */
         max-width: 1100px; /* Max width increased to 1100px */
         border-radius: 12px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1); 
@@ -201,34 +203,34 @@ $message = popFlash('success');
     }
     @keyframes popIn { from {transform: scale(0.95); opacity: 0;} to {transform: scale(1); opacity: 1;} }
 
-    .modal-header { padding: 1rem 1.5rem; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; background: #f8fafc; }
+    .modal-header { padding: 1rem 1.5rem; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; background: var(--bg-subtle); }
     
     .modal-body { 
         padding: 0; 
         height: 600px; /* Increased height to 600px */
-        background: white; 
+        background: var(--bg-white); 
     }
     
     .modal-iframe { width: 100%; height: 100%; border: none; display: block; }
-    .modal-footer { padding: 1rem; text-align: right; border-top: 1px solid #e2e8f0; background: #f8fafc; }
+    .modal-footer { padding: 1rem; text-align: right; border-top: 1px solid var(--border); background: var(--bg-subtle); }
 
     .close-modal-btn { 
         background: none; border: none; font-size: 1.5rem; 
-        cursor: pointer; color: #64748b; padding: 0 10px; line-height: 1;
+        cursor: pointer; color: var(--text-muted); padding: 0 10px; line-height: 1;
     }
-    .close-modal-btn:hover { color: #333; }
+    .close-modal-btn:hover { color: var(--text-main); }
 
-    .filter-bar { background: white; padding: 1rem; border-radius: 8px; border: 1px solid var(--border); margin-bottom: 1.5rem; display: flex; gap: 1rem; flex-wrap: wrap; align-items: center; }
+    .filter-bar { background: var(--bg-white); padding: 1rem; border-radius: 8px; border: 1px solid var(--border); margin-bottom: 1.5rem; display: flex; gap: 1rem; flex-wrap: wrap; align-items: center; }
 
     /* MODERN DROPDOWN */
     .user-select {
         appearance: none; 
         -webkit-appearance: none;
         -moz-appearance: none;
-        background-color: #ffffff;
-        color: #334155;
+        background-color: var(--bg-white);
+        color: var(--text-main);
         padding: 0.6rem 2.5rem 0.6rem 1rem;
-        border: 1px solid #cbd5e1;
+        border: 1px solid var(--border-strong);
         border-radius: 6px;
         min-width: 200px;
         font-weight: 500;
@@ -241,14 +243,14 @@ $message = popFlash('success');
         background-position: right 1rem center;
         background-size: 1rem;
     }
-    .user-select:focus { border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1); }
-    .user-select:hover { border-color: #94a3b8; }
+    .user-select:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1); }
+    .user-select:hover { border-color: var(--text-faint); }
 
-    .search-input { flex: 1; padding: 0.6rem; border: 1px solid #e2e8f0; border-radius: 6px; }
-    .count-badge { background-color: #eff6ff; color: #2563eb; font-size: 0.9rem; padding: 0.3rem 0.8rem; border-radius: 999px; font-weight: 700; margin-left: 10px; border: 1px solid #dbeafe; }
+    .search-input { flex: 1; padding: 0.6rem; border: 1px solid var(--border); border-radius: 6px; }
+    .count-badge { background-color: var(--bg-hover); color: var(--primary); font-size: 0.9rem; padding: 0.3rem 0.8rem; border-radius: 999px; font-weight: 700; margin-left: 10px; border: 1px solid var(--info-border); }
 
     .infinite-spinner { text-align: center; padding: 2rem; display: none; color: var(--text-muted); }
-    .end-of-results { text-align: center; padding: 2rem; display: none; color: #94a3b8; font-size: 0.9rem; font-style: italic; }
+    .end-of-results { text-align: center; padding: 2rem; display: none; color: var(--text-faint); font-size: 0.9rem; font-style: italic; }
     .sig-checkbox { width: 18px; height: 18px; cursor: pointer; }
 
     /* HEADER ACTION BUTTONS */
@@ -300,7 +302,7 @@ $message = popFlash('success');
                     <i class="fas fa-trash"></i> Delete Selected
                 </button>
 
-                <div style="width:1px; height:20px; background:#cbd5e1; margin:0 5px;"></div>
+                <div style="width:1px; height:20px; background:var(--border-strong); margin:0 5px;"></div>
 
                 <button onclick="confirmDeleteAll()" class="btn btn-sm btn-danger btn-header">
                     <i class="fas fa-trash-alt"></i> Delete All
@@ -329,9 +331,9 @@ $message = popFlash('success');
             </form>
         </div>
 
-        <div style="padding: 10px 15px; background: #f8fafc; border-bottom: 1px solid #e2e8f0; display:flex; align-items:center; gap: 10px;">
+        <div style="padding: 10px 15px; background: var(--bg-subtle); border-bottom: 1px solid var(--border); display:flex; align-items:center; gap: 10px;">
             <input type="checkbox" id="selectAll" class="sig-checkbox" onchange="toggleSelectAll(this)">
-            <label for="selectAll" style="font-weight:600; font-size:0.9rem; cursor:pointer; color:#475569;">Select All visible</label>
+            <label for="selectAll" style="font-weight:600; font-size:0.9rem; cursor:pointer; color:var(--text-muted);">Select All visible</label>
         </div>
 
         <div class="signature-list" id="signatureListContainer">
@@ -362,15 +364,15 @@ $message = popFlash('success');
             <h3 style="margin:0"><i class="fas fa-paper-plane"></i> Sending Emails...</h3>
         </div>
         <div class="modal-body" style="padding: 20px; display: flex; flex-direction: column; gap: 15px; height: auto;">
-            <div style="width: 100%; background-color: #e2e8f0; border-radius: 99px; overflow: hidden; height: 20px;">
-                <div id="progressBarFill" style="width: 0%; height: 100%; background-color: #3b82f6; transition: width 0.3s ease;"></div>
+            <div style="width: 100%; background-color: var(--border); border-radius: 99px; overflow: hidden; height: 20px;">
+                <div id="progressBarFill" style="width: 0%; height: 100%; background-color: var(--primary); transition: width 0.3s ease;"></div>
             </div>
-            <div style="display: flex; justify-content: space-between; font-size: 0.9rem; color: #64748b;">
+            <div style="display: flex; justify-content: space-between; font-size: 0.9rem; color: var(--text-muted);">
                 <span id="progressText">Initializing...</span>
                 <span id="progressPercent">0%</span>
             </div>
 
-            <div id="progressLog" style="flex-grow: 1; background: #ffffff; color: #334155; font-family: monospace; font-size: 0.85rem; padding: 10px; border-radius: 6px; overflow-y: auto; max-height: 150px; border: 1px solid #cbd5e1; box-shadow: inset 0 2px 4px rgba(0,0,0,0.05);">
+            <div id="progressLog" style="flex-grow: 1; background: var(--bg-white); color: var(--text-main); font-family: monospace; font-size: 0.85rem; padding: 10px; border-radius: 6px; overflow-y: auto; max-height: 150px; border: 1px solid var(--border-strong); box-shadow: inset 0 2px 4px rgba(0,0,0,0.05);">
                 <div>> Ready to start...</div>
             </div>
         </div>
@@ -394,8 +396,8 @@ $message = popFlash('success');
     <?php echo csrfField(); ?>
 </form>
 
-<script src="js/post-action.js"></script>
-<script src="js/safe-html.js"></script>
+<script src="<?= assetUrl('js/post-action.js') ?>"></script>
+<script src="<?= assetUrl('js/safe-html.js') ?>"></script>
 <script>
 const CSRF_TOKEN = <?php echo json_encode(generateCSRFToken()); ?>;
 let abortController = null; // Global variable to handle cancellation
@@ -482,7 +484,7 @@ async function sendBulkEmail() {
 
     pModal.style.display = 'flex';
     pBar.style.width = '0%';
-    pBar.style.backgroundColor = '#3b82f6'; // Blue (Reset)
+    pBar.style.backgroundColor = 'var(--primary)'; // Blue (Reset)
     pText.innerText = `0 of ${ids.length}`;
     pPercent.innerText = '0%';
     pLog.innerHTML = '<div>> Connecting to server...</div>';
@@ -535,14 +537,14 @@ async function sendBulkEmail() {
                         const data = JSON.parse(jsonStr);
                         
                         if (data.status === 'finished') {
-                            logMessage(`DONE: ${data.summary}`, '#166534'); // Dark Green
+                            logMessage(`DONE: ${data.summary}`, 'var(--success-text)'); // Dark Green
                             finishProcess(true);
                         } else if (data.status === 'fatal_error') {
                             logMessage(`ERROR: ${data.message}`, '#dc2626'); // Red
                             finishProcess(false);
                         } else {
                             // Standard Log Entry
-                            const color = (data.status === 'error') ? '#dc2626' : '#334155';
+                            const color = (data.status === 'error') ? 'var(--danger-text)' : 'var(--text-main)';
                             logMessage(data.message, color);
 
                             if (data.progress) {
@@ -562,7 +564,7 @@ async function sendBulkEmail() {
             // EXECUTES ON CANCELLATION
             logMessage('🛑 ABORTED BY USER! Stopping immediately...', '#dc2626');
             pBar.style.backgroundColor = '#ef4444'; // Bar turns red
-            logMessage('Connection closed. Server will stop processing.', '#334155');
+            logMessage('Connection closed. Server will stop processing.', 'var(--text-main)');
         } else {
             logMessage(`System Error: ${e.message}`, '#dc2626');
         }
@@ -587,7 +589,7 @@ function logMessage(msg, color) {
     const div = document.createElement('div');
     div.textContent = '> ' + msg; // textContent: server messages may contain user data
     div.style.color = color;
-    div.style.borderBottom = "1px solid #f1f5f9"; 
+    div.style.borderBottom = "1px solid var(--border)"; 
     div.style.padding = "2px 0";
     pLog.appendChild(div);
     pLog.scrollTop = pLog.scrollHeight;
@@ -618,7 +620,7 @@ function openModal(id) {
     if(source) {
         const styleReset = `
             <style>
-                body { margin: 0; padding: 20px; font-family: Arial, Helvetica, sans-serif; background-color: #ffffff; }
+                body { margin: 0; padding: 20px; font-family: Arial, Helvetica, sans-serif; background-color: #ffffff; color: #000000; }
                 p { margin: 0; padding: 0; line-height: 1.4; } 
                 table { border-collapse: collapse; border-spacing: 0; }
                 td { padding: 0; vertical-align: top; }

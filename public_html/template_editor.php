@@ -26,8 +26,8 @@ $current_content = '<!DOCTYPE html>
 <div style="font-family: Arial, sans-serif; padding: 10px;">
     <strong>{{NAME}}</strong> | {{ROLE}}<br>
     📧 {{EMAIL}} | 📞 {{PHONE}}<br>
-    <hr style="border: 1px solid #eee; margin: 10px 0;">
-    <small style="color: #666;">Digital Signature</small>
+    <hr style="border: 1px solid var(--border); margin: 10px 0;">
+    <small style="color: var(--text-muted);">Digital Signature</small>
 </div>
 </body>
 </html>';
@@ -157,28 +157,30 @@ foreach (array_merge(listSignatureTemplates(), is_file($templates_dir . '/email_
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Template Editor - SubSignature</title>
     
-    <link rel="stylesheet" href="css/style.css">
-    <link rel="stylesheet" href="css/all.min.css">    
+    <script src="<?= assetUrl('js/theme.js') ?>"></script>
+    <link rel="stylesheet" href="<?= assetUrl('css/theme.css') ?>">
+    <link rel="stylesheet" href="<?= assetUrl('css/style.css') ?>">
+    <link rel="stylesheet" href="<?= assetUrl('css/all.min.css') ?>">    
     
-    <link rel="stylesheet" href="js/jodit/jodit.min.css">
-    <script src="js/jodit/jodit.min.js"></script>
-    <script src="js/ace/ace.js"></script>
-    <script src="js/safe-html.js"></script>
+    <link rel="stylesheet" href="<?= assetUrl('js/jodit/jodit.min.css') ?>">
+    <script src="<?= assetUrl('js/jodit/jodit.min.js') ?>"></script>
+    <script src="<?= assetUrl('js/ace/ace.js') ?>"></script>
+    <script src="<?= assetUrl('js/safe-html.js') ?>"></script>
     
     <style>
         .jodit-container { border-radius: 8px !important; border: 1px solid var(--border) !important; }
-        .jodit-toolbar { background: #f8fafc !important; border-bottom: 1px solid var(--border) !important; position: sticky; top: 0; z-index: 10; }
-        .jodit-status-bar { border-top: 1px solid var(--border) !important; background: #f8fafc !important; }
+        .jodit-toolbar { background: var(--bg-subtle) !important; border-bottom: 1px solid var(--border) !important; position: sticky; top: 0; z-index: 10; }
+        .jodit-status-bar { border-top: 1px solid var(--border) !important; background: var(--bg-subtle) !important; }
         
-        .placeholders { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.5rem; padding: 1rem; background: #f8fafc; border-radius: 8px; border: 1px dashed var(--border); }
-        .placeholder-btn { background: white; border: 1px solid var(--border); border-radius: 6px; padding: 0.3rem 0.6rem; font-size: 0.85rem; font-family: monospace; color: var(--primary); cursor: pointer; transition: all 0.2s; }
+        .placeholders { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.5rem; padding: 1rem; background: var(--bg-subtle); border-radius: 8px; border: 1px dashed var(--border); }
+        .placeholder-btn { background: var(--bg-white); border: 1px solid var(--border); border-radius: 6px; padding: 0.3rem 0.6rem; font-size: 0.85rem; font-family: monospace; color: var(--primary); cursor: pointer; transition: all 0.2s; }
         .placeholder-btn:hover { background: var(--primary); color: white; border-color: var(--primary); }
         
-        .preview-wrapper { background: white; border: 1px solid var(--border); border-radius: 8px; padding: 2rem; margin-top: 1rem; box-shadow: inset 0 0 10px rgba(0,0,0,0.02); overflow-x: auto; }
+        .preview-wrapper { background: var(--bg-white); border: 1px solid var(--border); border-radius: 8px; padding: 2rem; margin-top: 1rem; box-shadow: inset 0 0 10px rgba(0,0,0,0.02); overflow-x: auto; }
         
         .alert { padding: 1rem; border-radius: 8px; margin-bottom: 1.5rem; display: flex; gap: 0.75rem; align-items: center; font-size: 0.95rem; }
-        .alert-success { background: #dcfce7; color: #166534; border: 1px solid #bbf7d0; }
-        .alert-error { background: #fee2e2; color: #991b1b; border: 1px solid #fecaca; }
+        .alert-success { background: var(--success-bg); color: var(--success-text); border: 1px solid var(--success-border); }
+        .alert-error { background: var(--danger-bg); color: var(--danger-text); border: 1px solid var(--danger-border); }
 
         /* COMPACT TOOLBAR GRID */
         .editor-toolbar-grid {
@@ -186,7 +188,7 @@ foreach (array_merge(listSignatureTemplates(), is_file($templates_dir . '/email_
             grid-template-columns: 1fr 1fr auto;
             gap: 1rem;
             align-items: end;
-            background: #f8fafc;
+            background: var(--bg-subtle);
             padding: 1.25rem;
             border-radius: 8px;
             border: 1px solid var(--border);
@@ -244,7 +246,7 @@ foreach (array_merge(listSignatureTemplates(), is_file($templates_dir . '/email_
                                 <label for="template_selector" style="font-size: 0.8rem; text-transform: uppercase; color: var(--text-muted); font-weight: 700;">
                                     <i class="fas fa-folder-open"></i> Load Existing
                                 </label>
-                                <select id="template_selector" onchange="loadTemplate(this.value)" style="width: 100%; padding: 0.6rem; border: 1px solid #cbd5e1; border-radius: 6px;">
+                                <select id="template_selector" onchange="loadTemplate(this.value)" style="width: 100%; padding: 0.6rem; border: 1px solid var(--border-strong); border-radius: 6px;">
                                     <option value="">-- Create New Template --</option>
                                     <?php foreach ($templates as $filename => $content): ?>
                                         <?php  
@@ -266,7 +268,7 @@ foreach (array_merge(listSignatureTemplates(), is_file($templates_dir . '/email_
                                 <input type="text" id="template_name" name="template_name"  
                                       value="<?php echo e($current_name); ?>"
                                       placeholder="e.g. Modern Blue" required 
-                                      style="width: 100%; padding: 0.6rem; font-weight: 600; border: 1px solid #cbd5e1; border-radius: 6px;">
+                                      style="width: 100%; padding: 0.6rem; font-weight: 600; border: 1px solid var(--border-strong); border-radius: 6px;">
                             </div>
 
                             <div style="display: flex; gap: 0.5rem;">
@@ -276,14 +278,14 @@ foreach (array_merge(listSignatureTemplates(), is_file($templates_dir . '/email_
                         </div>
                         
                         <div class="form-group">
-                            <label style="font-size: 0.85rem; font-weight: 600; color: #64748b;"><i class="fas fa-magic"></i> Insert Dynamic Variable:</label>
+                            <label style="font-size: 0.85rem; font-weight: 600; color: var(--text-muted);"><i class="fas fa-magic"></i> Insert Dynamic Variable:</label>
                             <div class="placeholders">
                                 <button type="button" onclick="insertPlaceholder('{{NAME}}')" class="placeholder-btn">{{NAME}}</button>
                                 <button type="button" onclick="insertPlaceholder('{{ROLE}}')" class="placeholder-btn">{{ROLE}}</button>
                                 <button type="button" onclick="insertPlaceholder('{{EMAIL}}')" class="placeholder-btn">{{EMAIL}}</button>
                                 <button type="button" onclick="insertPlaceholder('{{PHONE}}')" class="placeholder-btn">{{PHONE}}</button>
                                 <button type="button" onclick="insertPlaceholder('{{PHONE_CLEAN}}')" class="placeholder-btn" title="Digits only, for tel: links">{{PHONE_CLEAN}}</button>
-                                <div style="width: 1px; background: #e2e8f0; margin: 0 5px;"></div>
+                                <div style="width: 1px; background: var(--border); margin: 0 5px;"></div>
                                 <button type="button" onclick="insertPlaceholder('<br>')" class="placeholder-btn">&lt;br&gt;</button>
                                 <button type="button" onclick="insertPlaceholder('<hr>')" class="placeholder-btn">&lt;hr&gt;</button>
                             </div>
@@ -319,7 +321,11 @@ foreach (array_merge(listSignatureTemplates(), is_file($templates_dir . '/email_
     <script>
     var editorInstance = null;
     
-    document.addEventListener('DOMContentLoaded', function() {
+    function isDarkTheme() {
+        return window.SubSigTheme && window.SubSigTheme.get() === 'dark';
+    }
+
+    function createEditor() {
         if (typeof Jodit === 'undefined') {
             document.getElementById('editor_warning').style.display = 'block';
             return;
@@ -327,12 +333,13 @@ foreach (array_merge(listSignatureTemplates(), is_file($templates_dir . '/email_
         
         var textarea = document.getElementById('template_content');
         if (!textarea) return;
+        lastEditorDark = isDarkTheme();
         
         try {
             editorInstance = Jodit.make(textarea, {
                 height: 450,
                 width: '100%',
-                theme: 'default',
+                theme: isDarkTheme() ? 'dark' : 'default',
                 
                 // --- CONFIG FOR LOCAL ACE EDITOR ---
                 useAceEditor: true,
@@ -342,7 +349,7 @@ foreach (array_merge(listSignatureTemplates(), is_file($templates_dir . '/email_
                 // -----------------------------------
 
                 sourceEditorNativeOptions: {
-                    theme: 'ace/theme/chrome',
+                    theme: isDarkTheme() ? 'ace/theme/tomorrow_night' : 'ace/theme/chrome',
                     mode: 'ace/mode/html',
                     showGutter: true,
                     wrap: true
@@ -376,8 +383,24 @@ foreach (array_merge(listSignatureTemplates(), is_file($templates_dir . '/email_
             console.error('Failed to initialize Jodit:', error);
             document.getElementById('editor_warning').style.display = 'block';
         }
+    }
+
+    document.addEventListener('DOMContentLoaded', createEditor);
+
+    // The WYSIWYG and code editor themes are fixed at creation time:
+    // rebuild the editor (keeping its content) when the colour theme changes.
+    var lastEditorDark = null;
+    document.addEventListener('subsig-theme-change', function () {
+        var dark = isDarkTheme();
+        if (dark === lastEditorDark || !editorInstance) { return; }
+        lastEditorDark = dark;
+        var content = editorInstance.value;
+        editorInstance.destruct();
+        editorInstance = null;
+        document.getElementById('template_content').value = content;
+        createEditor();
     });
-    
+
     function insertPlaceholder(placeholder) {
         if (editorInstance && editorInstance.selection) {
             editorInstance.selection.insertHTML(placeholder);

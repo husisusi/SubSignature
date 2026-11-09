@@ -34,6 +34,14 @@ RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
     Header always set X-Content-Type-Options "nosniff"
     Header always set X-Frame-Options "DENY"
     Header always unset X-Powered-By
+
+    # Stylesheets and scripts are revalidated on every request (cheap 304 if
+    # unchanged). PHP pages add "?v=<mtime>" to the URLs, but assets that are
+    # loaded dynamically (e.g. Ace modules/themes) rely on this, so no
+    # browser keeps a stale copy after an update.
+    <FilesMatch "\.(css|js)$">
+        Header set Cache-Control "no-cache"
+    </FilesMatch>
 </IfModule>
 
 # ======================================================================

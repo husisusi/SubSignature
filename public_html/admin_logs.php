@@ -43,17 +43,16 @@ $loginResult = $db->query("SELECT * FROM login_attempts ORDER BY attempted_at DE
 <head>
     <meta charset="UTF-8">
     <title>System Audit - SubSignature</title>
-    <link rel="stylesheet" href="css/style.css">
-    <link rel="stylesheet" href="css/all.min.css">
+    <script src="<?= assetUrl('js/theme.js') ?>"></script>
+    <link rel="stylesheet" href="<?= assetUrl('css/theme.css') ?>">
+    <link rel="stylesheet" href="<?= assetUrl('css/style.css') ?>">
+    <link rel="stylesheet" href="<?= assetUrl('css/all.min.css') ?>">
     <style>
         :root {
-            --bg-color: #f1f5f9;
-            --card-bg: #ffffff;
-            --text-main: #334155;
-            --text-muted: #64748b;
-            --border-color: #e2e8f0;
-            --primary-soft: #e0f2fe;
-            --primary-dark: #0369a1;
+            --bg-color: var(--bg-subtle);
+            --card-bg: var(--bg-white);
+            --border-color: var(--border);
+            --primary-soft: var(--info-bg);
         }
 
         /* --- DASHBOARD STATS --- */
@@ -64,7 +63,7 @@ $loginResult = $db->query("SELECT * FROM login_attempts ORDER BY attempted_at DE
             margin-bottom: 2rem;
         }
         .stat-card {
-            background: white; padding: 1.5rem; border-radius: 12px;
+            background: var(--bg-white); padding: 1.5rem; border-radius: 12px;
             box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);
             border: 1px solid var(--border-color);
             display: flex; align-items: center; justify-content: space-between;
@@ -76,9 +75,9 @@ $loginResult = $db->query("SELECT * FROM login_attempts ORDER BY attempted_at DE
             display: flex; align-items: center; justify-content: center;
             font-size: 1.5rem;
         }
-        .icon-red { background: #fee2e2; color: #991b1b; }
-        .icon-green { background: #dcfce7; color: #166534; }
-        .icon-orange { background: #ffedd5; color: #9a3412; }
+        .icon-red { background: var(--danger-bg); color: var(--danger-text); }
+        .icon-green { background: var(--success-bg); color: var(--success-text); }
+        .icon-orange { background: var(--warning-bg); color: var(--warning-text); }
 
         /* --- TABS NAVIGATION --- */
         .tabs { display: flex; gap: 1rem; border-bottom: 2px solid var(--border-color); margin-bottom: 1.5rem; }
@@ -88,7 +87,7 @@ $loginResult = $db->query("SELECT * FROM login_attempts ORDER BY attempted_at DE
             cursor: pointer; transition: all 0.2s; border-bottom: 3px solid transparent; margin-bottom: -2px;
         }
         .tab-btn:hover { color: var(--text-main); }
-        .tab-btn.active { color: var(--primary-dark); border-bottom-color: var(--primary-dark); }
+        .tab-btn.active { color: var(--info-text); border-bottom-color: var(--info-text); }
         .tab-content { display: none; animation: fadeIn 0.3s ease-in-out; }
         .tab-content.active { display: block; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
@@ -96,23 +95,23 @@ $loginResult = $db->query("SELECT * FROM login_attempts ORDER BY attempted_at DE
         /* --- TABLE STYLING --- */
         .log-table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 0.9rem; }
         .log-table th { 
-            text-align: left; padding: 12px 15px; background: #f8fafc; 
+            text-align: left; padding: 12px 15px; background: var(--bg-subtle); 
             border-bottom: 2px solid var(--border-color); color: var(--text-muted); font-weight: 600;
         }
         .log-table td { padding: 12px 15px; border-bottom: 1px solid var(--border-color); color: var(--text-main); }
         .log-table tr:last-child td { border-bottom: none; }
-        .log-table tr:hover td { background: #f8fafc; }
+        .log-table tr:hover td { background: var(--bg-subtle); }
         
         .badge { padding: 4px 10px; border-radius: 99px; font-weight: 600; font-size: 0.75rem; display: inline-flex; align-items: center; gap: 5px; }
-        .badge-danger { background: #fee2e2; color: #991b1b; } 
-        .badge-warning { background: #ffedd5; color: #9a3412; } 
-        .badge-success { background: #dcfce7; color: #166534; } 
-        .badge-info { background: #e0f2fe; color: #075985; }    
+        .badge-danger { background: var(--danger-bg); color: var(--danger-text); } 
+        .badge-warning { background: var(--warning-bg); color: var(--warning-text); } 
+        .badge-success { background: var(--success-bg); color: var(--success-text); } 
+        .badge-info { background: var(--info-bg); color: var(--info-text); }    
         
-        .ip-addr { font-family: 'Courier New', monospace; background: #f1f5f9; padding: 2px 6px; border-radius: 4px; font-size: 0.85rem; color: #475569; }
+        .ip-addr { font-family: 'Courier New', monospace; background: var(--bg-subtle); padding: 2px 6px; border-radius: 4px; font-size: 0.85rem; color: var(--text-muted); }
         
         /* Limit Selector */
-        .limit-selector { display: flex; align-items: center; gap: 8px; font-size: 0.85rem; color: var(--text-muted); background: white; padding: 5px 10px; border-radius: 6px; border: 1px solid var(--border-color); }
+        .limit-selector { display: flex; align-items: center; gap: 8px; font-size: 0.85rem; color: var(--text-muted); background: var(--bg-white); padding: 5px 10px; border-radius: 6px; border: 1px solid var(--border-color); }
         .limit-selector select { border: none; outline: none; background: transparent; font-weight: bold; cursor: pointer; color: var(--text-main); }
     </style>
 </head>
@@ -212,7 +211,7 @@ $loginResult = $db->query("SELECT * FROM login_attempts ORDER BY attempted_at DE
                             <tr>
                                 <td style="color:var(--text-muted);"><?php echo e(date('d.m.Y H:i', strtotime($row['created_at']) ?: time())); ?></td>
                                 <td><span class="badge <?php echo $cls; ?>"><i class="fas fa-<?php echo $icon; ?>"></i> <?php echo e($row['event_type']); ?></span></td>
-                                <td><?php echo $row['real_username'] ? '<strong>'.e($row['real_username']).'</strong>' : '<span style="color:#cbd5e1">-</span>'; ?></td>
+                                <td><?php echo $row['real_username'] ? '<strong>'.e($row['real_username']).'</strong>' : '<span style="color:var(--border-strong)">-</span>'; ?></td>
                                 <td><?php echo e($row['details']); ?></td>
                                 <td><span class="ip-addr"><?php echo e($row['ip_address']); ?></span></td>
                             </tr>
@@ -248,7 +247,7 @@ $loginResult = $db->query("SELECT * FROM login_attempts ORDER BY attempted_at DE
                                         <?php endif; ?>
                                     </td>
                                     <td><strong><?php echo e($row['recipient']); ?></strong></td>
-                                    <td style="<?php echo ($row['status'] === 'error') ? 'color:#dc2626;font-weight:500;' : ''; ?>">
+                                    <td style="<?php echo ($row['status'] === 'error') ? 'color:var(--danger-text);font-weight:500;' : ''; ?>">
                                         <?php echo e($row['message']); ?>
                                     </td>
                                 </tr>

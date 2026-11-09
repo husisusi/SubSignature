@@ -80,22 +80,24 @@ $api_url = $scheme . '://' . $host . $basePath . '/api/v1/';
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <?php echo csrfMeta(); ?>
     <title>API Tokens - SubSignature</title>
-    <link rel="stylesheet" href="css/style.css">
-    <link rel="stylesheet" href="css/all.min.css">
+    <script src="<?= assetUrl('js/theme.js') ?>"></script>
+    <link rel="stylesheet" href="<?= assetUrl('css/theme.css') ?>">
+    <link rel="stylesheet" href="<?= assetUrl('css/style.css') ?>">
+    <link rel="stylesheet" href="<?= assetUrl('css/all.min.css') ?>">
     <style>
-        .form-label { display: block; font-size: 0.85rem; font-weight: 600; color: #64748b; margin-bottom: 0.4rem; }
-        .form-input { width: 100%; padding: 0.6rem; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.95rem; }
+        .form-label { display: block; font-size: 0.85rem; font-weight: 600; color: var(--text-muted); margin-bottom: 0.4rem; }
+        .form-input { width: 100%; padding: 0.6rem; border: 1px solid var(--border-strong); border-radius: 6px; font-size: 0.95rem; }
         .create-row { display: grid; grid-template-columns: 2fr 1fr auto; gap: 1rem; align-items: end; padding: 1.5rem; }
         .token-box { background: #0f172a; color: #e2e8f0; font-family: monospace; padding: 1rem; border-radius: 8px; word-break: break-all; margin: 1rem 0; user-select: all; }
         .tok-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
         .tok-table th, .tok-table td { text-align: left; padding: 0.7rem; border-bottom: 1px solid var(--border); }
         .tag { padding: 2px 8px; border-radius: 12px; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; }
-        .tag-ok { background: #dcfce7; color: #166534; }
-        .tag-off { background: #fee2e2; color: #991b1b; }
-        .tag-exp { background: #fef3c7; color: #92400e; }
-        code { background: #f1f5f9; padding: 1px 6px; border-radius: 4px; }
+        .tag-ok { background: var(--success-bg); color: var(--success-text); }
+        .tag-off { background: var(--danger-bg); color: var(--danger-text); }
+        .tag-exp { background: var(--warning-bg); color: var(--warning-text); }
+        code { background: var(--bg-subtle); padding: 1px 6px; border-radius: 4px; }
     </style>
-    <script src="js/post-action.js" defer></script>
+    <script src="<?= assetUrl('js/post-action.js') ?>" defer></script>
 </head>
 <body>
 
@@ -130,7 +132,7 @@ $api_url = $scheme . '://' . $host . $basePath . '/api/v1/';
         <section class="card" style="margin-bottom:1.5rem;">
             <div style="padding:1.5rem;">
                 <h3 style="margin-bottom:0.5rem;"><i class="fas fa-key"></i> Your new token</h3>
-                <p style="color:#64748b;">Store it in the agent's configuration now. Only a hash is kept on the server.</p>
+                <p style="color:var(--text-muted);">Store it in the agent's configuration now. Only a hash is kept on the server.</p>
                 <div class="token-box"><?php echo e($new_token); ?></div>
             </div>
         </section>
@@ -156,7 +158,7 @@ $api_url = $scheme . '://' . $host . $basePath . '/api/v1/';
                 </div>
                 <button type="submit" class="btn btn-primary"><i class="fas fa-key"></i> Generate</button>
             </form>
-            <p style="padding:0 1.5rem 1.5rem; color:#64748b; font-size:0.85rem;">
+            <p style="padding:0 1.5rem 1.5rem; color:var(--text-muted); font-size:0.85rem;">
                 API base URL: <code><?php echo e($api_url); ?></code>.
                 Send the token as <code>Authorization: Bearer &lt;token&gt;</code>. The API is only served over HTTPS.
                 See <code>docs/API.md</code>.
@@ -170,7 +172,7 @@ $api_url = $scheme . '://' . $host . $basePath . '/api/v1/';
                     <thead><tr><th>Label</th><th>Token</th><th>Scope</th><th>Created</th><th>Expires</th><th>Last used</th><th>Status</th><th></th></tr></thead>
                     <tbody>
                     <?php if (!$tokens): ?>
-                        <tr><td colspan="8" style="text-align:center; color:#64748b;">No tokens yet.</td></tr>
+                        <tr><td colspan="8" style="text-align:center; color:var(--text-muted);">No tokens yet.</td></tr>
                     <?php endif; ?>
                     <?php foreach ($tokens as $t):
                         $expired = $t['expires_at'] && strtotime($t['expires_at'] . ' UTC') < time();

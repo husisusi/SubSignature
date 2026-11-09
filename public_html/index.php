@@ -89,25 +89,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Login - SubSignature</title>
-    <link rel="stylesheet" href="css/all.min.css">
+    <script src="<?= assetUrl('js/theme.js') ?>"></script>
+    <link rel="stylesheet" href="<?= assetUrl('css/theme.css') ?>">
+    <link rel="stylesheet" href="<?= assetUrl('css/all.min.css') ?>">
     <style>
         /* Page styles (unchanged UI) */
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: linear-gradient(135deg, #f5f7fa 0%, #e4edf5 100%);
+            background: linear-gradient(135deg, var(--bg-body) 0%, var(--border) 100%);
             min-height: 100vh;
             display: flex; align-items: center; justify-content: center; padding: 20px;
         }
         .login-box {
-            background: white; border-radius: 16px; box-shadow: 0 10px 40px rgba(0, 0, 0, 0.08);
-            width: 100%; max-width: 400px; padding: 40px; text-align: center; border: 1px solid #eaeaea;
+            background: var(--bg-white); border-radius: 16px; box-shadow: 0 10px 40px rgba(0, 0, 0, 0.08);
+            width: 100%; max-width: 400px; padding: 40px; text-align: center; border: 1px solid var(--border);
         }
         .logo { font-size: 2.8rem; color: #4a6cf7; margin-bottom: 10px; }
-        .logo-text { font-size: 1.8rem; font-weight: 700; color: #2c3e50; margin-bottom: 5px; letter-spacing: -0.5px; }
-        .tagline { color: #718096; font-size: 0.95rem; margin-bottom: 30px; font-weight: 500; }
+        .logo-text { font-size: 1.8rem; font-weight: 700; color: var(--text-main); margin-bottom: 5px; letter-spacing: -0.5px; }
+        .tagline { color: var(--text-muted); font-size: 0.95rem; margin-bottom: 30px; font-weight: 500; }
         .error-alert {
-            background: #fff5f5; color: #c53030; padding: 12px 16px; border-radius: 10px;
+            background: var(--danger-bg); color: var(--danger-text); padding: 12px 16px; border-radius: 10px;
             border-left: 4px solid #f56565; margin-bottom: 25px; font-size: 0.9rem;
             display: flex; align-items: center; justify-content: center; gap: 8px; text-align: left; animation: shake 0.5s;
         }
@@ -117,22 +119,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             20%, 40%, 60%, 80% { transform: translateX(5px); }
         }
         .success-alert {
-            background: #f0fff4; color: #276749; padding: 12px 16px; border-radius: 10px;
+            background: var(--success-bg); color: var(--success-text); padding: 12px 16px; border-radius: 10px;
             border-left: 4px solid #48bb78; margin-bottom: 25px; font-size: 0.9rem;
             display: flex; align-items: center; justify-content: center; gap: 8px; text-align: left;
         }
         .input-group { margin-bottom: 20px; text-align: left; }
-        .input-label { display: block; color: #4a5568; font-size: 0.9rem; font-weight: 600; margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
+        .input-label { display: block; color: var(--text-muted); font-size: 0.9rem; font-weight: 600; margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
         .input-field {
-            width: 100%; padding: 14px 16px; border: 2px solid #e2e8f0; border-radius: 10px;
-            font-size: 1rem; transition: all 0.2s; background: #f8fafc;
+            width: 100%; padding: 14px 16px; border: 2px solid var(--border); border-radius: 10px;
+            font-size: 1rem; transition: all 0.2s; background: var(--bg-subtle);
         }
-        .input-field:focus { outline: none; border-color: #4a6cf7; background: white; box-shadow: 0 0 0 3px rgba(74, 108, 247, 0.1); }
-        .input-field.error { border-color: #f44336; background: #fff5f5; }
+        .input-field:focus { outline: none; border-color: #4a6cf7; background: var(--bg-white); box-shadow: 0 0 0 3px rgba(74, 108, 247, 0.1); }
+        .input-field.error { border-color: #f44336; background: var(--danger-bg); }
         .password-wrapper { position: relative; }
         .toggle-password {
             position: absolute; right: 12px; top: 50%; transform: translateY(-50%);
-            background: none; border: none; color: #a0aec0; cursor: pointer; padding: 5px;
+            background: none; border: none; color: var(--text-faint); cursor: pointer; padding: 5px;
         }
         .login-btn {
             width: 100%; background: linear-gradient(135deg, #4a6cf7 0%, #3a0ca3 100%);
@@ -142,11 +144,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         .login-btn:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 5px 15px rgba(74, 108, 247, 0.3); }
         .login-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-        .register-link { margin-top: 20px; font-size: 0.9rem; color: #4a5568; }
+        .register-link { margin-top: 20px; font-size: 0.9rem; color: var(--text-muted); }
         .register-link a { color: #4a6cf7; text-decoration: none; font-weight: 600; }
         .register-link a:hover { text-decoration: underline; }
         .failed-attempts {
-            margin-top: 10px; font-size: 0.8rem; color: #f44336; background: #ffebee;
+            margin-top: 10px; font-size: 0.8rem; color: var(--danger-text); background: var(--danger-bg);
             padding: 8px 12px; border-radius: 6px; border-left: 3px solid #f44336; display: none;
         }
         @media (max-width: 480px) { .login-box { padding: 30px 25px; } .logo { font-size: 2.4rem; } .logo-text { font-size: 1.6rem; } }

@@ -24,6 +24,24 @@ function e($value): string
 }
 
 /**
+ * Returns a versioned URL for a static asset (CSS/JS) relative to the web
+ * root, e.g. "css/style.css?v=1731150000".
+ *
+ * The version is the file's modification time, so browsers (Firefox in
+ * particular tends to keep stylesheets for a long time) fetch the new file
+ * as soon as it changes on the server, e.g. after an update. Falls back to
+ * APP_VERSION if the file cannot be stat'ed. The result is already
+ * HTML-escaped and safe to use in an attribute.
+ */
+function assetUrl(string $path): string
+{
+    $file = APP_ROOT . '/' . $path;
+    $mtime = is_file($file) ? @filemtime($file) : false;
+    $version = $mtime ? (string)$mtime : (defined('APP_VERSION') ? (string)APP_VERSION : '0');
+    return e($path . '?v=' . $version);
+}
+
+/**
  * Legacy helper kept for compatibility: trims and HTML-escapes input.
  */
 function sanitizeInput($input)

@@ -269,7 +269,7 @@ foreach ($ids as $sig_id) {
     $attachmentName = createSafeFilename($data['name'], $data['template']);
 
     // Mail body: the wrapper template around a preview of the signature (single pass replacement).
-    $previewBlock = "<div style='border:1px dashed #ccc; padding:15px; margin-top:10px; background:#fff;'>" . $finalSigHtml . "</div>";
+    $previewBlock = "<div style='border:1px dashed #ccc; padding:15px; margin-top:10px; background:#ffffff;'>" . $finalSigHtml . "</div>";
     $mailBodyRaw = strtr($emailBodyTemplate, [
         '{{NAME}}'            => e($data['name']),
         '{{ATTACHMENT_NAME}}' => e($attachmentName),

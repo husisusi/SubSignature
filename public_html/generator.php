@@ -116,16 +116,18 @@ while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Signature Generator</title>
-    <link rel="stylesheet" href="css/style.css">
-    <link rel="stylesheet" href="css/all.min.css">
+    <script src="<?= assetUrl('js/theme.js') ?>"></script>
+    <link rel="stylesheet" href="<?= assetUrl('css/theme.css') ?>">
+    <link rel="stylesheet" href="<?= assetUrl('css/style.css') ?>">
+    <link rel="stylesheet" href="<?= assetUrl('css/all.min.css') ?>">
     <?php echo csrfMeta(); ?>
     
     <style>
         /* --- GENERAL --- */
         .visually-hidden { position: absolute; left: -9999px; opacity: 0; }
         .alert { padding: 1rem; border-radius: 8px; margin-bottom: 1.5rem; display: flex; gap: 0.75rem; align-items: center; }
-        .alert-success { background: #dcfce7; color: #166534; border: 1px solid #bbf7d0; }
-        .alert-error { background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }
+        .alert-success { background: var(--success-bg); color: var(--success-text); border: 1px solid var(--success-border); }
+        .alert-error { background: var(--danger-bg); color: var(--danger-text); border: 1px solid var(--danger-border); }
 
         /* --- SPLIT EDITOR STYLES --- */
         .split-editor-container {
@@ -137,9 +139,9 @@ while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
 
         /* LEFT: Form */
         .form-column .form-group { margin-bottom: 1rem; }
-        .form-column label { display: block; font-size: 0.85rem; font-weight: 600; color: #475569; margin-bottom: 0.4rem; }
-        .form-column input, .form-column select { width: 100%; padding: 0.75rem; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.95rem; background: #f8fafc; }
-        .form-column input:focus { background: white; border-color: var(--primary); outline: none; }
+        .form-column label { display: block; font-size: 0.85rem; font-weight: 600; color: var(--text-muted); margin-bottom: 0.4rem; }
+        .form-column input, .form-column select { width: 100%; padding: 0.75rem; border: 1px solid var(--border-strong); border-radius: 6px; font-size: 0.95rem; background: var(--bg-subtle); }
+        .form-column input:focus { background: var(--bg-white); border-color: var(--primary); outline: none; }
 
         /* --- BUTTON FIX (Flexbox for equal sizing) --- */
         .form-actions {
@@ -164,23 +166,23 @@ while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
         /* RIGHT: Preview (Sticky) */
         .preview-column { position: sticky; top: 20px; }
         .live-preview-box {
-            background: #f1f5f9; border-radius: 12px; padding: 2rem;
+            background: var(--bg-subtle); border-radius: 12px; padding: 2rem;
             min-height: 300px; display: flex; align-items: center; justify-content: center;
-            border: 1px solid #e2e8f0;
+            border: 1px solid var(--border);
         }
         .preview-paper {
-            background: white; padding: 2rem; border-radius: 8px;
+            background: var(--bg-white); padding: 2rem; border-radius: 8px;
             box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); width: 100%; overflow: hidden;
         }
-        .preview-header { font-size: 0.8rem; font-weight: bold; color: #94a3b8; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.5px; }
+        .preview-header { font-size: 0.8rem; font-weight: bold; color: var(--text-faint); margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.5px; }
 
         /* --- LIST & SEARCH STYLES --- */
-        .search-bar-container { display: flex; gap: 10px; margin-bottom: 1.5rem; background: #f8fafc; padding: 1rem; border-radius: 8px; border: 1px solid var(--border); }
-        .search-input { flex: 1; padding: 0.6rem; border: 1px solid #cbd5e1; border-radius: 6px; }
-        .empty-state { text-align: center; padding: 4rem 1rem; color: #94a3b8; }
+        .search-bar-container { display: flex; gap: 10px; margin-bottom: 1.5rem; background: var(--bg-subtle); padding: 1rem; border-radius: 8px; border: 1px solid var(--border); }
+        .search-input { flex: 1; padding: 0.6rem; border: 1px solid var(--border-strong); border-radius: 6px; }
+        .empty-state { text-align: center; padding: 4rem 1rem; color: var(--text-faint); }
         .empty-icon { font-size: 3rem; margin-bottom: 1rem; opacity: 0.5; }
         .pagination { display: flex; justify-content: center; gap: 5px; margin-top: 2rem; }
-        .page-link { padding: 0.5rem 1rem; border: 1px solid var(--border); background: white; text-decoration: none; color: var(--text-main); border-radius: 6px; }
+        .page-link { padding: 0.5rem 1rem; border: 1px solid var(--border); background: var(--bg-white); text-decoration: none; color: var(--text-main); border-radius: 6px; }
         .page-link.active { background: var(--primary); color: white; border-color: var(--primary); }
         .page-link.disabled { opacity: 0.5; pointer-events: none; }
 
@@ -193,7 +195,7 @@ while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
         }
         /* --- CHANGED: Made modal significantly larger --- */
         .modal-box {
-            background: white; 
+            background: var(--bg-white); 
             width: 95%; /* Use almost full width on small screens */
             max-width: 1100px; /* Max width increased for desktop */
             border-radius: 12px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1);
@@ -201,18 +203,18 @@ while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
         }
         @keyframes popIn { from {transform: scale(0.95); opacity: 0;} to {transform: scale(1); opacity: 1;} }
         
-        .modal-header { padding: 1rem 1.5rem; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; background: #f8fafc; }
+        .modal-header { padding: 1rem 1.5rem; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; background: var(--bg-subtle); }
         
         /* --- CHANGED: Increased height for better visibility --- */
         .modal-body { 
             padding: 0; 
             height: 600px; /* Height increased */
-            background: white; 
+            background: var(--bg-white); 
         }
         
         .modal-iframe { width: 100%; height: 100%; border: none; }
-        .modal-footer { padding: 1rem; text-align: right; border-top: 1px solid #e2e8f0; background: #f8fafc; }
-        .close-modal-btn { background: none; border: none; font-size: 1.5rem; cursor: pointer; color: #64748b; }
+        .modal-footer { padding: 1rem; text-align: right; border-top: 1px solid var(--border); background: var(--bg-subtle); }
+        .close-modal-btn { background: none; border: none; font-size: 1.5rem; cursor: pointer; color: var(--text-muted); }
 
         @media (max-width: 900px) { .split-editor-container { grid-template-columns: 1fr; } .preview-column { position: static; margin-top: 20px; } }
     </style>
@@ -316,7 +318,7 @@ while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
                                 <div class="preview-paper">
                                     <div id="live-render-area"></div>
                                 </div>
-                                <div style="text-align:center; margin-top:10px; font-size:0.8rem; color:#94a3b8;">
+                                <div style="text-align:center; margin-top:10px; font-size:0.8rem; color:var(--text-faint);">
                                     Updates automatically as you type
                                 </div>
                             </div>
@@ -361,13 +363,13 @@ while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
                         <div style="display:flex; justify-content:space-between; width:100%; align-items:center;">
                             <div class="sig-details">
                                 <h4><?php echo e($sig['name']); ?></h4>
-                                <p style="font-size:0.85rem; color:#64748b; margin-top:0.25rem"><?php echo e($sig['role']); ?> &bull; <?php echo e($sig['email']); ?></p>
+                                <p style="font-size:0.85rem; color:var(--text-muted); margin-top:0.25rem"><?php echo e($sig['role']); ?> &bull; <?php echo e($sig['email']); ?></p>
                             </div>
                             
                             <div class="sig-actions" style="display:flex; gap:0.5rem;">
                                 <?php if ($encodedHtml !== ''): ?>
                                     <textarea id="source-<?php echo (int)$sig['id']; ?>" class="visually-hidden"><?php echo $encodedHtml; ?></textarea>
-                                    <button data-preview-id="<?php echo (int)$sig['id']; ?>" class="btn btn-sm btn-secondary" style="background:white; border:1px solid #cbd5e1;" title="Preview">
+                                    <button data-preview-id="<?php echo (int)$sig['id']; ?>" class="btn btn-sm btn-secondary" style="background:var(--bg-white); border:1px solid var(--border-strong);" title="Preview">
                                         <i class="fas fa-eye"></i>
                                     </button>
                                 <?php endif; ?>
@@ -418,8 +420,8 @@ while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
         </div>
     </div>
     
-    <script src="js/post-action.js"></script>
-    <script src="js/safe-html.js"></script>
+    <script src="<?= assetUrl('js/post-action.js') ?>"></script>
+    <script src="<?= assetUrl('js/safe-html.js') ?>"></script>
     <script>
         // ---------------------------------------------------------
         // 1. LIVE PREVIEW LOGIC
@@ -440,7 +442,7 @@ while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
             const selectedFile = inputs.template.value;
             const template = rawTemplates[selectedFile];
             if (!template) {
-                renderArea.innerHTML = '<p style="color:#cbd5e1; text-align:center; padding:20px;">Template not found</p>';
+                renderArea.innerHTML = '<p style="color:var(--border-strong); text-align:center; padding:20px;">Template not found</p>';
                 return;
             }
 
@@ -511,7 +513,7 @@ while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
                 // Inject CSS Reset into iframe to ensure preview looks correct
                 const styleReset = `
                     <style>
-                        body { margin: 0; padding: 20px; font-family: Arial, Helvetica, sans-serif; background-color: #ffffff; }
+                        body { margin: 0; padding: 20px; font-family: Arial, Helvetica, sans-serif; background-color: #ffffff; color: #000000; }
                         p { margin: 0; padding: 0; line-height: 1.4; } 
                         table { border-collapse: collapse; border-spacing: 0; }
                         td { padding: 0; vertical-align: top; }

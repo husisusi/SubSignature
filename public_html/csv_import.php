@@ -188,14 +188,16 @@ $csrf_token = generateCSRFToken();
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CSV Import - SubSignature</title>
-    <link rel="stylesheet" href="css/style.css">
-    <link rel="stylesheet" href="css/all.min.css">
+    <script src="<?= assetUrl('js/theme.js') ?>"></script>
+    <link rel="stylesheet" href="<?= assetUrl('css/theme.css') ?>">
+    <link rel="stylesheet" href="<?= assetUrl('css/style.css') ?>">
+    <link rel="stylesheet" href="<?= assetUrl('css/all.min.css') ?>">
     <style>
         /* Modern Upload Area Styling */
         .upload-area {
-            border: 2px dashed #cbd5e1;
+            border: 2px dashed var(--border-strong);
             border-radius: 12px;
-            background: #f8fafc;
+            background: var(--bg-subtle);
             padding: 3rem 2rem;
             text-align: center;
             cursor: pointer;
@@ -204,11 +206,11 @@ $csrf_token = generateCSRFToken();
         }
         .upload-area:hover, .upload-area.dragover {
             border-color: var(--primary);
-            background: #eff6ff;
+            background: var(--bg-hover);
         }
         .upload-icon {
             font-size: 3rem;
-            color: #94a3b8;
+            color: var(--text-faint);
             margin-bottom: 1rem;
             transition: color 0.2s;
         }
@@ -227,7 +229,7 @@ $csrf_token = generateCSRFToken();
         .file-selected-info {
             display: none; /* Hidden by default */
             margin-top: 1rem;
-            background: white; padding: 0.75rem; border-radius: 8px;
+            background: var(--bg-white); padding: 0.75rem; border-radius: 8px;
             border: 1px solid var(--border);
             box-shadow: 0 2px 5px rgba(0,0,0,0.05);
             align-items: center; gap: 0.75rem;
@@ -240,25 +242,25 @@ $csrf_token = generateCSRFToken();
         /* Preview Table & Stats */
         .preview-stats { display: flex; gap: 1rem; flex-wrap: wrap; margin-bottom: 1.5rem; }
         .stat-badge { padding: 0.5rem 1rem; border-radius: 8px; font-weight: 600; font-size: 0.9rem; display: flex; align-items: center; gap: 0.5rem; }
-        .stat-valid { background: #dcfce7; color: #166534; }
-        .stat-error { background: #fee2e2; color: #991b1b; }
-        .stat-total { background: #f1f5f9; color: var(--text-main); }
+        .stat-valid { background: var(--success-bg); color: var(--success-text); }
+        .stat-error { background: var(--danger-bg); color: var(--danger-text); }
+        .stat-total { background: var(--bg-subtle); color: var(--text-main); }
         
         .preview-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
-        .preview-table th { background: #f8fafc; padding: 0.75rem; text-align: left; font-size: 0.8rem; text-transform: uppercase; color: var(--text-muted); }
+        .preview-table th { background: var(--bg-subtle); padding: 0.75rem; text-align: left; font-size: 0.8rem; text-transform: uppercase; color: var(--text-muted); }
         .preview-table td { padding: 0.75rem; border-bottom: 1px solid var(--border); }
         .preview-table tr.row-valid td { background: rgba(220, 252, 231, 0.3); }
         .preview-table tr.row-error td { background: rgba(254, 226, 226, 0.3); }
-        .error-list { margin: 0; padding-left: 1.2rem; color: #dc2626; font-size: 0.8rem; }
+        .error-list { margin: 0; padding-left: 1.2rem; color: var(--danger-text); font-size: 0.8rem; }
         
         .help-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-top: 1rem; }
-        .help-card { background: #f8fafc; padding: 1rem; border-radius: 8px; text-align: center; text-decoration: none; color: var(--text-main); border: 1px solid var(--border); transition: all 0.2s; cursor: pointer; }
+        .help-card { background: var(--bg-subtle); padding: 1rem; border-radius: 8px; text-align: center; text-decoration: none; color: var(--text-main); border: 1px solid var(--border); transition: all 0.2s; cursor: pointer; }
         .help-card:hover { border-color: var(--primary); transform: translateY(-2px); box-shadow: var(--shadow); }
         .help-icon { font-size: 1.5rem; color: var(--primary); margin-bottom: 0.5rem; display: block; }
 
         .alert { padding: 1rem; border-radius: 8px; margin-bottom: 1.5rem; display: flex; gap: 0.75rem; align-items: center; }
-        .alert-success { background: #dcfce7; color: #166534; border: 1px solid #bbf7d0; }
-        .alert-error { background: #fee2e2; color: #991b1b; border: 1px solid #fecaca; }
+        .alert-success { background: var(--success-bg); color: var(--success-text); border: 1px solid var(--success-border); }
+        .alert-error { background: var(--danger-bg); color: var(--danger-text); border: 1px solid var(--danger-border); }
         
         .form-actions-centered { display: flex; justify-content: center; gap: 1rem; margin-top: 2rem; padding-top: 1.5rem; border-top: 1px solid var(--border); }
     </style>
@@ -407,8 +409,8 @@ $csrf_token = generateCSRFToken();
                             <td><?php echo e($row['phone']); ?></td>
                             <td>
                                 <?php echo $row['is_valid'] ? 
-                                    '<span style="color:#166534; font-weight:700; font-size:0.8rem;">VALID</span>' : 
-                                    '<span style="color:#991b1b; font-weight:700; font-size:0.8rem;">ERROR</span>'; ?>
+                                    '<span style="color:var(--success-text); font-weight:700; font-size:0.8rem;">VALID</span>' : 
+                                    '<span style="color:var(--danger-text); font-weight:700; font-size:0.8rem;">ERROR</span>'; ?>
                             </td>
                             <td>
                                 <?php if (!empty($row['errors'])): ?>
@@ -418,7 +420,7 @@ $csrf_token = generateCSRFToken();
                                         <?php endforeach; ?>
                                     </ul>
                                 <?php else: ?>
-                                    <span style="color:#94a3b8;">-</span>
+                                    <span style="color:var(--text-faint);">-</span>
                                 <?php endif; ?>
                             </td>
                         </tr>
@@ -486,7 +488,7 @@ $csrf_token = generateCSRFToken();
             fileSizeDisplay.textContent = (file.size / 1024).toFixed(1) + ' KB';
             
             dropZone.style.borderColor = '#10b981'; // Green border
-            dropZone.style.background = '#ecfdf5';
+            dropZone.style.background = 'var(--success-bg)';
         }
     });
 

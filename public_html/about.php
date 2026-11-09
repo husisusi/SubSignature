@@ -14,8 +14,10 @@ $serverSoftware = $_SERVER['SERVER_SOFTWARE'] ?? 'Unknown';
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>About - SubSignature</title>
-    <link rel="stylesheet" href="css/style.css">
-    <link rel="stylesheet" href="css/all.min.css">
+    <script src="<?= assetUrl('js/theme.js') ?>"></script>
+    <link rel="stylesheet" href="<?= assetUrl('css/theme.css') ?>">
+    <link rel="stylesheet" href="<?= assetUrl('css/style.css') ?>">
+    <link rel="stylesheet" href="<?= assetUrl('css/all.min.css') ?>">
     <style>
         .about-hero {
             text-align: center;
@@ -35,7 +37,7 @@ $serverSoftware = $_SERVER['SERVER_SOFTWARE'] ?? 'Unknown';
             margin-bottom: 0.5rem;
         }
         .about-badge {
-            background: #e0e7ff;
+            background: var(--accent-bg);
             color: var(--primary);
             padding: 4px 12px;
             border-radius: 99px;
@@ -51,7 +53,7 @@ $serverSoftware = $_SERVER['SERVER_SOFTWARE'] ?? 'Unknown';
         }
         .feature-item {
             padding: 1rem;
-            background: #f8fafc;
+            background: var(--bg-subtle);
             border-radius: 8px;
             border: 1px solid var(--border);
         }
@@ -183,7 +185,7 @@ $serverSoftware = $_SERVER['SERVER_SOFTWARE'] ?? 'Unknown';
             </div>
 
             <div style="margin-top: 2rem; text-align: center; padding-top: 1rem; border-top: 1px solid var(--border); color: var(--text-muted); font-size: 0.85rem;">
-                &copy; <?php echo date('Y'); ?> SubSignature. Made with <i class="fas fa-heart" style="color:#ef4444;"></i> and PHP.
+                &copy; <?php echo date('Y'); ?> SubSignature. Made with <i class="fas fa-heart" style="color:var(--danger-text);"></i> and PHP.
             </div>
 
         </section>

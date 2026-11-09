@@ -127,25 +127,27 @@ $allow_registration = getSetting($db, 'allow_registration', '1') === '1';
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>System Configuration - SubSignature</title>
-    <link rel="stylesheet" href="css/style.css">
-    <link rel="stylesheet" href="css/all.min.css">
+    <script src="<?= assetUrl('js/theme.js') ?>"></script>
+    <link rel="stylesheet" href="<?= assetUrl('css/theme.css') ?>">
+    <link rel="stylesheet" href="<?= assetUrl('css/style.css') ?>">
+    <link rel="stylesheet" href="<?= assetUrl('css/all.min.css') ?>">
     <style>
         .config-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 1.5rem; }
-        .config-card { background: white; border: 1px solid var(--border); border-radius: 12px; padding: 2rem; height: 100%; }
+        .config-card { background: var(--bg-white); border: 1px solid var(--border); border-radius: 12px; padding: 2rem; height: 100%; }
         .config-item { display: flex; justify-content: space-between; align-items: center; padding: 1rem 0; border-bottom: 1px solid var(--border); }
         .config-item:last-child { border-bottom: none; }
         .form-group-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem; }
-        .form-label { display: block; font-size: 0.85rem; font-weight: 600; color: #64748b; margin-bottom: 0.4rem; }
-        .form-input { width: 100%; padding: 0.6rem; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.95rem; }
+        .form-label { display: block; font-size: 0.85rem; font-weight: 600; color: var(--text-muted); margin-bottom: 0.4rem; }
+        .form-input { width: 100%; padding: 0.6rem; border: 1px solid var(--border-strong); border-radius: 6px; font-size: 0.95rem; }
         .switch { position: relative; display: inline-block; width: 40px; height: 22px; }
         .switch input { opacity: 0; width: 0; height: 0; }
-        .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #cbd5e1; transition: .4s; border-radius: 34px; }
-        .slider:before { position: absolute; content: ""; height: 16px; width: 16px; left: 3px; bottom: 3px; background-color: white; transition: .4s; border-radius: 50%; }
+        .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: var(--border-strong); transition: .4s; border-radius: 34px; }
+        .slider:before { position: absolute; content: ""; height: 16px; width: 16px; left: 3px; bottom: 3px; background-color: var(--bg-white); transition: .4s; border-radius: 50%; }
         input:checked + .slider { background-color: var(--primary); }
         input:checked + .slider:before { transform: translateX(18px); }
         
         .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: none; justify-content: center; align-items: center; z-index: 999; backdrop-filter: blur(2px); }
-        .modal-box { background: white; padding: 2rem; border-radius: 12px; width: 90%; max-width: 450px; box-shadow: 0 20px 25px rgba(0,0,0,0.1); }
+        .modal-box { background: var(--bg-white); padding: 2rem; border-radius: 12px; width: 90%; max-width: 450px; box-shadow: 0 20px 25px rgba(0,0,0,0.1); }
         
         .debug-console {
             background: #1e293b; color: #bef264; 
@@ -207,7 +209,7 @@ $allow_registration = getSetting($db, 'allow_registration', '1') === '1';
                     <div class="config-item">
                         <div>
                             <h4 style="margin:0; font-size:0.95rem;">Active by Default</h4>
-                            <p style="margin:0; color:#64748b; font-size:0.8rem;">New users are active immediately.</p>
+                            <p style="margin:0; color:var(--text-muted); font-size:0.8rem;">New users are active immediately.</p>
                         </div>
                         <label class="switch">
                             <input type="hidden" name="default_user_active" value="0">
@@ -218,7 +220,7 @@ $allow_registration = getSetting($db, 'allow_registration', '1') === '1';
                     <div class="config-item">
                         <div>
                             <h4 style="margin:0; font-size:0.95rem;">Allow Self-Registration</h4>
-                            <p style="margin:0; color:#64748b; font-size:0.8rem;">Show the public registration page.</p>
+                            <p style="margin:0; color:var(--text-muted); font-size:0.8rem;">Show the public registration page.</p>
                         </div>
                         <label class="switch">
                             <input type="hidden" name="allow_registration" value="0">
@@ -250,7 +252,7 @@ $allow_registration = getSetting($db, 'allow_registration', '1') === '1';
                     <div class="config-item" style="margin-bottom:1rem; border-bottom:none; padding:0.5rem 0;">
                         <div>
                             <label class="form-label" style="margin:0;">SMTP Authentication</label>
-                            <p style="margin:0; color:#64748b; font-size:0.75rem;">Enable if server requires login.</p>
+                            <p style="margin:0; color:var(--text-muted); font-size:0.75rem;">Enable if server requires login.</p>
                         </div>
                         <label class="switch">
                             <input type="hidden" name="smtp_auth" value="0">
@@ -281,7 +283,7 @@ $allow_registration = getSetting($db, 'allow_registration', '1') === '1';
                         </select>
                     </div>
 
-                    <hr style="border:0; border-top:1px solid #f1f5f9; margin: 1.5rem 0;">
+                    <hr style="border:0; border-top:1px solid var(--border); margin: 1.5rem 0;">
 
                     <div class="form-group-grid">
                         <div>
@@ -308,7 +310,7 @@ $allow_registration = getSetting($db, 'allow_registration', '1') === '1';
     <div id="testEmailModal" class="modal-overlay">
         <div class="modal-box">
             <h3 style="margin-top:0;"><i class="fas fa-vial"></i> Send Test Email</h3>
-            <p style="color:#64748b; font-size:0.9rem;">Check your configuration.</p>
+            <p style="color:var(--text-muted); font-size:0.9rem;">Check your configuration.</p>
             
             <form method="POST" action="admin_config.php">
                 <?php echo csrfField(); ?>
@@ -324,7 +326,7 @@ $allow_registration = getSetting($db, 'allow_registration', '1') === '1';
                         <input type="checkbox" name="show_debug_log" value="1">
                         <span>Show detailed SMTP connection log</span>
                     </label>
-                    <p style="font-size:0.75rem; color:#94a3b8; margin:0.2rem 0 0 1.4rem;">Only use if connection fails. May contain technical details.</p>
+                    <p style="font-size:0.75rem; color:var(--text-faint); margin:0.2rem 0 0 1.4rem;">Only use if connection fails. May contain technical details.</p>
                 </div>
                 
                 <div style="display:flex; justify-content:flex-end; gap:0.5rem;">

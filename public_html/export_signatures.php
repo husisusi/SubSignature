@@ -137,14 +137,16 @@ if ($is_admin) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Export Signatures - SubSignature</title>
     
-    <link rel="stylesheet" href="css/style.css">
-    <link rel="stylesheet" href="css/all.min.css">
+    <script src="<?= assetUrl('js/theme.js') ?>"></script>
+    <link rel="stylesheet" href="<?= assetUrl('css/theme.css') ?>">
+    <link rel="stylesheet" href="<?= assetUrl('css/style.css') ?>">
+    <link rel="stylesheet" href="<?= assetUrl('css/all.min.css') ?>">
     
     <style>
         /* Export Specific Styles */
         .user-header-card {
-            background: linear-gradient(135deg, #e0e7ff 0%, #f3f4f6 100%);
-            border: 1px solid #c7d2fe;
+            background: linear-gradient(135deg, var(--accent-bg) 0%, var(--bg-subtle) 100%);
+            border: 1px solid var(--info-border);
             border-radius: 12px;
             padding: 1.5rem;
             margin-bottom: 2rem;
@@ -164,7 +166,7 @@ if ($is_admin) {
         .user-avatar-large {
             width: 50px;
             height: 50px;
-            background: white;
+            background: var(--bg-white);
             border-radius: 50%;
             display: flex;
             align-items: center;
@@ -178,7 +180,7 @@ if ($is_admin) {
         .user-details span { color: var(--text-muted); font-size: 0.9rem; }
 
         .signature-count-badge {
-            background: white;
+            background: var(--bg-white);
             padding: 0.5rem 1rem;
             border-radius: 20px;
             font-weight: 600;
@@ -187,9 +189,9 @@ if ($is_admin) {
         }
 
         .warning-banner {
-            background: #fffbeb;
-            border-left: 4px solid #f59e0b;
-            color: #b45309;
+            background: var(--warning-bg);
+            border-left: 4px solid var(--warning);
+            color: var(--warning-text);
             padding: 1rem;
             border-radius: 8px;
             margin-bottom: 1.5rem;
@@ -206,7 +208,7 @@ if ($is_admin) {
         }
 
         .option-card {
-            background: white;
+            background: var(--bg-white);
             border: 1px solid var(--border);
             border-radius: 12px;
             padding: 1.5rem;
@@ -250,12 +252,12 @@ if ($is_admin) {
         }
         
         .preview-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
-        .preview-table th { background: #f8fafc; padding: 1rem; text-align: left; font-weight: 600; color: var(--text-muted); border-bottom: 1px solid var(--border); }
+        .preview-table th { background: var(--bg-subtle); padding: 1rem; text-align: left; font-weight: 600; color: var(--text-muted); border-bottom: 1px solid var(--border); }
         .preview-table td { padding: 1rem; border-bottom: 1px solid var(--border); color: var(--text-main); }
         .preview-table tr:last-child td { border-bottom: none; }
         
         .template-tag {
-            background: #f1f5f9;
+            background: var(--bg-subtle);
             padding: 2px 8px;
             border-radius: 4px;
             font-family: monospace;
@@ -271,7 +273,7 @@ if ($is_admin) {
             flex-direction: column; backdrop-filter: blur(2px);
         }
         .spinner {
-            width: 40px; height: 40px; border: 4px solid #e2e8f0;
+            width: 40px; height: 40px; border: 4px solid var(--border);
             border-top: 4px solid var(--primary); border-radius: 50%;
             animation: spin 1s linear infinite; margin-bottom: 1rem;
         }
@@ -440,7 +442,7 @@ if ($is_admin) {
 
         <?php else: ?>
             <div class="card" style="text-align: center; padding: 4rem;">
-                <i class="fas fa-folder-open" style="font-size: 3rem; color: #cbd5e1; margin-bottom: 1rem;"></i>
+                <i class="fas fa-folder-open" style="font-size: 3rem; color: var(--border-strong); margin-bottom: 1rem;"></i>
                 <h3 style="color: var(--text-muted);">No signatures found</h3>
                 <p style="color: var(--text-muted);">This user hasn't generated any signatures yet.</p>
                 <?php if ($selected_user_id == $_SESSION['user_id']): ?>

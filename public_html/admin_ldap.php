@@ -140,37 +140,39 @@ $presetsJson = json_encode(LdapConfig::PRESETS, JSON_HEX_TAG | JSON_HEX_AMP | JS
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>LDAP Import - SubSignature</title>
-    <link rel="stylesheet" href="css/style.css">
-    <link rel="stylesheet" href="css/all.min.css">
+    <script src="<?= assetUrl('js/theme.js') ?>"></script>
+    <link rel="stylesheet" href="<?= assetUrl('css/theme.css') ?>">
+    <link rel="stylesheet" href="<?= assetUrl('css/style.css') ?>">
+    <link rel="stylesheet" href="<?= assetUrl('css/all.min.css') ?>">
     <style>
         .config-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(380px, 1fr)); gap: 1.5rem; }
-        .config-card { background: white; border: 1px solid var(--border); border-radius: 12px; padding: 2rem; }
+        .config-card { background: var(--bg-white); border: 1px solid var(--border); border-radius: 12px; padding: 2rem; }
         .config-card h3 { font-size: 1.1rem; margin-bottom: 1.5rem; border-bottom: 1px solid var(--border); padding-bottom: 1rem; }
         .config-item { display: flex; justify-content: space-between; align-items: center; padding: 0.9rem 0; border-bottom: 1px solid var(--border); gap: 1rem; }
         .config-item:last-child { border-bottom: none; }
         .form-group-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem; }
-        .form-label { display: block; font-size: 0.85rem; font-weight: 600; color: #64748b; margin-bottom: 0.4rem; }
-        .form-input { width: 100%; padding: 0.6rem; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.95rem; }
-        .form-hint { color: #64748b; font-size: 0.78rem; margin-top: 0.25rem; display: block; }
+        .form-label { display: block; font-size: 0.85rem; font-weight: 600; color: var(--text-muted); margin-bottom: 0.4rem; }
+        .form-input { width: 100%; padding: 0.6rem; border: 1px solid var(--border-strong); border-radius: 6px; font-size: 0.95rem; }
+        .form-hint { color: var(--text-muted); font-size: 0.78rem; margin-top: 0.25rem; display: block; }
         .switch { position: relative; display: inline-block; width: 40px; height: 22px; flex-shrink: 0; }
         .switch input { opacity: 0; width: 0; height: 0; }
-        .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #cbd5e1; transition: .4s; border-radius: 34px; }
-        .slider:before { position: absolute; content: ""; height: 16px; width: 16px; left: 3px; bottom: 3px; background-color: white; transition: .4s; border-radius: 50%; }
+        .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: var(--border-strong); transition: .4s; border-radius: 34px; }
+        .slider:before { position: absolute; content: ""; height: 16px; width: 16px; left: 3px; bottom: 3px; background-color: var(--bg-white); transition: .4s; border-radius: 50%; }
         input:checked + .slider { background-color: var(--primary); }
         input:checked + .slider:before { transform: translateX(18px); }
         .actions-row { display: flex; gap: 0.75rem; flex-wrap: wrap; margin-top: 1.5rem; }
         .stat-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }
-        .stat-box { background: #f8fafc; border: 1px solid var(--border); border-radius: 10px; padding: 1rem; text-align: center; }
+        .stat-box { background: var(--bg-subtle); border: 1px solid var(--border); border-radius: 10px; padding: 1rem; text-align: center; }
         .stat-box strong { display: block; font-size: 1.6rem; }
-        .stat-box span { font-size: 0.75rem; text-transform: uppercase; color: #64748b; font-weight: 600; }
+        .stat-box span { font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); font-weight: 600; }
         .plan-table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
         .plan-table th, .plan-table td { text-align: left; padding: 0.55rem 0.7rem; border-bottom: 1px solid var(--border); }
         .tag { padding: 2px 8px; border-radius: 12px; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; }
-        .tag-create { background: #dcfce7; color: #166534; }
-        .tag-update { background: #e0f2fe; color: #0369a1; }
-        .tag-unchanged { background: #f1f5f9; color: #64748b; }
-        .tag-skip { background: #fee2e2; color: #991b1b; }
-        .warn-box { background: #fffbeb; border: 1px solid #fde68a; color: #92400e; padding: 0.9rem 1rem; border-radius: 8px; margin-bottom: 1.5rem; font-size: 0.9rem; }
+        .tag-create { background: var(--success-bg); color: var(--success-text); }
+        .tag-update { background: var(--info-bg); color: var(--info-text); }
+        .tag-unchanged { background: var(--bg-subtle); color: var(--text-muted); }
+        .tag-skip { background: var(--danger-bg); color: var(--danger-text); }
+        .warn-box { background: var(--warning-bg); border: 1px solid var(--warning-border); color: var(--warning-text); padding: 0.9rem 1rem; border-radius: 8px; margin-bottom: 1.5rem; font-size: 0.9rem; }
     </style>
 </head>
 <body>
@@ -214,11 +216,11 @@ $presetsJson = json_encode(LdapConfig::PRESETS, JSON_HEX_TAG | JSON_HEX_AMP | JS
             <div style="padding:1.5rem;">
                 <div class="stat-row">
                     <div class="stat-box"><strong><?php echo (int)$plan['counts']['total']; ?></strong><span>Directory entries</span></div>
-                    <div class="stat-box"><strong style="color:#16a34a;"><?php echo (int)$plan['counts']['create']; ?></strong><span>To create</span></div>
-                    <div class="stat-box"><strong style="color:#0369a1;"><?php echo (int)$plan['counts']['update']; ?></strong><span>To update</span></div>
+                    <div class="stat-box"><strong style="color:var(--success-text);"><?php echo (int)$plan['counts']['create']; ?></strong><span>To create</span></div>
+                    <div class="stat-box"><strong style="color:var(--info-text);"><?php echo (int)$plan['counts']['update']; ?></strong><span>To update</span></div>
                     <div class="stat-box"><strong><?php echo (int)$plan['counts']['unchanged']; ?></strong><span>Unchanged</span></div>
-                    <div class="stat-box"><strong style="color:#dc2626;"><?php echo (int)$plan['counts']['skip']; ?></strong><span>Skipped</span></div>
-                    <div class="stat-box"><strong style="color:#d97706;"><?php echo (int)$plan['counts']['deactivate']; ?></strong><span>To deactivate</span></div>
+                    <div class="stat-box"><strong style="color:var(--danger-text);"><?php echo (int)$plan['counts']['skip']; ?></strong><span>Skipped</span></div>
+                    <div class="stat-box"><strong style="color:var(--warning-text);"><?php echo (int)$plan['counts']['deactivate']; ?></strong><span>To deactivate</span></div>
                 </div>
 
                 <?php
@@ -240,7 +242,7 @@ $presetsJson = json_encode(LdapConfig::PRESETS, JSON_HEX_TAG | JSON_HEX_AMP | JS
                                 <td><?php echo e($r['email']); ?></td>
                                 <td><?php echo e($r['role']); ?></td>
                                 <td><?php echo e($r['phone']); ?></td>
-                                <td style="color:#991b1b;"><?php echo e($r['reason']); ?></td>
+                                <td style="color:var(--danger-text);"><?php echo e($r['reason']); ?></td>
                             </tr>
                         <?php endforeach; ?>
                         </tbody>
@@ -383,7 +385,7 @@ $presetsJson = json_encode(LdapConfig::PRESETS, JSON_HEX_TAG | JSON_HEX_AMP | JS
                     <div class="config-item">
                         <div>
                             <h4 style="margin:0; font-size:0.95rem;">Create a signature for each user</h4>
-                            <p style="margin:0; color:#64748b; font-size:0.8rem;">Uses name, role, email and phone from the directory.</p>
+                            <p style="margin:0; color:var(--text-muted); font-size:0.8rem;">Uses name, role, email and phone from the directory.</p>
                         </div>
                         <label class="switch">
                             <input type="hidden" name="create_signatures" value="0">
@@ -407,7 +409,7 @@ $presetsJson = json_encode(LdapConfig::PRESETS, JSON_HEX_TAG | JSON_HEX_AMP | JS
                     <div class="config-item">
                         <div>
                             <h4 style="margin:0; font-size:0.95rem;">New accounts are active</h4>
-                            <p style="margin:0; color:#64748b; font-size:0.8rem;">Imported accounts always have the role "user".</p>
+                            <p style="margin:0; color:var(--text-muted); font-size:0.8rem;">Imported accounts always have the role "user".</p>
                         </div>
                         <label class="switch">
                             <input type="hidden" name="default_active" value="0">
@@ -419,7 +421,7 @@ $presetsJson = json_encode(LdapConfig::PRESETS, JSON_HEX_TAG | JSON_HEX_AMP | JS
                     <div class="config-item">
                         <div>
                             <h4 style="margin:0; font-size:0.95rem;">Deactivate accounts missing in the directory</h4>
-                            <p style="margin:0; color:#64748b; font-size:0.8rem;">Only previously imported accounts are affected.</p>
+                            <p style="margin:0; color:var(--text-muted); font-size:0.8rem;">Only previously imported accounts are affected.</p>
                         </div>
                         <label class="switch">
                             <input type="hidden" name="deactivate_missing" value="0">

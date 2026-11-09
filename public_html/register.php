@@ -129,12 +129,14 @@ $csrf_token = generateCSRFToken();
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><?php echo $admin_create ? 'Create User' : 'Register'; ?> - SubSignature</title>
     
-    <link rel="stylesheet" href="css/style.css">
-    <link rel="stylesheet" href="css/all.min.css">    
+    <script src="<?= assetUrl('js/theme.js') ?>"></script>
+    <link rel="stylesheet" href="<?= assetUrl('css/theme.css') ?>">
+    <link rel="stylesheet" href="<?= assetUrl('css/style.css') ?>">
+    <link rel="stylesheet" href="<?= assetUrl('css/all.min.css') ?>">    
     
     <style>
         .register-body {
-            background: linear-gradient(135deg, #f5f7fa 0%, #e4edf5 100%);
+            background: linear-gradient(135deg, var(--bg-body) 0%, var(--border) 100%);
             min-height: 100vh;
             display: flex;
             align-items: center;
@@ -143,7 +145,7 @@ $csrf_token = generateCSRFToken();
         }
         
         .register-card {
-            background: white;
+            background: var(--bg-white);
             padding: 2.5rem;
             border-radius: 16px;
             box-shadow: 0 10px 40px rgba(0,0,0,0.08);
@@ -154,7 +156,7 @@ $csrf_token = generateCSRFToken();
 
         .strength-meter {
             height: 4px;
-            background: #e2e8f0;
+            background: var(--border);
             border-radius: 2px;
             margin-top: 0.5rem;
             overflow: hidden;
@@ -164,7 +166,7 @@ $csrf_token = generateCSRFToken();
 
         .password-group { position: relative; }
         .toggle-password {
-            position: absolute; right: 12px; top: 42px; color: #94a3b8; cursor: pointer; z-index: 10;
+            position: absolute; right: 12px; top: 42px; color: var(--text-faint); cursor: pointer; z-index: 10;
         }
         .toggle-password:hover { color: var(--primary); }
 
@@ -172,7 +174,7 @@ $csrf_token = generateCSRFToken();
         .auth-footer a { color: var(--primary); text-decoration: none; font-weight: 600; }
         
         .status-toggle-wrapper {
-            background: #f8fafc;
+            background: var(--bg-subtle);
             padding: 1rem;
             border-radius: 8px;
             border: 1px solid var(--border);
@@ -343,7 +345,7 @@ $csrf_token = generateCSRFToken();
         switch(strength) {
             case 0: case 1: bar.style.width = '25%'; bar.style.backgroundColor = '#ef4444'; text.textContent = 'Weak'; text.style.color = '#ef4444'; break;
             case 2: bar.style.width = '50%'; bar.style.backgroundColor = '#f59e0b'; text.textContent = 'Fair'; text.style.color = '#f59e0b'; break;
-            case 3: bar.style.width = '75%'; bar.style.backgroundColor = '#3b82f6'; text.textContent = 'Good'; text.style.color = '#3b82f6'; break;
+            case 3: bar.style.width = '75%'; bar.style.backgroundColor = 'var(--primary)'; text.textContent = 'Good'; text.style.color = 'var(--primary)'; break;
             case 4: bar.style.width = '100%'; bar.style.backgroundColor = '#10b981'; text.textContent = 'Strong'; text.style.color = '#10b981'; break;
         }
     }

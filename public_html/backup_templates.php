@@ -72,26 +72,28 @@ $count = count(listSignatureTemplates());
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Backup - SubSignature</title>
-    <link rel="stylesheet" href="css/style.css">
-    <link rel="stylesheet" href="css/all.min.css">
+    <script src="<?= assetUrl('js/theme.js') ?>"></script>
+    <link rel="stylesheet" href="<?= assetUrl('css/theme.css') ?>">
+    <link rel="stylesheet" href="<?= assetUrl('css/style.css') ?>">
+    <link rel="stylesheet" href="<?= assetUrl('css/all.min.css') ?>">
     <style>
         /* Modern Backup Card Styling */
         .backup-hero {
             text-align: center;
             padding: 3rem 1rem;
-            background: linear-gradient(to bottom, #f8fafc, #ffffff);
+            background: linear-gradient(to bottom, var(--bg-subtle), var(--bg-white));
             border-bottom: 1px solid var(--border);
         }
         .backup-icon-circle {
             width: 80px; height: 80px;
-            background: #e0e7ff; color: var(--primary);
+            background: var(--accent-bg); color: var(--primary);
             border-radius: 50%;
             display: flex; align-items: center; justify-content: center;
             font-size: 2.5rem; margin: 0 auto 1.5rem auto;
             box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
         }
         .stat-badge {
-            background: #f1f5f9; color: var(--text-muted);
+            background: var(--bg-subtle); color: var(--text-muted);
             padding: 4px 12px; border-radius: 20px;
             font-size: 0.85rem; font-weight: 600;
             display: inline-flex; align-items: center; gap: 6px;
@@ -111,7 +113,7 @@ $count = count(listSignatureTemplates());
         .modal-overlay.active { display: flex; opacity: 1; }
         
         .modal-box {
-            background: white; width: 90%; max-width: 450px;
+            background: var(--bg-white); width: 90%; max-width: 450px;
             border-radius: 12px; padding: 2rem;
             box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
             transform: translateY(20px); transition: transform 0.3s ease;
@@ -141,7 +143,7 @@ $count = count(listSignatureTemplates());
             </div>
         </div>
         <a href="logout.php" class="btn-logout"><i class="fas fa-sign-out-alt"></i> <span>Sign Out</span></a>
-        <div style="text-align: center; margin-top: 0.75rem; font-size: 0.7rem; color: #94a3b8;">
+        <div style="text-align: center; margin-top: 0.75rem; font-size: 0.7rem; color: var(--text-faint);">
             SubSignature <a href="about.php" style="color: inherit; text-decoration: none; font-weight: 600;">v1.0.1</a>
         </div>
     </div>
@@ -175,7 +177,7 @@ $count = count(listSignatureTemplates());
             </button>
         </div>
 
-        <div style="padding: 1.5rem; background: #fff; font-size: 0.9rem; color: var(--text-muted);">
+        <div style="padding: 1.5rem; background: var(--bg-white); font-size: 0.9rem; color: var(--text-muted);">
             <strong><i class="fas fa-info-circle"></i> Note:</strong> 
             The backup includes all `.html` template files currently active in the system. 
             User data or database entries are not included in this specific archive.

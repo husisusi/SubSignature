@@ -83,8 +83,10 @@ $template_display = templateDisplayName($template);
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Import Results - SubSignature</title>
     
-    <link rel="stylesheet" href="css/style.css">
-    <link rel="stylesheet" href="css/all.min.css">    
+    <script src="<?= assetUrl('js/theme.js') ?>"></script>
+    <link rel="stylesheet" href="<?= assetUrl('css/theme.css') ?>">
+    <link rel="stylesheet" href="<?= assetUrl('css/style.css') ?>">
+    <link rel="stylesheet" href="<?= assetUrl('css/all.min.css') ?>">    
     
     <style>
         /* Import Result Specific Styles */
@@ -96,7 +98,7 @@ $template_display = templateDisplayName($template);
         }
 
         .result-card {
-            background: white;
+            background: var(--bg-white);
             padding: 2rem;
             border-radius: 12px;
             border: 1px solid var(--border);
@@ -104,7 +106,7 @@ $template_display = templateDisplayName($template);
         }
 
         .result-card.success { border-bottom: 4px solid #16a34a; }
-        .result-card.error { border-bottom: 4px solid #dc2626; }
+        .result-card.error { border-bottom: 4px solid var(--danger); }
         .result-card.total { border-bottom: 4px solid var(--primary); }
 
         .result-number { font-size: 2.5rem; font-weight: 700; display: block; margin: 0.5rem 0; }
@@ -124,8 +126,8 @@ $template_display = templateDisplayName($template);
         .details-list li:last-child { border-bottom: none; }
         
         .error-log {
-            background: #fef2f2;
-            border: 1px solid #fecaca;
+            background: var(--danger-bg);
+            border: 1px solid var(--danger-border);
             border-radius: 8px;
             padding: 1.5rem;
             margin-top: 1.5rem;
@@ -134,8 +136,8 @@ $template_display = templateDisplayName($template);
         }
         .error-item { 
             padding: 0.5rem 0; 
-            border-bottom: 1px solid #fee2e2; 
-            color: #b91c1c; 
+            border-bottom: 1px solid var(--danger-border); 
+            color: var(--danger-text); 
             font-size: 0.9rem;
         }
 
@@ -147,7 +149,7 @@ $template_display = templateDisplayName($template);
         }
         
         .action-card {
-            background: white;
+            background: var(--bg-white);
             padding: 1.5rem;
             border-radius: 8px;
             border: 1px solid var(--border);
@@ -204,14 +206,14 @@ $template_display = templateDisplayName($template);
         <div class="result-stats-grid">
             <div class="result-card success">
                 <span class="result-label">Success</span>
-                <span class="result-number" style="color: #16a34a;"><?php echo $success_count; ?></span>
-                <i class="fas fa-check-circle" style="color: #16a34a;"></i>
+                <span class="result-number" style="color: var(--success-text);"><?php echo $success_count; ?></span>
+                <i class="fas fa-check-circle" style="color: var(--success-text);"></i>
             </div>
             
             <div class="result-card error">
                 <span class="result-label">Failed</span>
-                <span class="result-number" style="color: #dc2626;"><?php echo $error_count; ?></span>
-                <i class="fas fa-times-circle" style="color: #dc2626;"></i>
+                <span class="result-number" style="color: var(--danger-text);"><?php echo $error_count; ?></span>
+                <i class="fas fa-times-circle" style="color: var(--danger-text);"></i>
             </div>
             
             <div class="result-card total">
@@ -247,7 +249,7 @@ $template_display = templateDisplayName($template);
 
             <?php if (!empty($errors)): ?>
                 <div class="error-log">
-                    <h4 style="color:#991b1b; margin-bottom:1rem;"><i class="fas fa-exclamation-triangle"></i> Import Errors</h4>
+                    <h4 style="color:var(--danger-text); margin-bottom:1rem;"><i class="fas fa-exclamation-triangle"></i> Import Errors</h4>
                     <?php foreach ($errors as $error): ?>
                         <div class="error-item">
                             <?php echo e($error); ?>

@@ -218,33 +218,35 @@ usort($templates, function($a, $b) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Template Management - SubSignature</title>
-    <link rel="stylesheet" href="css/style.css">
-    <link rel="stylesheet" href="css/all.min.css">
+    <script src="<?= assetUrl('js/theme.js') ?>"></script>
+    <link rel="stylesheet" href="<?= assetUrl('css/theme.css') ?>">
+    <link rel="stylesheet" href="<?= assetUrl('css/style.css') ?>">
+    <link rel="stylesheet" href="<?= assetUrl('css/all.min.css') ?>">
     <?php echo csrfMeta(); ?>
     
     <style>
-        .rename-row { display: none; background: #f8fafc; }
+        .rename-row { display: none; background: var(--bg-subtle); }
         .inline-form { display: flex; align-items: center; justify-content: flex-end; gap: 10px; padding: 10px; }
         
         .template-badge { padding: 4px 10px; border-radius: 20px; font-size: 0.75rem; font-weight: 600; display: inline-block; margin-right: 5px; }
-        .badge-default { background: #dcfce7; color: #166534; border: 1px solid #bbf7d0; } /* Green for Active Default */
-        .badge-active { background: #e0f2fe; color: #0284c7; } /* Blue for used templates */
-        .badge-unused { background: #f1f5f9; color: #64748b; }
+        .badge-default { background: var(--success-bg); color: var(--success-text); border: 1px solid var(--success-border); } /* Green for Active Default */
+        .badge-active { background: var(--info-bg); color: var(--info-text); } /* Blue for used templates */
+        .badge-unused { background: var(--bg-subtle); color: var(--text-muted); }
         
         /* Star Button Styles */
-        .btn-star { background: transparent; border: 1px solid #cbd5e1; color: #cbd5e1; cursor: pointer; border-radius: 4px; padding: 4px 8px;}
+        .btn-star { background: transparent; border: 1px solid var(--border-strong); color: var(--border-strong); cursor: pointer; border-radius: 4px; padding: 4px 8px;}
         .btn-star:hover { border-color: #eab308; color: #eab308; }
-        .btn-star.active { background: #fef08a; border-color: #eab308; color: #ca8a04; pointer-events: none; }
+        .btn-star.active { background: var(--warning-bg); border-color: #eab308; color: var(--warning-text); pointer-events: none; }
         
         /* Modal Styles */
         .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.5); display: none; justify-content: center; align-items: center; z-index: 1000; backdrop-filter: blur(2px); }
-        .modal-box { background: white; width: 90%; max-width: 500px; padding: 2rem; border-radius: 12px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1); position: relative; }
+        .modal-box { background: var(--bg-white); width: 90%; max-width: 500px; padding: 2rem; border-radius: 12px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1); position: relative; }
         .modal-header h3 { margin: 0; color: var(--text-main); font-size: 1.25rem; }
         .modal-close { position: absolute; top: 1rem; right: 1rem; cursor: pointer; color: var(--text-muted); font-size: 1.2rem; }
         
         /* Upload Area */
-        .upload-area { border: 2px dashed #cbd5e1; border-radius: 8px; padding: 2rem; text-align: center; cursor: pointer; transition: all 0.2s; background: #f8fafc; position: relative; margin-top: 1rem; }
-        .upload-area:hover { border-color: var(--primary); background: #eff6ff; }
+        .upload-area { border: 2px dashed var(--border-strong); border-radius: 8px; padding: 2rem; text-align: center; cursor: pointer; transition: all 0.2s; background: var(--bg-subtle); position: relative; margin-top: 1rem; }
+        .upload-area:hover { border-color: var(--primary); background: var(--bg-hover); }
         .upload-input { position: absolute; width: 100%; height: 100%; top: 0; left: 0; opacity: 0; cursor: pointer; }
     </style>
 </head>
@@ -281,12 +283,12 @@ usort($templates, function($a, $b) {
 
         <div class="form-grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); margin-bottom: 2rem;">
             <div class="card" style="padding: 1.5rem; text-align:center;">
-                <div style="color: #64748b; margin-bottom: 0.5rem;">Total Templates</div>
-                <div style="font-size: 2rem; font-weight: 700; color: #1e293b;"><?php echo count($templates); ?></div>
+                <div style="color: var(--text-muted); margin-bottom: 0.5rem;">Total Templates</div>
+                <div style="font-size: 2rem; font-weight: 700; color: var(--text-main);"><?php echo count($templates); ?></div>
             </div>
             <div class="card" style="padding: 1.5rem; text-align:center;">
-                <div style="color: #64748b; margin-bottom: 0.5rem;">Total Usage</div>
-                <div style="font-size: 2rem; font-weight: 700; color: #1e293b;"><?php echo array_sum(array_column($templates, 'usage')); ?></div>
+                <div style="color: var(--text-muted); margin-bottom: 0.5rem;">Total Usage</div>
+                <div style="font-size: 2rem; font-weight: 700; color: var(--text-main);"><?php echo array_sum(array_column($templates, 'usage')); ?></div>
             </div>
         </div>
 
@@ -307,7 +309,7 @@ usort($templates, function($a, $b) {
             <div style="overflow-x: auto;">
                 <table style="width: 100%; border-collapse: collapse;">
                     <thead>
-                        <tr style="background: #f8fafc; text-align: left; border-bottom: 1px solid #e2e8f0;">
+                        <tr style="background: var(--bg-subtle); text-align: left; border-bottom: 1px solid var(--border);">
                             <th style="padding: 1rem; width: 50px;">Def.</th>
                             <th style="padding: 1rem;">Name</th>
                             <th style="padding: 1rem;">Filename</th>
@@ -317,7 +319,7 @@ usort($templates, function($a, $b) {
                     </thead>
                     <tbody>
                         <?php foreach ($templates as $t): ?>
-                        <tr style="border-bottom: 1px solid #e2e8f0;">
+                        <tr style="border-bottom: 1px solid var(--border);">
                             
                             <td style="padding: 1rem; text-align: center;">
                                 <form method="POST" style="margin:0;">
@@ -344,7 +346,7 @@ usort($templates, function($a, $b) {
                                 <?php endif; ?>
                             </td>
                             
-                            <td style="padding: 1rem; color: #64748b;"><code><?php echo e($t['filename']); ?></code></td>
+                            <td style="padding: 1rem; color: var(--text-muted);"><code><?php echo e($t['filename']); ?></code></td>
                             
                             <td style="padding: 1rem;">
                                 <?php 
@@ -381,7 +383,7 @@ usort($templates, function($a, $b) {
                                     <input type="hidden" name="old_name" value="<?php echo e($t['filename']); ?>">
                                     
                                     <span>Rename to:</span>
-                                    <input type="text" name="new_name" value="<?php echo e($t['filename']); ?>" required style="padding: 5px; border: 1px solid #e2e8f0; border-radius: 4px; width: 250px;">
+                                    <input type="text" name="new_name" value="<?php echo e($t['filename']); ?>" required style="padding: 5px; border: 1px solid var(--border); border-radius: 4px; width: 250px;">
                                     
                                     <button type="submit" class="btn btn-sm btn-primary">Save</button>
                                     <button type="button" onclick="toggleRename('<?php echo md5($t['filename']); ?>')" class="btn btn-sm btn-secondary">Cancel</button>
@@ -412,7 +414,7 @@ usort($templates, function($a, $b) {
                 
                 <div class="upload-area" id="dropZone">
                     <input type="file" name="html_files[]" class="upload-input" accept=".html" multiple required onchange="showFileCount(this)">
-                    <i class="fas fa-file-code" style="font-size: 2.5rem; color: #cbd5e1; margin-bottom: 1rem;"></i>
+                    <i class="fas fa-file-code" style="font-size: 2.5rem; color: var(--border-strong); margin-bottom: 1rem;"></i>
                     <div id="uploadText" style="font-weight: 500; color: var(--text-main);">
                         Click to select or drag & drop files
                     </div>
@@ -422,14 +424,14 @@ usort($templates, function($a, $b) {
                 </div>
                 
                 <div style="display:flex; justify-content:flex-end; gap:0.5rem; margin-top: 1.5rem;">
-                    <button type="button" class="btn btn-danger" style="background:white; color:var(--text-main); border:1px solid var(--border);" onclick="closeImportModal()">Cancel</button>
+                    <button type="button" class="btn btn-danger" style="background:var(--bg-white); color:var(--text-main); border:1px solid var(--border);" onclick="closeImportModal()">Cancel</button>
                     <button type="submit" class="btn btn-primary">Start Import</button>
                 </div>
             </form>
         </div>
     </div>
 
-    <script src="js/post-action.js"></script>
+    <script src="<?= assetUrl('js/post-action.js') ?>"></script>
     <script>
     // --- JS: Toggle Rename Row ---
     function toggleRename(id) {
@@ -449,7 +451,7 @@ usort($templates, function($a, $b) {
         const text = document.getElementById('uploadText');
         if (input.files && input.files.length > 0) {
             text.innerHTML = `<strong>${input.files.length}</strong> file(s) selected`;
-            text.style.color = '#166534';
+            text.style.color = 'var(--success-text)';
         } else {
             text.innerHTML = 'Click to select or drag & drop files';
             text.style.color = 'var(--text-main)';
@@ -461,17 +463,17 @@ usort($templates, function($a, $b) {
     dropZone.addEventListener('dragover', (e) => {
         e.preventDefault();
         dropZone.style.borderColor = 'var(--primary)';
-        dropZone.style.background = '#eff6ff';
+        dropZone.style.background = 'var(--bg-hover)';
     });
     dropZone.addEventListener('dragleave', (e) => {
         e.preventDefault();
-        dropZone.style.borderColor = '#cbd5e1';
-        dropZone.style.background = '#f8fafc';
+        dropZone.style.borderColor = 'var(--border-strong)';
+        dropZone.style.background = 'var(--bg-subtle)';
     });
     dropZone.addEventListener('drop', (e) => {
         e.preventDefault();
-        dropZone.style.borderColor = '#166534'; // Success green
-        dropZone.style.background = '#f0fdf4';
+        dropZone.style.borderColor = 'var(--success-text)'; // Success green
+        dropZone.style.background = 'var(--success-bg)';
         
         // Pass dropped files to input
         const input = dropZone.querySelector('input');

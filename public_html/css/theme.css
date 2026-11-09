@@ -1,0 +1,155 @@
+/* =========================================
+   THEME VARIABLES (light / dark)
+   Loaded on every page before the page styles.
+   ========================================= */
+:root {
+    color-scheme: light;
+
+    --primary: #2563eb;       /* Modern Blue */
+    --primary-dark: #1d4ed8;
+    --secondary: #64748b;     /* Slate Gray */
+    --success: #10b981;
+    --danger: #ef4444;
+    --warning: #f59e0b;
+
+    --bg-body: #f3f4f6;       /* Page background */
+    --bg-white: #ffffff;      /* Cards, inputs, modals */
+    --bg-sidebar: #ffffff;
+    --bg-subtle: #f8fafc;     /* Quiet panels, table headers */
+    --bg-hover: #eff6ff;      /* Hover / active navigation */
+    --accent-bg: #e0e7ff;
+
+    --text-main: #1e293b;     /* Dark slate for text */
+    --text-muted: #64748b;
+    --text-faint: #94a3b8;
+
+    --border: #e2e8f0;
+    --border-strong: #cbd5e1;
+
+    /* Status colours: background / border / text */
+    --success-bg: #dcfce7;  --success-border: #bbf7d0;  --success-text: #166534;
+    --danger-bg: #fee2e2;   --danger-border: #fecaca;   --danger-text: #991b1b;
+    --warning-bg: #fef3c7;  --warning-border: #fde68a;  --warning-text: #92400e;
+    --info-bg: #e0f2fe;     --info-border: #bae6fd;     --info-text: #0369a1;
+
+    --radius: 12px;
+    --shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+
+    --sidebar-width: 250px;
+}
+
+/* Dark palette. The attribute is set by js/theme.js (user choice or system setting). */
+:root[data-theme="dark"] {
+    color-scheme: dark;
+
+    --primary: #4b7bec;
+    --primary-dark: #3a66d4;
+    --secondary: #94a3b8;
+    --success: #10b981;
+    --danger: #f87171;
+    --warning: #fbbf24;
+
+    --bg-body: #0b1220;
+    --bg-white: #131c2e;
+    --bg-sidebar: #0f1729;
+    --bg-subtle: #19243a;
+    --bg-hover: #1b2a4a;
+    --accent-bg: #1e2a5a;
+
+    --text-main: #e2e8f0;
+    --text-muted: #94a3b8;
+    --text-faint: #64748b;
+
+    --border: #26324a;
+    --border-strong: #3a4965;
+
+    --success-bg: #11301f;  --success-border: #1d5a39;  --success-text: #6ee7a0;
+    --danger-bg: #3a1618;   --danger-border: #6b2428;   --danger-text: #fca5a5;
+    --warning-bg: #3a2a0d;  --warning-border: #6b4d12;  --warning-text: #fcd34d;
+    --info-bg: #0f2f47;     --info-border: #1d4b6e;     --info-text: #7dd3fc;
+
+    --shadow: 0 1px 3px 0 rgb(0 0 0 / 0.5), 0 1px 2px -1px rgb(0 0 0 / 0.4);
+}
+
+/* Signature previews always show the signature on white, like a real email. */
+.preview-paper, #renderArea, #live_preview, .preview-box, .modal-iframe {
+    background-color: #ffffff !important;
+    color: #1e293b !important;
+}
+
+
+.preview-paper, #renderArea, #live_preview, .modal-iframe { color-scheme: light; }
+
+/* Native controls follow the theme. */
+input, select, textarea { color: var(--text-main); }
+/* Zero specificity (:where) so every page style still wins. */
+:where(input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=file]):not([type=color]):not([type=submit]):not([type=button]), select, textarea) {
+    background-color: var(--bg-white);
+}
+::placeholder { color: var(--text-faint); opacity: 1; }
+
+
+/* Theme switch (injected by js/theme.js) */
+.theme-switch {
+    display: flex;
+    gap: 2px;
+    padding: 3px;
+    margin-bottom: 0.75rem;
+    background: var(--bg-subtle);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+}
+.theme-switch button {
+    flex: 1;
+    padding: 0.35rem 0;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 0.8rem;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s;
+}
+.theme-switch button:hover { color: var(--text-main); }
+.theme-switch button[aria-pressed="true"] {
+    background: var(--bg-white);
+    color: var(--primary);
+    box-shadow: var(--shadow);
+}
+.theme-switch button:focus-visible { outline: 2px solid var(--primary); outline-offset: 1px; }
+/* Pages without a sidebar (login, installer, register): floating switch. */
+.theme-switch.floating {
+    position: fixed;
+    top: 12px;
+    right: 12px;
+    z-index: 1000;
+    margin: 0;
+    background: var(--bg-white);
+}
+.theme-switch.floating button { padding: 0.35rem 0.6rem; }
+@media (max-width: 1024px) {
+    .sidebar .theme-switch { flex-direction: column; }
+}
+@media (max-width: 768px) {
+    .sidebar .theme-switch { flex-direction: row; margin: 0; }
+}
+
+/* Buttons without their own background follow the palette (zero specificity). */
+:where(:root[data-theme="dark"] button) {
+    background-color: var(--bg-subtle);
+    color: var(--text-main);
+}
+
+/* The template editor canvas stays white, like the email the signature ends up in. */
+.jodit-wysiwyg {
+    background-color: #ffffff !important;
+    color: #1e293b !important;
+}
+
+/* The dark-blue logo is lightened on dark backgrounds. */
+:root[data-theme="dark"] img[src$="img/subsig.svg"] {
+    filter: invert(1) hue-rotate(180deg);
+}
+
+/* Uploaded images (media library) are shown on white: logos and icons are often dark/transparent. */
+.image-preview, #lightboxImage { background-color: #ffffff; }

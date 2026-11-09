@@ -104,15 +104,17 @@ $sig_count = $sig_result->fetchArray(SQLITE3_ASSOC)['count'];
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><?php echo $is_admin_editing_others ? 'Edit User' : 'My Profile'; ?> - SubSignature</title>
     
-    <link rel="stylesheet" href="css/style.css">
-    <link rel="stylesheet" href="css/all.min.css">
+    <script src="<?= assetUrl('js/theme.js') ?>"></script>
+    <link rel="stylesheet" href="<?= assetUrl('css/theme.css') ?>">
+    <link rel="stylesheet" href="<?= assetUrl('css/style.css') ?>">
+    <link rel="stylesheet" href="<?= assetUrl('css/all.min.css') ?>">
     
     <style>
         /* Profile Specific Styles */
         .profile-layout { display: grid; grid-template-columns: 2fr 1fr; gap: 2rem; }
-        .profile-card { background: white; border-radius: 12px; border: 1px solid var(--border); overflow: hidden; display: flex; flex-direction: column; }
-        .profile-header { background: linear-gradient(135deg, #f3f4f6 0%, #ffffff 100%); padding: 2rem; text-align: center; border-bottom: 1px solid var(--border); }
-        .profile-avatar { width: 80px; height: 80px; background: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 2.5rem; color: var(--primary); margin: 0 auto 1rem; box-shadow: 0 4px 12px rgba(0,0,0,0.08); border: 2px solid white; }
+        .profile-card { background: var(--bg-white); border-radius: 12px; border: 1px solid var(--border); overflow: hidden; display: flex; flex-direction: column; }
+        .profile-header { background: linear-gradient(135deg, var(--bg-subtle) 0%, var(--bg-white) 100%); padding: 2rem; text-align: center; border-bottom: 1px solid var(--border); }
+        .profile-avatar { width: 80px; height: 80px; background: var(--bg-white); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 2.5rem; color: var(--primary); margin: 0 auto 1rem; box-shadow: 0 4px 12px rgba(0,0,0,0.08); border: 2px solid var(--bg-white); }
         .profile-name { font-size: 1.4rem; font-weight: 700; color: var(--text-main); margin-bottom: 0.25rem; }
         .profile-role { color: var(--text-muted); font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600; }
         .stats-list { padding: 1.5rem; }
@@ -120,16 +122,16 @@ $sig_count = $sig_result->fetchArray(SQLITE3_ASSOC)['count'];
         .stat-row:last-child { border-bottom: none; }
         .stat-key { color: var(--text-muted); display: flex; align-items: center; gap: 0.5rem; }
         .stat-val { font-weight: 600; color: var(--text-main); }
-        .action-list { display: flex; flex-direction: column; gap: 0.75rem; padding: 1.5rem; background: #f8fafc; border-top: 1px solid var(--border); }
-        .action-btn { display: flex; align-items: center; gap: 0.75rem; padding: 0.75rem 1rem; background: white; border: 1px solid var(--border); border-radius: 8px; color: var(--text-main); text-decoration: none; font-weight: 500; transition: all 0.2s; }
+        .action-list { display: flex; flex-direction: column; gap: 0.75rem; padding: 1.5rem; background: var(--bg-subtle); border-top: 1px solid var(--border); }
+        .action-btn { display: flex; align-items: center; gap: 0.75rem; padding: 0.75rem 1rem; background: var(--bg-white); border: 1px solid var(--border); border-radius: 8px; color: var(--text-main); text-decoration: none; font-weight: 500; transition: all 0.2s; }
         .action-btn:hover { border-color: var(--primary); color: var(--primary); transform: translateX(4px); }
         .action-btn i { width: 20px; text-align: center; color: var(--text-muted); }
         .action-btn:hover i { color: var(--primary); }
-        .settings-card { background: white; border-radius: 12px; border: 1px solid var(--border); padding: 2rem; }
+        .settings-card { background: var(--bg-white); border-radius: 12px; border: 1px solid var(--border); padding: 2rem; }
         
         .admin-banner {
             grid-column: 1 / -1;
-            background: #fff7ed; border: 1px solid #fed7aa; color: #c2410c;
+            background: var(--warning-bg); border: 1px solid var(--warning-border); color: var(--warning-text);
             padding: 1rem; border-radius: 8px; margin-bottom: 1rem;
             display: flex; align-items: center; gap: 0.75rem;
         }
@@ -200,7 +202,7 @@ $sig_count = $sig_result->fetchArray(SQLITE3_ASSOC)['count'];
                         <label for="username">Username</label>
                         <input type="text" id="username" 
                                value="<?php echo e($user['username']); ?>" 
-                               disabled style="background: #f3f4f6; color: var(--text-muted);">
+                               disabled style="background: var(--bg-subtle); color: var(--text-muted);">
                         <small style="color: var(--text-muted);">Username cannot be changed.</small>
                     </div>
 
@@ -221,7 +223,7 @@ $sig_count = $sig_result->fetchArray(SQLITE3_ASSOC)['count'];
                     <div class="form-group">
                         <label>Role</label>
                         <input type="text" value="<?php echo e(ucfirst($user['role'])); ?>" 
-                               disabled style="background: #f3f4f6; color: var(--text-muted);">
+                               disabled style="background: var(--bg-subtle); color: var(--text-muted);">
                     </div>
 
                     <div class="form-actions">

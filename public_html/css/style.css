@@ -1,28 +1,7 @@
 /* =========================================
-   RESET & VARIABLES
+   RESET
+   (colour variables and themes live in css/theme.css)
    ========================================= */
-:root {
-    --primary: #2563eb;       /* Modern Blue */
-    --primary-dark: #1d4ed8;
-    --secondary: #64748b;     /* Slate Gray */
-    --success: #10b981;
-    --danger: #ef4444;
-    --warning: #f59e0b;
-    
-    --bg-body: #f3f4f6;       /* Light gray background for content */
-    --bg-white: #ffffff;
-    --bg-sidebar: #ffffff;
-    
-    --text-main: #1e293b;     /* Dark slate for text */
-    --text-muted: #64748b;
-    
-    --border: #e2e8f0;
-    --radius: 12px;
-    --shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
-    
-    --sidebar-width: 250px; /* Etwas schmaler gemacht (vorher 260px) */
-}
-
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
 body {
@@ -47,20 +26,20 @@ body {
     left: 0;
     display: flex;
     flex-direction: column;
-    padding: 1rem; /* Reduziert von 1.5rem -> Dichter */
+    padding: 1rem; /* compact */
     z-index: 100;
     overflow: hidden;
 }
 
 /* Logo Area */
 .brand {
-    font-size: 1.15rem; /* Etwas kleiner */
+    font-size: 1.15rem; /* slightly smaller */
     font-weight: 700;
     color: var(--primary);
     display: flex;
     align-items: center;
     gap: 0.5rem;
-    margin-bottom: 1rem; /* Stark reduziert von 2.5rem -> Dichter */
+    margin-bottom: 1rem; /* compact */
     text-decoration: none;
     flex-shrink: 0;
 }
@@ -69,7 +48,7 @@ body {
 .nav-menu {
     display: flex;
     flex-direction: column;
-    gap: 0.25rem; /* Abstand zwischen Links verringert */
+    gap: 0.25rem; /* tight spacing between links */
     flex: 1; 
     overflow-y: auto;
     padding-right: 2px;
@@ -80,15 +59,15 @@ body {
 
 .nav-menu::-webkit-scrollbar { width: 3px; }
 .nav-menu::-webkit-scrollbar-track { background: transparent; }
-.nav-menu::-webkit-scrollbar-thumb { background-color: #cbd5e1; border-radius: 20px; }
+.nav-menu::-webkit-scrollbar-thumb { background-color: var(--border-strong); border-radius: 20px; }
 
 .nav-label {
     font-size: 0.7rem;
     text-transform: uppercase;
     color: var(--text-muted);
     font-weight: 800;
-    margin-top: 1rem; /* Reduziert */
-    margin-bottom: 0.25rem; /* Reduziert */
+    margin-top: 1rem; /* compact */
+    margin-bottom: 0.25rem; /* compact */
     letter-spacing: 0.05em;
     padding-left: 0.5rem; /* Aligned with the link text */
 }
@@ -98,18 +77,18 @@ body {
     display: flex;
     align-items: center;
     gap: 0.75rem;
-    padding: 0.5rem 0.75rem; /* Schlankere Buttons -> Dichter */
+    padding: 0.5rem 0.75rem; /* slim buttons */
     border-radius: 6px;
     color: var(--secondary);
     text-decoration: none;
     font-weight: 500;
-    font-size: 0.9rem; /* Etwas kleinere Schrift */
+    font-size: 0.9rem; /* slightly smaller font */
     transition: all 0.2s;
     flex-shrink: 0;
 }
 
 .nav-link:hover, .nav-link.active {
-    background-color: #eff6ff;
+    background-color: var(--bg-hover);
     color: var(--primary);
 }
 
@@ -133,9 +112,9 @@ body {
 }
 
 .avatar {
-    width: 32px; /* Kleinerer Avatar */
+    width: 32px; /* small avatar */
     height: 32px;
-    background: #e0e7ff;
+    background: var(--accent-bg);
     color: var(--primary);
     border-radius: 50%;
     display: flex;
@@ -154,9 +133,9 @@ body {
     justify-content: center;
     gap: 0.5rem;
     width: 100%;
-    padding: 0.5rem; /* Kompakterer Logout Button */
+    padding: 0.5rem; /* compact logout button */
     border: 1px solid var(--border);
-    background: white;
+    background: var(--bg-white);
     border-radius: 6px;
     color: var(--danger);
     font-size: 0.8rem;
@@ -164,7 +143,7 @@ body {
     text-decoration: none;
     transition: all 0.2s;
 }
-.btn-logout:hover { background: #fef2f2; border-color: #fee2e2; }
+.btn-logout:hover { background: var(--danger-bg); border-color: var(--danger-border); }
 
 /* =========================================
    MAIN CONTENT AREA
@@ -181,7 +160,7 @@ body {
 
 /* Cards */
 .card {
-    background: var(--bg-white);
+    background: var(--bg-var(--bg-white));
     border-radius: var(--radius);
     padding: 2rem;
     margin-bottom: 2rem;
@@ -224,7 +203,7 @@ body {
     font-size: 0.95rem;
     transition: border-color 0.2s;
     width: 100%;
-    background: #fff;
+    background: var(--bg-white);
 }
 
 .form-group input:focus, .form-group select:focus {
@@ -250,10 +229,12 @@ body {
 .btn-primary { background: var(--primary); color: white; }
 .btn-primary:hover { background: var(--primary-dark); }
 .btn-success { background: var(--success); color: white; }
-.btn-danger { background: white; border: 1px solid var(--border); color: var(--danger); }
-.btn-danger:hover { background: #fef2f2; border-color: var(--danger); }
-.btn-preview { background: var(--text-main); color: white; }
-.btn-preview:hover { background: black; }
+.btn-danger { background: var(--bg-white); border: 1px solid var(--border); color: var(--danger); }
+.btn-danger:hover { background: var(--danger-bg); border-color: var(--danger); }
+.btn-preview { background: #1e293b; color: white; }
+.btn-preview:hover { background: #000000; }
+:root[data-theme="dark"] .btn-preview { background: #2b3a57; }
+:root[data-theme="dark"] .btn-preview:hover { background: #38496b; }
 
 .form-actions {
     margin-top: 2rem;
@@ -268,7 +249,7 @@ body {
 .signature-list { display: flex; flex-direction: column; gap: 1rem; }
 
 .signature-item {
-    background: white;
+    background: var(--bg-white);
     border: 1px solid var(--border);
     border-radius: 8px;
     padding: 1rem;
@@ -283,7 +264,7 @@ body {
 .sig-details p { font-size: 0.85rem; color: var(--text-muted); }
 
 .preview-box {
-    background: #fafafa;
+    background: var(--bg-subtle);
     border: 2px dashed var(--border);
     padding: 2rem;
     border-radius: 8px;
@@ -292,14 +273,14 @@ body {
 }
 
 .count-badge {
-    background-color: #eff6ff; 
-    color: #2563eb;            
+    background-color: var(--bg-hover); 
+    color: var(--primary);            
     font-size: 0.9rem;
     padding: 0.3rem 0.8rem;
     border-radius: 999px;    
     font-weight: 700;
     margin-left: 10px;
-    border: 1px solid #dbeafe;
+    border: 1px solid var(--info-border);
     vertical-align: middle;
 }
 
