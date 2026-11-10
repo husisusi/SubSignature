@@ -143,7 +143,7 @@ If the PHP `ldap` extension is missing, the page shows a notice; the settings ca
 
 ## API for the desktop agent
 
-A planned **Python** agent for **Windows, Linux and macOS** will fetch signatures from the server and install them in Outlook and Thunderbird. The server side is ready:
+A planned **Go** agent for **Windows, Linux and macOS** will fetch signatures from the server and install them in Outlook and Thunderbird. The server side is ready:
 
 * Create a token under **Admin → API Tokens** (scope `signatures:read`, optional expiry, revocable, only the hash is stored).
 * `GET /api/v1/signatures` returns rendered, sanitized HTML plus the raw fields, a plain-text variant and a hash for change detection; filters `username`, `email`, `updated_since`, paging.
@@ -212,7 +212,7 @@ An overview of the protections and the results of the security review is in [doc
 
 ## Roadmap
 
-* SubSignature desktop agent (Python, Windows, Linux and macOS) that installs signatures in Outlook and Thunderbird using the API above.
+* SubSignature desktop agent (Go, Windows, Linux and macOS) that installs signatures in Outlook and Thunderbird using the API above.
 * Optional LDAP import scheduling (cron/CLI).
 
 ## Contributing
