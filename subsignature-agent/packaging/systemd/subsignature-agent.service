@@ -1,0 +1,32 @@
+# systemd USER service (no root needed).
+#
+# Installation:
+#   install -Dm755 subsignature-agent ~/.local/bin/subsignature-agent
+#   install -Dm644 subsignature-agent.service ~/.config/systemd/user/subsignature-agent.service
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now subsignature-agent
+#   journalctl --user -u subsignature-agent -f          # watch the log
+#   systemctl --user kill -s HUP subsignature-agent     # reload the configuration + sync immediately
+#
+# Note: not tested on a real systemd in this alpha version.
+# The agent retries failures itself (retry-interval); Restart= only catches crashes.
+
+[Unit]
+Description=SubSignature Agent (syncs HTML signatures into Thunderbird)
+Documentation=file://%h/.local/share/doc/subsignature-agent/README.md
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/subsignature-agent run
+Restart=on-failure
+RestartSec=30
+
+# Light hardening that needs no special privileges and no file system restrictions:
+NoNewPrivileges=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictRealtime=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=default.target

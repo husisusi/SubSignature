@@ -1,0 +1,166 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  SubSignature Agent - configuration (alpha)
+
+  The same file works on Linux and Windows. Sections that do not exist on a system
+  (e.g. <outlook> on Linux) are read and validated there and otherwise ignored.
+
+  Lookup order: -c <file>, environment variable SUBSIGNATURE_CONFIG, then
+    Linux:    ~/.config/subsignature-agent/config.xml,  /etc/subsignature-agent/config.xml
+    Windows:  %APPDATA%\subsignature-agent\config.xml,  %ProgramData%\subsignature-agent\config.xml
+
+  Paths in this file: ~ is the user's home directory; $VAR (Linux) and %VAR% (Windows) are
+  expanded; a relative path is relative to the folder of THIS file (not the working directory).
+
+  Permissions: Linux chmod 600 (the file may contain a token). On Windows the user folder
+  (%APPDATA%) protects the file; outside of it the agent warns.
+-->
+<subsignature-agent>
+
+  <server>
+    <!--
+      WITH TLS (production):   https://signatures.example.intranet
+      WITHOUT TLS (test only): http://192.168.1.10:8080  AND  allow-insecure-http=true
+    -->
+    <url>https://signatures.example.intranet</url>
+    <!-- Root of the API on the server (default). If SubSignature lives in a subfolder, put that into the url. -->
+    <api-path>/api/v1</api-path>
+    <timeout>20s</timeout>
+
+    <!-- Safety switch: http:// is rejected otherwise (token and signature would be readable in clear text). -->
+    <allow-insecure-http>false</allow-insecure-http>
+
+    <!-- Use the proxy from the environment (HTTPS_PROXY ...)? Intranet servers: normally no. -->
+    <use-proxy>false</use-proxy>
+
+    <tls>
+      <!-- PEM file with your own CA (typical in an intranet). If set, ONLY these CAs are accepted. -->
+      <ca-file></ca-file>
+      <!-- FOR TESTING ONLY: switches certificate verification off. -->
+      <insecure-skip-verify>false</insecure-skip-verify>
+    </tls>
+
+    <auth>
+      <!--
+        Required: an API token (starts with ssg_). An admin creates it in SubSignature under
+        "API Tokens" and sees it only once. The token only grants read access to signatures.
+        Lookup order: environment variable, then token-file (chmod 600), then token (clear text in
+        this file, not recommended).
+        "token" without a path means: the file "token" in the same folder as this config.xml
+        (Linux: ~/.config/subsignature-agent/token, Windows: %APPDATA%\subsignature-agent\token).
+        Content: only the token, one line.
+      -->
+      <token-env>SUBSIGNATURE_TOKEN</token-env>
+      <token-file>token</token-file>
+      <token></token>
+    </auth>
+  </server>
+
+  <sync>
+    <interval>2h</interval>
+    <!-- Random extra delay so that not all machines ask at the same time. -->
+    <jitter>5m</jitter>
+    <!-- Wait time after a failure (network gone, server down). -->
+    <retry-interval>10m</retry-interval>
+    <run-on-start>true</run-on-start>
+  </sync>
+
+  <signature>
+    <!--
+      Which template you want if the server returns signatures from several templates for an
+      address: the template name as in SubSignature, e.g. signature_pro.html (case and the
+      extension .html do not matter). Empty = duplicate-policy decides.
+      If nothing matches, NOTHING is changed (rather no signature than the wrong one).
+      Note: the "name" of a signature on the server is the name of the PERSON, not of the signature.
+    -->
+    <template></template>
+
+    <!--
+      Restricts to one SubSignature account. Only needed if several accounts share the same e-mail
+      address (e.g. a shared mailbox): the agent then changes nothing and reports it until an
+      account is set here - otherwise the result would be another person's name, role and phone.
+    -->
+    <username></username>
+
+    <!--
+      Rule for several signatures of THE SAME account for the same address
+      (e.g. created twice, or imported and created manually):
+        newest - the most recently changed one (on a tie: the one created later)
+        skip   - change nothing and print a warning
+    -->
+    <duplicate-policy>newest</duplicate-policy>
+
+    <!--
+      Optional: ranking of the sources before "most recently changed", e.g. manual,csv,ldap
+      (manual = created by hand, csv = CSV import, ldap = LDAP import). Empty = no ranking.
+    -->
+    <prefer-source></prefer-source>
+
+    <!-- HTML check: reject = refuse scripts, iframes, on* handlers, javascript: links; off = no check -->
+    <html-policy>reject</html-policy>
+
+    <!-- A different template and/or account for individual addresses: -->
+    <!-- <override email="sales@example.com" template="signature_sales.html"/> -->
+    <!-- <override email="info@example.com" username="anna"/> -->
+  </signature>
+
+  <thunderbird>
+    <!-- false = do not touch Thunderbird -->
+    <enabled>true</enabled>
+    <!-- default = the default profile of each installation, all = all profiles found -->
+    <profiles>default</profiles>
+    <!-- Optional: set the profile folder explicitly (otherwise auto-detection. Linux: native, Snap, Flatpak;
+         Windows: %APPDATA%\Thunderbird and the Microsoft Store version). -->
+    <profile-path></profile-path>
+
+    <!-- Addresses the agent should not touch (applies to ALL mail clients, including Outlook): -->
+    <!-- <exclude-email>private@example.org</exclude-email> -->
+
+    <!-- Optional, only if set: -->
+    <!-- <sig-on-reply>true</sig-on-reply> -->
+    <!-- <sig-on-forward>true</sig-on-forward> -->
+    <!-- <sig-bottom>true</sig-bottom> -->
+  </thunderbird>
+
+  <!--
+    Windows only, CLASSIC Outlook only (Outlook 2013 to 2024 / Microsoft 365).
+    For each address the agent creates a signature "<signature-name> <address>" in Outlook's
+    signature folder (.htm, .txt, .rtf) and registers it as the default of the matching account.
+    For that it only writes below HKEY_CURRENT_USER, into the account entries of the Outlook
+    profile. "subsignature-agent remove" undoes everything.
+
+    The NEW Outlook stores signatures in the mailbox and reads neither files nor the registry.
+    A local agent cannot configure anything there; it only reports it.
+  -->
+  <outlook>
+    <!-- false = do not touch Outlook -->
+    <enabled>true</enabled>
+    <!-- default = Outlook's default profile, all = all profiles -->
+    <profiles>default</profiles>
+    <!-- Display name of the signature in Outlook (letters a-z, digits, spaces, - and _; at most 40 characters). -->
+    <signature-name>SubSignature</signature-name>
+
+    <!-- Register as default for new messages and for replies/forwards respectively.
+         Both false: the signature is merely available in Outlook; the user chooses. -->
+    <set-new>true</set-new>
+    <set-reply>true</set-reply>
+
+    <!--
+      Roaming signatures ONLY concern mailboxes in Microsoft 365 / Outlook.com: there Outlook stores
+      signatures in the mailbox and may ignore the local default signature.
+        keep    - change nothing (correct for on-premises Exchange, IMAP, POP)
+        disable - switch roaming signatures off for this user so that the local signature applies
+                  (sets DisableRoamingSignatures under HKCU\Software\Microsoft\Office\<version>\Outlook\Setup)
+    -->
+    <roaming-signatures>keep</roaming-signatures>
+  </outlook>
+
+  <logging>
+    <!-- debug | info | warn | error -->
+    <level>info</level>
+    <!-- Empty = stderr only (with systemd: the journal). On Windows the daemon ("run") then writes
+         to %LOCALAPPDATA%\subsignature-agent\agent.log. -->
+    <file></file>
+  </logging>
+
+</subsignature-agent>
