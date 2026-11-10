@@ -257,4 +257,4 @@ signature again when the account or signature is gone on the server · storing a
 * Mozilla forum (company rollout via WPKG): settings via `user.js` instead of editing `prefs.js` directly; Bugzilla 444476 shows the spelling of the identity settings.
 * Mozilla Bugzilla 597060 on the profile lock (symlink `lock` with target `<host>:+<pid>`) – only for the hint "Thunderbird is running".
 * NC Connector for Thunderbird (admin documentation): central signature only for identities with a matching address, others stay untouched – the same principle here.
-* Commercial agent solutions (e.g. AdSigner, Sigilium) also apply the signature locally with a small agent.
+* Commercial agent solutions also apply the signature locally with a small agent.
