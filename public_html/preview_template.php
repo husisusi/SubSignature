@@ -7,7 +7,7 @@
  * access to the application's origin or session.
  */
 require_once 'includes/config.php';
-requireAdmin();
+requireStaff();
 
 $filename = basename((string)($_GET['template'] ?? ''));
 

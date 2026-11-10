@@ -10,7 +10,7 @@ require_once 'includes/config.php';
 require_once 'includes/LdapService.php';
 require_once 'includes/LdapImporter.php';
 require_once 'includes/tag_picker.php';
-requireAdmin();
+requireStaff();
 
 $admin_id = (int)$_SESSION['user_id'];
 $ldap_available = function_exists('ldap_connect');
@@ -109,7 +109,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
 
     if ($action === 'save') {
-        [$newCfg, $errors] = LdapConfig::fromInput($_POST, $cfg['bind_pass']);
+        [$newCfg, $errors] = LdapConfig::fromInput($_POST, $cfg['bind_pass'], $cfg);
         if ($errors) {
             $error = implode(' ', $errors);
             $cfg = $newCfg; // show what was entered
@@ -276,7 +276,7 @@ $presetsJson = json_encode(LdapConfig::PRESETS, JSON_HEX_TAG | JSON_HEX_AMP | JS
                 <div class="avatar"><?php echo strtoupper(substr($_SESSION['username'], 0, 1)); ?></div>
                 <div class="user-info">
                     <div><?php echo e($_SESSION['username']); ?></div>
-                    <span><?= et('Administrator') ?></span>
+                    <span><?= eRoleLabel() ?></span>
                 </div>
             </div>
             <a href="logout.php" class="btn-logout"><i class="fas fa-sign-out-alt"></i> <span><?= et('Sign Out') ?></span></a>

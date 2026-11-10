@@ -56,6 +56,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $error = t('Password too weak: {details}.', ['details' => implode('; ', $policyErrors)]);
     } elseif ($email !== '' && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
         $error = t('Invalid email address format.');
+    } elseif ($admin_create && isset($_POST['new_role']) && !isValidRole($_POST['new_role'])) {
+        $error = t('Invalid role.');
     }
 
     if ($error === '') {
@@ -76,15 +78,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $is_active = $_POST['user_status'] === '1' ? 1 : 0;
                 }
 
+                // The role can only be chosen by an administrator (whitelist). Public
+                // self-registration always creates a normal user, whatever is posted.
+                $new_role = ($admin_create && isset($_POST['new_role'])) ? $_POST['new_role'] : ROLE_USER;
+
                 $db->exec('BEGIN IMMEDIATE');
                 try {
                     $stmt = $db->prepare("INSERT INTO users (username, password_hash, email, full_name, role, is_active, created_at)
-                                          VALUES (?, ?, ?, ?, 'user', ?, datetime('now'))");
+                                          VALUES (?, ?, ?, ?, ?, ?, datetime('now'))");
                     $stmt->bindValue(1, $username, SQLITE3_TEXT);
                     $stmt->bindValue(2, password_hash($password, PASSWORD_DEFAULT), SQLITE3_TEXT);
                     $stmt->bindValue(3, $email, SQLITE3_TEXT);
                     $stmt->bindValue(4, $full_name, SQLITE3_TEXT);
-                    $stmt->bindValue(5, $is_active, SQLITE3_INTEGER);
+                    $stmt->bindValue(5, $new_role, SQLITE3_TEXT);
+                    $stmt->bindValue(6, $is_active, SQLITE3_INTEGER);
                     $stmt->execute();
                     $user_id = $db->lastInsertRowID();
 
@@ -101,7 +108,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $db,
                     $admin_create ? 'USER_CREATED_BY_ADMIN' : 'USER_REGISTERED',
                     $admin_create ? (int)$_SESSION['user_id'] : (int)$user_id,
-                    'New user: ' . $username
+                    'New user: ' . $username . ' (' . $new_role . ')'
                 );
 
                 if ($admin_create) {
@@ -257,6 +264,15 @@ $csrf_token = generateCSRFToken();
                             <option value="1" <?php echo ($config_default_active == 1) ? 'selected' : ''; ?>><?= et('Active (Can login immediately)') ?></option>
                             <option value="0" <?php echo ($config_default_active == 0) ? 'selected' : ''; ?>><?= et('Inactive (Requires activation)') ?></option>
                         </select>
+                    </div>
+                    <div class="form-group" style="margin:1rem 0 0;">
+                        <label for="new_role"><?= et('Role') ?></label>
+                        <select name="new_role" id="new_role" style="width:100%; padding:0.6rem; border:1px solid var(--border); border-radius:6px;">
+                            <option value="user" selected><?= et('User') ?></option>
+                            <option value="technician"><?= et('Technician') ?></option>
+                            <option value="admin"><?= et('Administrator') ?></option>
+                        </select>
+                        <small style="color:var(--text-muted); display:block; margin-top:0.4rem;"><?= et('Technicians can use all tools and work with all signatures, but have no access to Users, System Configuration and System Logs.') ?></small>
                     </div>
                 </div>
                 <?php endif; ?>

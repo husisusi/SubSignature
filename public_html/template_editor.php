@@ -1,12 +1,12 @@
 <?php
-// template_editor.php - HTML editor for signature templates (admin only).
+// template_editor.php - HTML editor for signature templates (administrators and technicians).
 
 // The bundled code editor (Ace) needs 'unsafe-eval' in the Content-Security-Policy.
 // Only this page relaxes the policy, no other page does.
 define('CSP_ALLOW_EVAL', true);
 
 require_once 'includes/config.php';
-requireAdmin();
+requireStaff();
 
 const EDITOR_MAX_BYTES = 524288; // 512 KB
 
@@ -214,7 +214,7 @@ foreach (array_merge(listSignatureTemplates(), is_file($templates_dir . '/email_
                 </div>
                 <div class="user-info">
                     <div><?php echo e($_SESSION['username']); ?></div>
-                    <span><?= et('Administrator') ?></span>
+                    <span><?= eRoleLabel() ?></span>
                 </div>
             </div>
             <a href="logout.php" class="btn-logout">

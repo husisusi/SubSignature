@@ -32,10 +32,10 @@ The focus is privacy and security. The application runs entirely on your server:
 
 * **Signature generator** with live preview and multiple, editable HTML templates (placeholders: `{{NAME}}`, `{{ROLE}}`, `{{EMAIL}}`, `{{PHONE}}`, `{{PHONE_CLEAN}}`).
 * **Template editor** (WYSIWYG + code editor), image manager, template backup (ZIP).
-* **Signature rollout:** administrators can send signatures to users by email (SMTP).
-* **User management** with roles (admin / user), activation, optional self-registration.
+* **Signature rollout:** administrators and technicians can send signatures to users by email (SMTP).
+* **User management** with three roles (**administrator / technician / user**), activation, optional self-registration. See [Roles](#roles).
 * **All Signatures overview** (sidebar): search, filter by user, **template**, **tag** and **source** (manual / CSV / LDAP), sort, bulk actions (delete, send, change template, add or remove tags). See [All Signatures](#all-signatures-overview).
-* **CSV import / export** of signatures (delimiter `,` or `;`, formula-injection safe export); administrators can put a **tag** on every imported signature.
+* **CSV import / export** of signatures (delimiter `,` or `;`, formula-injection safe export); administrators and technicians can put a **tag** on every imported signature.
 * **LDAP / Active Directory import** of signatures from directory data with selection in a preview, target user and template (import only, no accounts are created, no LDAP login). See [LDAP import](#ldap--active-directory-import).
 * **Read-only API with bearer tokens** to prepare a desktop agent for Outlook and Thunderbird. See [API](#api-for-the-desktop-agent).
 * **18 languages** (English, Deutsch, Español, Français, Italiano, Português, Nederlands, Polski, Türkçe, Русский, Українська, العربية (RTL), हिन्दी, Bahasa Indonesia, 中文, 日本語, 한국어, Bosanski): one JSON file per language in `public_html/lang/`, automatic detection from the browser, switcher in the sidebar and on the login page, per-user choice, system-wide default. See [Languages](#languages).
@@ -117,6 +117,7 @@ Re-import behaviour:
 Safety rules built into the importer:
 
 * The target of a signature is always an existing, active user; directory data can never create users or change roles.
+* Changing the server, port, encryption, certificate check, CA file or bind account requires typing the bind password again (the stored password is never carried over to another server). This also stops a technician from redirecting the service account to a server of their own.
 * Names, emails and phone numbers are validated; invalid values are dropped or the entry is skipped with a reason. Duplicate directory entries (same ID or same email) are skipped.
 * The preview plan is stored server side (random token, bound to the administrator, 30 minutes); the apply step re-checks everything inside a transaction.
 * Paged search, referrals disabled, binary attributes are never interpreted as text.
@@ -130,15 +131,15 @@ If the PHP `ldap` extension is missing, the page shows a notice; the settings ca
 | Filter | Notes |
 |--------|-------|
 | Search | Name, email or role. |
-| User | Administrators can pick one user or *All Users*; normal users only ever see their own signatures. |
+| User | Administrators and technicians can pick one user or *All Users*; normal users only ever see their own signatures. |
 | Template | Lists the templates that are actually used, with a count. A click on the template badge of a signature filters by it. |
 | Tag | A tag, *All tags* or *Without tag*. |
 | Source | Manual, CSV import or LDAP import (the badge on each signature is clickable too). |
 | Sort | Newest / oldest first, name, email or template. |
 
-**Tags** are coloured labels (for example `Sales`, `Management`, `To review`) that administrators create under *Manage tags* (1-32 characters, 8 colours, max. 100 tags). Select signatures, choose a tag and click *Add tag* / *Remove tag*. Normal users see the tags of their own signatures read-only. Deleting a tag removes it from all signatures; the signatures stay.
+**Tags** are coloured labels (for example `Sales`, `Management`, `To review`) that administrators and technicians create under *Manage tags* (1-32 characters, 8 colours, max. 100 tags). Select signatures, choose a tag and click *Add tag* / *Remove tag*. Normal users see the tags of their own signatures read-only. Deleting a tag removes it from all signatures; the signatures stay.
 
-**Bulk actions** on the selected signatures: *Send*, *Delete*, *Change template* (administrators for any signature, users for their own), *Add tag* / *Remove tag* (administrators). *Delete All* removes exactly the signatures the current filter shows.
+**Bulk actions** on the selected signatures: *Send*, *Delete*, *Change template* (administrators and technicians for any signature, users for their own), *Add tag* / *Remove tag* (administrators and technicians). *Delete All* removes exactly the signatures the current filter shows.
 
 ## API for the desktop agent
 
@@ -158,8 +159,24 @@ Each language is a single file `public_html/lang/<code>.json` (`en`, `de`, `es`,
 
 ## Roles
 
-* **Admins:** manage users, templates, images, configuration, LDAP import, API tokens, logs; import/export all data; send signatures.
-* **Users:** generate and manage their own signatures from the available templates, import/export their own data.
+| Area | Administrator | Technician | User |
+|------|:---:|:---:|:---:|
+| Generator, own signatures, own profile and password | yes | yes | yes |
+| All Signatures of **all** users (filter, bulk actions, delete, change template), tags | yes | yes | own only |
+| CSV import / export and ZIP download for any user | yes | yes | own only |
+| Send signatures by email | yes | yes | no |
+| Templates (editor, import, rename, default, delete), images, template backup | yes | yes | no |
+| LDAP import (settings, preview, import) | yes | yes | no |
+| API tokens | yes | yes | no |
+| **Users** (create, roles, passwords, activate, delete, other profiles) | yes | **no** | no |
+| **System Configuration** (SMTP, company details, security settings, status) | yes | **no** | no |
+| **System Logs** (audit log, mail log) | yes | **no** | no |
+
+* **Administrator:** everything. Creates users and assigns roles; the last active administrator can never be demoted, deactivated or deleted.
+* **Technician:** runs the day-to-day tooling (templates, images, LDAP import, API tokens, rollout, all signatures) but cannot see or change users, roles, passwords, the system configuration or the logs. The role is assigned by an administrator under *Users -> Change role* or when creating a user; self-registration always creates a normal user.
+* **User:** generates and manages their own signatures from the available templates, imports/exports their own data.
+
+Rights are enforced on the server for every page and every action (not only by hiding menu entries); the role is re-read from the database on every request, so a change takes effect immediately. A technician who opens an administrator page is redirected and the attempt is written to the audit log.
 
 ## Security
 
@@ -170,7 +187,8 @@ An overview of the protections and the results of the security review is in [doc
 * Sessions: private session directory, `HttpOnly`, `SameSite=Strict`, `Secure` on HTTPS, ID regeneration on login, idle timeout (15 min) and absolute lifetime (8 h); role and active flag are re-checked in the database on every request; a password change signs out all other sessions.
 * Login throttling per IP and per username (database backed), equalized timing for unknown users.
 * Passwords hashed with bcrypt, a password policy is enforced everywhere.
-* All output is escaped; template HTML is sanitized on the server and in the browser.
+* Role-based access control (administrator / technician / user) enforced server-side on every page and action; privileged areas (users, system configuration, logs) are administrator-only.
+* All output is escaped; template HTML is sanitized on the server (tokenizer based, attributes are rebuilt, URL schemes are allow-listed) and in the browser.
 * SMTP and LDAP passwords are encrypted at rest (libsodium or AES-GCM).
 * CSV export neutralizes spreadsheet formulas; CSV import is size- and row-limited.
 * Audit log of security-relevant events with retention.
@@ -181,6 +199,7 @@ An overview of the protections and the results of the security review is in [doc
 * Keep `private_data/` outside the document root.
 * Run PHP with `expose_php=Off`, `display_errors=Off`, `session.use_strict_mode=1`.
 * Restrict access to the admin pages by network (VPN / IP allow list) if possible.
+* Give the **technician** role only to people you trust with template editing, LDAP import settings and API tokens; a technician can write templates that every user sees, and can create tokens that read all signatures.
 * Use a dedicated read-only LDAP service account and LDAPS with certificate verification.
 * Nginx: deny `/includes/`, `/templates/`, `/lang/`, dotfiles and `*.db|*.log|*.key`; forward the `Authorization` header (`fastcgi_param HTTP_AUTHORIZATION $http_authorization;`); route `/api/v1/*` to `api/v1/index.php`; send `Cache-Control: no-cache` for `*.css` and `*.js` (the Apache `.htaccess` does this already).
 * Report vulnerabilities privately (GitHub security advisories) instead of opening a public issue.

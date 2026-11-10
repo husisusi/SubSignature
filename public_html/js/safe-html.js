@@ -12,7 +12,10 @@
 (function (global) {
     'use strict';
 
-    var BLOCKED_TAGS = 'script,iframe,frame,frameset,object,embed,applet,form,input,textarea,select,button,base,link,meta,noscript';
+    // Same intent as sanitizeTemplateHtml() on the server: no scripts, frames, plug-ins, forms,
+    // foreign content (SVG / MathML) or raw-text elements whose parsing differs between browsers.
+    var BLOCKED_TAGS = 'script,iframe,frame,frameset,object,embed,applet,form,input,textarea,select,option,optgroup,button,base,link,meta,' +
+        'noscript,noembed,noframes,xmp,plaintext,template,title,svg,math,audio,video,source,track,canvas,portal,bgsound,isindex,keygen';
     var URL_ATTRS = ['href', 'src', 'xlink:href', 'action', 'formaction', 'background', 'poster'];
 
     function escapeHtml(value) {
@@ -24,16 +27,21 @@
             .replace(/'/g, '&#039;');
     }
 
+    // Same allow-list as templateUrlIsSafe() on the server.
+    var SAFE_SCHEMES = ['http', 'https', 'mailto', 'tel', 'sms', 'callto', 'cid', 'ftp', 'ftps', 'geo', 'skype', 'sip', 'sips',
+        'facetime', 'facetime-audio', 'whatsapp', 'viber', 'tg', 'msteams', 'xmpp', 'webcal', 'maps'];
+
     function isSafeUrl(value) {
         // Strip whitespace/control characters that browsers ignore inside schemes.
-        var v = String(value).replace(/[\u0000- \u007f-\u009f]+/g, '').toLowerCase();
-        if (/^(javascript|vbscript):/.test(v)) {
-            return false;
+        var v = String(value).replace(/[\u0000- \u007f-\u009f\u00ad\u200b-\u200f\u2028\u2029\ufeff]+/g, '').toLowerCase();
+        var m = v.match(/^([a-z][a-z0-9+.\-]*):/);
+        if (!m) {
+            return true; // relative URL, fragment, placeholder
         }
-        if (/^data:/.test(v) && !/^data:image\/(png|gif|jpe?g|webp|bmp);/.test(v)) {
-            return false;
+        if (m[1] === 'data') {
+            return /^data:image\/(png|gif|jpe?g|webp|bmp)[;,]/.test(v);
         }
-        return true;
+        return SAFE_SCHEMES.indexOf(m[1]) !== -1;
     }
 
     function sanitize(html) {
@@ -50,10 +58,19 @@
                     el.removeAttribute(attr.name);
                 } else if (URL_ATTRS.indexOf(name) !== -1 && !isSafeUrl(attr.value)) {
                     el.removeAttribute(attr.name);
-                } else if (name === 'style' && /expression\s*\(|javascript:|behavior\s*:/i.test(attr.value)) {
+                } else if (name === 'srcdoc') {
+                    el.removeAttribute(attr.name);
+                } else if (name === 'style' && /expression\s*\(|(?:java|vb)script\s*:|behaviou?r\s*:|-moz-binding|@import/i.test(attr.value.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\\/g, ''))) {
                     el.removeAttribute(attr.name);
                 }
             });
+        });
+
+        // <style> blocks: no @import, expression(), behavior, script URLs and no "<".
+        Array.prototype.forEach.call(doc.querySelectorAll('style'), function (st) {
+            var css = String(st.textContent).replace(/<!--|-->|</g, '').replace(/@import\b[^;{}]*;?/gi, '');
+            var probe = css.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\\/g, '');
+            st.textContent = /expression\s*\(|(?:java|vb)script\s*:|behaviou?r\s*:|-moz-binding/i.test(probe) ? '' : css;
         });
 
         // <style> blocks of the template survive in <head> after parsing; keep them.

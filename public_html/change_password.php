@@ -166,7 +166,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 </div>
                 <div class="user-info">
                     <div><?php echo e($_SESSION['username']); ?></div>
-                    <span><?= isAdmin() ? et('Administrator') : et('User') ?></span>
+                    <span><?= eRoleLabel() ?></span>
                 </div>
             </div>
             <a href="logout.php" class="btn-logout">

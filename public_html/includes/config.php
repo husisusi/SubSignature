@@ -149,9 +149,74 @@ if ($currentScript !== 'install.php') {
 // 5. AUTHENTICATION & ACCESS CONTROL
 // ---------------------------------------------------------------------
 
+/**
+ * Roles
+ *
+ *   admin       - everything, including user management, system configuration and logs
+ *   technician  - everything except those three areas (templates, images, backup, LDAP import,
+ *                 API tokens, all signatures, tags, imports/exports, sending signatures)
+ *   user        - own signatures only
+ *
+ * isAdmin() is deliberately strict: it is true for administrators ONLY. Every area a
+ * technician must not reach (users, system configuration, system logs) is guarded by
+ * requireAdmin(). Areas a technician may use are guarded by requireStaff().
+ * An unknown or damaged role value is treated as "user" (fail closed).
+ */
+const ROLE_ADMIN      = 'admin';
+const ROLE_TECHNICIAN = 'technician';
+const ROLE_USER       = 'user';
+
+/** Roles that may be stored in users.role (whitelist for every write). */
+function validRoles(): array
+{
+    return [ROLE_USER, ROLE_TECHNICIAN, ROLE_ADMIN];
+}
+
+function isValidRole($role): bool
+{
+    return is_string($role) && in_array($role, validRoles(), true);
+}
+
+/** Role of the current session; anything unknown counts as "user". */
+function currentRole(): string
+{
+    $role = $_SESSION['role'] ?? ROLE_USER;
+    return isValidRole($role) ? $role : ROLE_USER;
+}
+
 function isAdmin(): bool
 {
-    return isset($_SESSION['role']) && $_SESSION['role'] === 'admin';
+    return currentRole() === ROLE_ADMIN;
+}
+
+function isTechnician(): bool
+{
+    return currentRole() === ROLE_TECHNICIAN;
+}
+
+/** Administrator or technician: may work with the signatures of all users and use the tooling. */
+function isStaff(): bool
+{
+    return isAdmin() || isTechnician();
+}
+
+/** Translated name of a role (default: the role of the current session). */
+function roleLabel(?string $role = null): string
+{
+    switch ($role ?? currentRole()) {
+        case ROLE_ADMIN:
+            return t('Administrator');
+        case ROLE_TECHNICIAN:
+            return t('Technician');
+        default:
+            return t('User');
+    }
+}
+
+/** HTML-escaped role label for templates. */
+function eRoleLabel(?string $role = null): string
+{
+    return e(roleLabel($role));
 }
 
 function isLoggedIn(): bool
@@ -246,10 +311,26 @@ function requireLogin(): void
     $_SESSION['email']     = $user['email'];
 }
 
+/** Administrators only (users, system configuration, system logs). */
 function requireAdmin(): void
 {
+    global $db;
+
     requireLogin();
     if (!isAdmin()) {
+        if (isTechnician()) {
+            logSecurityEventToDB($db, 'UNAUTHORIZED_ACCESS', (int)$_SESSION['user_id'], 'Technician requested admin-only page: ' . basename($_SERVER['PHP_SELF'] ?? ''));
+        }
+        header('Location: generator.php');
+        exit;
+    }
+}
+
+/** Administrators and technicians. */
+function requireStaff(): void
+{
+    requireLogin();
+    if (!isStaff()) {
         header('Location: generator.php');
         exit;
     }

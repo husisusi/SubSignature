@@ -1,5 +1,6 @@
 <?php
-// Shared sidebar navigation (admin entries only for administrators)
+// Shared sidebar navigation. Administrators and technicians see the tooling;
+// Users, System Configuration and System Logs are shown to administrators only.
 $current_page = basename($_SERVER['PHP_SELF']);
 ?>
 
@@ -34,8 +35,8 @@ $current_page = basename($_SERVER['PHP_SELF']);
         <i class="fas fa-file-export"></i> <span><?= et('Export') ?></span>
     </a>
 
-    <?php if (isAdmin()): ?>
-    <span class="nav-label" style="font-weight: 800; color: var(--text-main);"><?= et('Admin') ?></span>
+    <?php if (isStaff()): ?>
+    <span class="nav-label" style="font-weight: 800; color: var(--text-main);"><?= isAdmin() ? et('Admin') : et('Technician') ?></span>
     
     <a href="template_editor.php" class="nav-link <?php echo ($current_page == 'template_editor.php') ? 'active' : ''; ?>">
         <i class="fas fa-code"></i> <span><?= et('Add/Edit Templates') ?></span>
@@ -61,16 +62,17 @@ $current_page = basename($_SERVER['PHP_SELF']);
     </a>
     <?php endif; ?>
     
-    <a href="admin_users.php" class="nav-link <?php echo ($current_page == 'admin_users.php') ? 'active' : ''; ?>">
-        <i class="fas fa-users"></i> <span><?= et('Users') ?></span>
-    </a>
-
     <a href="admin_ldap.php" class="nav-link <?php echo ($current_page == 'admin_ldap.php') ? 'active' : ''; ?>">
         <i class="fas fa-sitemap"></i> <span><?= et('LDAP Import') ?></span>
     </a>
 
     <a href="admin_api.php" class="nav-link <?php echo ($current_page == 'admin_api.php') ? 'active' : ''; ?>">
         <i class="fas fa-plug"></i> <span><?= et('API Tokens') ?></span>
+    </a>
+
+    <?php if (isAdmin()): ?>
+    <a href="admin_users.php" class="nav-link <?php echo ($current_page == 'admin_users.php') ? 'active' : ''; ?>">
+        <i class="fas fa-users"></i> <span><?= et('Users') ?></span>
     </a>
 
     <a href="admin_config.php" class="nav-link <?php echo ($current_page == 'admin_config.php') ? 'active' : ''; ?>">
@@ -80,6 +82,7 @@ $current_page = basename($_SERVER['PHP_SELF']);
     <a href="admin_logs.php" class="nav-link <?php echo ($current_page == 'admin_logs.php') ? 'active' : ''; ?>">
         <i class="fas fa-history"></i> <span><?= et('System Logs') ?></span>
     </a>
+    <?php endif; ?>
 
     <?php endif; ?>
 

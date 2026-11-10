@@ -1,6 +1,6 @@
 <?php
 // send_signature.php
-// Sends signatures by email (admin only, POST + CSRF, progress via Server-Sent Events).
+// Sends signatures by email (administrators and technicians only, POST + CSRF, progress via Server-Sent Events).
 // The mail body uses CID images, the attachment uses Base64 images for offline use.
 
 require_once 'includes/config.php';
@@ -9,7 +9,7 @@ require_once 'includes/MailHelper.php';
 // ---------------------------------------------------------
 // 1. SECURITY & CONFIGURATION
 // ---------------------------------------------------------
-requireAdmin();
+requireStaff();
 
 // Ensure output buffers are clean for Server-Sent Events (SSE)
 if (function_exists('apache_setenv')) {

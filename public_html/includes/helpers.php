@@ -371,7 +371,9 @@ function renderSignatureHtml(string $template, array $fields): string
 {
     $phone = (string)($fields['phone'] ?? '');
     $company = companyFields();
-    return strtr($template, [
+    // The result is sanitised once more: a placeholder used as a whole URL (href="{{ROLE}}")
+    // must not be able to smuggle in a "javascript:" value from the data.
+    return sanitizeTemplateHtml(strtr($template, [
         '{{NAME}}'        => e($fields['name'] ?? ''),
         '{{ROLE}}'        => e($fields['role'] ?? ''),
         '{{EMAIL}}'       => e($fields['email'] ?? ''),
@@ -381,7 +383,7 @@ function renderSignatureHtml(string $template, array $fields): string
         '{{WEBSITE}}'     => e($company['website']),
         '{{ADDRESS}}'     => nl2br(e($company['address']), false),
         '{{DISCLAIMER}}'  => nl2br(e($company['disclaimer']), false),
-    ]);
+    ]));
 }
 
 /**
@@ -404,34 +406,209 @@ function safeFileNamePart($text, string $fallback = 'signature'): string
 }
 
 /**
- * Best-effort server-side removal of active content from template HTML.
+ * Removes active content from template HTML.
  *
- * Templates are authored by administrators (trusted), but they are rendered
- * in every user's browser, so this is defence in depth. The browser side
- * additionally sanitises through js/safe-html.js, and standalone previews are
- * sandboxed by a Content-Security-Policy.
+ * Templates are written by administrators AND technicians and are rendered in other
+ * people's browsers, mails and downloads, so this is a security boundary. It is applied
+ * when a template is saved, imported, previewed, sent and rendered, which also cleans
+ * templates that were stored by an older version.
+ *
+ * The HTML is tokenised (comments, tags, quoted attribute values) and every start tag is
+ * REBUILT from the attributes that were actually parsed - always double-quoted. What the
+ * browser sees is therefore exactly what was inspected, so tricks like <img/onerror=...>,
+ * <img src="x"onerror=...>, a ">" inside an attribute value or entity-encoded
+ * "javascript:" URLs do not get through. In detail it
+ *   - removes scripts, frames, plug-ins, forms, SVG/MathML, templates and other raw-text or
+ *     foreign-content elements together with their content,
+ *   - drops event handler attributes (on*), srcdoc, invalid attribute names,
+ *   - allows only safe URL schemes in href/src/... (data: only for images),
+ *   - cleans <style> blocks and style attributes (no @import, expression(), behavior, ...),
+ *   - escapes a "<" that does not form a complete tag, and fails closed (returns '')
+ *     when the regular expression engine gives up.
+ * The browser side additionally sanitises through js/safe-html.js, and standalone previews
+ * are sandboxed by a Content-Security-Policy.
  */
 function sanitizeTemplateHtml(string $html): string
 {
-    // Whole elements that must never be part of a signature.
-    $html = preg_replace('#<\s*(script|iframe|frameset|frame|object|embed|applet|form|textarea|select|button)\b[^>]*>.*?<\s*/\s*\1\s*>#is', '', $html) ?? $html;
-    // Remaining (unclosed / void) dangerous tags.
-    $html = preg_replace('#<\s*/?\s*(script|iframe|frameset|frame|object|embed|applet|form|input|textarea|select|button|base)\b[^>]*>#is', '', $html) ?? $html;
-    // <meta http-equiv="refresh"> redirects.
-    $html = preg_replace('#<\s*meta\b[^>]*http-equiv\s*=\s*["\']?\s*refresh[^>]*>#is', '', $html) ?? $html;
-    // Inline event handlers (onclick=, onerror=, ...), run until nothing changes.
-    do {
-        $before = $html;
-        $html = preg_replace('#(<[^>]*?)\son[a-z]+\s*=\s*("[^"]*"|\'[^\']*\'|[^\s>]+)#is', '$1', $html) ?? $html;
-    } while ($html !== $before);
-    // javascript: / vbscript: / data:text/html URLs in URL-bearing attributes.
-    $html = preg_replace(
-        '#\b(href|src|action|formaction|background|xlink:href)\s*=\s*(["\']?)\s*(?:javascript|vbscript|data\s*:\s*text/html)[^"\'>\s]*\2#is',
-        '$1=$2#$2',
-        $html
-    ) ?? $html;
+    // Quote-aware attribute section of a tag (a ">" inside quotes does not end the tag).
+    $attrs = '(?:[^>"\']|"[^"]*"|\'[^\']*\')*';
 
-    return $html;
+    $html = str_replace("\0", '', $html);
+
+    // 1. Elements that are removed together with their content. Repeated, so that
+    //    split constructions like <scr<script>ipt> collapse completely.
+    $withContent = 'script|iframe|frameset|frame|object|embed|applet|form|textarea|select|button|'
+                 . 'svg|math|noscript|noembed|noframes|xmp|title|template';
+    $re = '#<\s*(' . $withContent . ')\b' . $attrs . '>.*?<\s*/\s*\1\s*>#is';
+    for ($i = 0; $i < 20; $i++) {
+        $next = preg_replace($re, '', $html);
+        if ($next === null) {
+            return '';
+        }
+        if ($next === $html) {
+            break;
+        }
+        $html = $next;
+    }
+
+    // 2. <style> blocks: the content is raw text for the browser, so it is cleaned separately
+    //    (an unclosed block runs to the end of the document).
+    $html = preg_replace_callback(
+        '#(<style\b' . $attrs . '>)(.*?)(?:<\s*/\s*style\s*>|\z)#is',
+        function (array $m): string {
+            return $m[1] . sanitizeTemplateCss($m[2]) . '</style>';
+        },
+        $html
+    );
+    if ($html === null) {
+        return '';
+    }
+
+    // 3. Tokenise and rebuild.
+    $dropTags = array_flip([
+        'script', 'iframe', 'frameset', 'frame', 'object', 'embed', 'applet', 'form', 'input', 'textarea',
+        'select', 'option', 'optgroup', 'button', 'base', 'link', 'svg', 'math', 'noscript', 'noembed',
+        'noframes', 'xmp', 'title', 'template', 'plaintext', 'audio', 'video', 'source', 'track', 'canvas',
+        'portal', 'bgsound', 'isindex', 'keygen',
+    ]);
+    $urlAttrs = array_flip([
+        'href', 'src', 'action', 'formaction', 'background', 'poster', 'xlink:href', 'data', 'cite',
+        'longdesc', 'lowsrc', 'dynsrc', 'ping', 'codebase', 'manifest', 'profile', 'usemap', 'icon',
+    ]);
+
+    // comment (browser-compatible endings: "-->", "--!>", "<!-->", "<!--->") | <!doctype> and
+    // <![if ...] markers | processing instruction | end tag | start tag | stray "<"
+    $token = '#<!--(?:-?>|.*?--!?>)|<![^>]*>|<\?[^>]*>|</[a-zA-Z][^>]*>|<([a-zA-Z][a-zA-Z0-9:_-]*)(' . $attrs . ')>|<(?=[a-zA-Z/!?])#s';
+
+    $out = preg_replace_callback($token, function (array $m) use ($dropTags, $urlAttrs): string {
+        $tok = $m[0];
+        if (strncmp($tok, '<!', 2) === 0) {
+            return $tok;                       // comments, doctype, conditional-comment markers
+        }
+        if (strncmp($tok, '<?', 2) === 0) {
+            return '';
+        }
+        if (strncmp($tok, '</', 2) === 0) {
+            if (preg_match('#^</([a-zA-Z][a-zA-Z0-9:_-]*)#', $tok, $n) === 1 && !isset($dropTags[strtolower($n[1])])) {
+                return '</' . $n[1] . '>';     // attributes on end tags are meaningless
+            }
+            return '';
+        }
+        if (!isset($m[1]) || $m[1] === '') {
+            return '&lt;';                     // a "<" that is not part of a complete tag
+        }
+
+        $name = strtolower($m[1]);
+        if (isset($dropTags[$name])) {
+            return '';
+        }
+
+        preg_match_all(
+            '#([^\s"\'<>/=]+)(?:\s*=\s*(?:"([^"]*)"|\'([^\']*)\'|([^\s"\'=<>`]+)))?#',
+            $m[2],
+            $found,
+            PREG_SET_ORDER | PREG_UNMATCHED_AS_NULL
+        );
+
+        $parts = [];
+        foreach ($found as $a) {
+            $an = strtolower($a[1]);
+            if (!preg_match('/^[a-z_:][a-z0-9_:.\-]*$/', $an) || strncmp($an, 'on', 2) === 0 || $an === 'srcdoc') {
+                continue;
+            }
+            $raw = $a[2] ?? $a[3] ?? $a[4] ?? null;
+            $val = (string)($raw ?? '');
+
+            if (isset($urlAttrs[$an]) && !templateUrlIsSafe($val)) {
+                continue;
+            }
+            if ($an === 'style' && !templateCssIsSafe($val)) {
+                continue;
+            }
+            if ($name === 'meta' && $an === 'http-equiv' && strtolower(trim($val)) !== 'content-type') {
+                continue;                      // refresh, set-cookie, content-security-policy, ...
+            }
+            $parts[] = $raw === null ? $an : $an . '="' . str_replace(['"', '<', '>'], ['&quot;', '&lt;', '&gt;'], $val) . '"';
+        }
+
+        $selfClose = preg_match('#/\s*$#', $m[2]) === 1;
+        return '<' . $m[1] . ($parts ? ' ' . implode(' ', $parts) : '') . ($selfClose ? ' /' : '') . '>';
+    }, $html);
+
+    return $out === null ? '' : $out;
+}
+
+/**
+ * Decodes HTML entities the way a browser does for attribute values: numeric references
+ * (also control characters and without ";") and named references. Decoding slightly too
+ * much is harmless here - the result is only inspected, never output.
+ */
+function templateDecodeEntities(string $value): string
+{
+    $out = preg_replace_callback(
+        '/&(?:#([0-9]{1,10})|#[xX]([0-9a-fA-F]{1,8})|([A-Za-z][A-Za-z0-9]{1,31}));?/',
+        function (array $m): string {
+            if (isset($m[3]) && $m[3] !== '') {
+                $d = html_entity_decode('&' . $m[3] . ';', ENT_QUOTES | ENT_HTML5, 'UTF-8');
+                return $d === '&' . $m[3] . ';' ? $m[0] : $d;
+            }
+            $cp = (isset($m[2]) && $m[2] !== '') ? hexdec($m[2]) : (int)$m[1];
+            if ($cp < 1 || $cp > 0x10FFFF || ($cp >= 0xD800 && $cp <= 0xDFFF)) {
+                return "\u{FFFD}";
+            }
+            return (string)mb_chr((int)$cp, 'UTF-8');
+        },
+        $value
+    );
+    return $out ?? '';
+}
+
+/**
+ * True if a URL attribute value is safe: relative, a fragment, a {{placeholder}} or one of the
+ * schemes below. data: is only accepted for raster images.
+ */
+function templateUrlIsSafe(string $value): bool
+{
+    $v = templateDecodeEntities($value);
+    // Browsers ignore control characters, spaces and a few invisible characters inside the scheme.
+    $v = preg_replace('/[\x00-\x20\x7f-\x9f\x{00AD}\x{200B}-\x{200F}\x{2028}\x{2029}\x{FEFF}]+/u', '', $v);
+    if ($v === null) {
+        return false;                          // invalid UTF-8
+    }
+    if (preg_match('#^([a-z][a-z0-9+.\-]*):#i', $v, $m) !== 1) {
+        return true;                           // relative URL, "#fragment", "{{PLACEHOLDER}}"
+    }
+    $scheme = strtolower($m[1]);
+    if ($scheme === 'data') {
+        return preg_match('#^data:image/(png|gif|jpe?g|webp|bmp)[;,]#i', $v) === 1;
+    }
+    return in_array($scheme, [
+        'http', 'https', 'mailto', 'tel', 'sms', 'callto', 'cid', 'ftp', 'ftps', 'geo', 'skype', 'sip', 'sips',
+        'facetime', 'facetime-audio', 'whatsapp', 'viber', 'tg', 'msteams', 'xmpp', 'webcal', 'maps',
+    ], true);
+}
+
+/** CSS constructs that can run script or load code in (old) browsers. */
+const TEMPLATE_CSS_BAD = '#expression\s*\(|(?:java|vb)script\s*:|behaviou?r\s*:|-moz-binding|@import#i';
+
+/** True if the value of a style="" attribute is free of script-capable constructs. */
+function templateCssIsSafe(string $value): bool
+{
+    $v = templateDecodeEntities($value);
+    $v = preg_replace('#/\*.*?\*/#s', '', $v) ?? '';
+    $v = str_replace('\\', '', $v);            // CSS escapes such as \6a avascript
+    return preg_match(TEMPLATE_CSS_BAD, $v) !== 1;
+}
+
+/** Cleans the text of a <style> element. */
+function sanitizeTemplateCss(string $css): string
+{
+    // Old-school "<!-- ... -->" wrappers are harmless for CSS; remove them, then every "<".
+    $css = str_replace(['<!--', '-->', '<', "\0"], '', $css);
+    $css = preg_replace('#@import\b[^;{}]*;?#i', '', $css) ?? '';
+    $probe = preg_replace('#/\*.*?\*/#s', '', $css) ?? '';
+    $probe = str_replace('\\', '', $probe);
+    return preg_match(TEMPLATE_CSS_BAD, $probe) === 1 ? '' : $css;
 }
 
 // ---------------------------------------------------------------------

@@ -176,8 +176,6 @@
     "Delete this token entry?": "Obrisati ovaj unos tokena?",
     "Delete {count} signatures?": "Obrisati {count} potpisa?",
     "Delivery failed for: {recipient} ({message})": "Isporuka nije uspjela za: {recipient} ({message})",
-    "Demote": "Unazadi",
-    "Demote to User?": "Unazaditi u korisnika?",
     "Design and manage HTML email signature templates.": "Dizajnirajte i upravljajte HTML šablonima e-mail potpisa.",
     "Details": "Detalji",
     "Developed by": "Razvio",
@@ -458,8 +456,6 @@
     "Processing complete for {count} records.": "Obrada završena za {count} zapisa.",
     "Professional Email Signatures": "Profesionalni E-mail Potpisi",
     "Profile": "Profil",
-    "Promote": "Unaprijedi",
-    "Promote to Admin?": "Unaprijediti u administratora?",
     "Purple": "Ljubičasta",
     "Read-only access to signatures for the SubSignature desktop agent (Outlook / Thunderbird).": "Pristup potpisima samo za čitanje za SubSignature desktop agenta (Outlook / Thunderbird).",
     "Ready to download?": "Spremni za preuzimanje?",
@@ -729,5 +725,13 @@
     "✅ Password successfully changed!": "✅ Lozinka uspješno promijenjena!",
     "✅ Profile updated successfully!": "✅ Profil uspješno ažuriran!",
     "✅ User profile updated successfully (Admin Mode).": "✅ Korisnički profil uspješno ažuriran (Admin Režim).",
-    "❌ Current password is incorrect!": "❌ Trenutna lozinka je netačna!"
+    "❌ Current password is incorrect!": "❌ Trenutna lozinka je netačna!",
+    "At least one active administrator must remain.": "Mora ostati barem jedan aktivan administrator.",
+    "Change role": "Promijeni ulogu",
+    "Invalid role.": "Nevažeća uloga.",
+    "Please enter the bind password again when you change the server, port, encryption, certificate settings or bind account.": "Ponovo unesite bind lozinku kada mijenjate server, port, enkripciju, postavke certifikata ili bind račun.",
+    "Set the role for user: {user}": "Postavi ulogu za korisnika: {user}",
+    "Technician": "Tehničar",
+    "Technicians": "Tehničari",
+    "Technicians can use all tools and work with all signatures, but have no access to Users, System Configuration and System Logs.": "Tehničari mogu koristiti sve alate i raditi sa svim potpisima, ali nemaju pristup korisnicima, sistemskoj konfiguraciji i sistemskim dnevnicima."
 }

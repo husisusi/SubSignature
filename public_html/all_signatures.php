@@ -95,7 +95,7 @@ function loadSignatureTags(SQLite3 $db, array $signatures): array
 // 2. LOGIC & DATA FETCHING
 // ---------------------------------------------------------
 $current_user_id = (int)$_SESSION['user_id'];
-$is_admin = isAdmin();
+$is_admin = isStaff(); // administrators and technicians work with all signatures
 $message = '';
 
 // User Select Logic
@@ -255,12 +255,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $count += $db->changes();
         }
         $db->exec('COMMIT');
+        if ($is_admin) logSecurityEventToDB($db, 'SIGNATURES_DELETED_SELECTED', $current_user_id, $count . ' signatures');
         setFlash('success', t('{count} signatures deleted.', ['count' => $count]));
         header('Location: ' . $redirect);
         exit;
     }
 
-    // CHANGE TEMPLATE of the selected signatures (admins: any, users: their own)
+    // CHANGE TEMPLATE of the selected signatures (staff: any, users: their own)
     if ($action === 'bulk_template') {
         $tpl = (string)($_POST['template'] ?? '');
         $ids = $postedIds();
@@ -289,7 +290,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit;
     }
 
-    // ---- Tags: administrators only -----------------------------------
+    // ---- Tags: administrators and technicians only ---------------------
     if (in_array($action, ['create_tag', 'delete_tag', 'bulk_tag'], true) && !$is_admin) {
         http_response_code(403);
         exit(t('Access denied.'));
@@ -504,7 +505,7 @@ $errorMessage = popFlash('error');
         <?= langSwitcher() ?>
         <div class="user-profile">
             <div class="avatar"><?php echo strtoupper(substr($_SESSION['username'], 0, 1)); ?></div>
-            <div class="user-info"><div><?php echo e($_SESSION['username']); ?></div><span><?php echo $is_admin ? 'Administrator' : 'User'; ?></span></div>
+            <div class="user-info"><div><?php echo e($_SESSION['username']); ?></div><span><?= eRoleLabel() ?></span></div>
         </div>
         <a href="logout.php" class="btn-logout"><i class="fas fa-sign-out-alt"></i> <span><?= et('Sign Out') ?></span></a>
     </div>

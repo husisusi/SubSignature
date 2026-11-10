@@ -85,7 +85,7 @@ $serverSoftware = $_SERVER['SERVER_SOFTWARE'] ?? 'Unknown';
                 </div>
                 <div class="user-info">
                     <div><?php echo e($_SESSION['username']); ?></div>
-                    <span><?= isAdmin() ? et('Administrator') : et('User') ?></span>
+                    <span><?= eRoleLabel() ?></span>
                 </div>
             </div>
             <a href="logout.php" class="btn-logout">

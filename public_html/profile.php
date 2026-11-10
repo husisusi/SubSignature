@@ -17,7 +17,7 @@ $is_admin_editing_others = false;
 if (isset($_GET['user_id'])) {
     $requested_id = (int)$_GET['user_id'];
     
-    // SECURITY CHECK: Only Admins can edit other users
+    // SECURITY CHECK: Only administrators can edit other users (technicians cannot)
     if (isAdmin() && $requested_id !== $current_user_id) {
         $target_user_id = $requested_id;
         $is_admin_editing_others = true;
@@ -154,7 +154,7 @@ $sig_count = $sig_result->fetchArray(SQLITE3_ASSOC)['count'];
                 <div class="avatar"><?php echo strtoupper(substr($_SESSION['username'], 0, 1)); ?></div>
                 <div class="user-info">
                     <div><?php echo e($_SESSION['username']); ?></div>
-                    <span><?= isAdmin() ? et('Administrator') : et('User') ?></span>
+                    <span><?= eRoleLabel() ?></span>
                 </div>
             </div>
             <a href="logout.php" class="btn-logout"><i class="fas fa-sign-out-alt"></i> <span><?= et('Sign Out') ?></span></a>
@@ -225,7 +225,7 @@ $sig_count = $sig_result->fetchArray(SQLITE3_ASSOC)['count'];
 
                     <div class="form-group">
                         <label><?= et('Role') ?></label>
-                        <input type="text" value="<?php echo e(ucfirst($user['role'])); ?>" 
+                        <input type="text" value="<?= eRoleLabel($user['role']) ?>" 
                                disabled style="background: var(--bg-subtle); color: var(--text-muted);">
                     </div>
 
@@ -241,7 +241,7 @@ $sig_count = $sig_result->fetchArray(SQLITE3_ASSOC)['count'];
                 <div class="profile-header">
                     <div class="profile-avatar"><?php echo strtoupper(substr($user['username'], 0, 1)); ?></div>
                     <div class="profile-name"><?php echo e($user['full_name'] ?: $user['username']); ?></div>
-                    <div class="profile-role"><?php echo e($user['role']); ?></div>
+                    <div class="profile-role"><?= eRoleLabel($user['role']) ?></div>
                 </div>
 
                 <div class="stats-list">

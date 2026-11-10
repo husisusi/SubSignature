@@ -2,7 +2,7 @@
 // admin_templates.php - manage signature templates (default, import, rename, delete).
 
 require_once 'includes/config.php';
-requireAdmin();
+requireStaff();
 
 $message = popFlash('success');
 $error = popFlash('error');
@@ -262,7 +262,7 @@ usort($templates, function($a, $b) {
                 <div class="avatar"><?php echo strtoupper(substr($_SESSION['username'], 0, 1)); ?></div>
                 <div class="user-info">
                     <div><?php echo e($_SESSION['username']); ?></div>
-                    <span><?= et('Administrator') ?></span>
+                    <span><?= eRoleLabel() ?></span>
                 </div>
             </div>
             <a href="logout.php" class="btn-logout"><i class="fas fa-sign-out-alt"></i> <span><?= et('Sign Out') ?></span></a>

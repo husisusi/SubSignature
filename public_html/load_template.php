@@ -1,10 +1,10 @@
 <?php
 /**
  * load_template.php - returns the raw source of a template for the editor.
- * Admin only; delivered as plain text so a browser never renders it as a page.
+ * Administrators and technicians only; delivered as plain text so a browser never renders it as a page.
  */
 require_once 'includes/config.php';
-requireAdmin();
+requireStaff();
 
 $filename = basename((string)($_GET['file'] ?? ''));
 $path = TEMPLATES_DIR . '/' . $filename;

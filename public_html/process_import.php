@@ -24,7 +24,7 @@ $tagChoice = (array)($import_data['tag'] ?? ['id' => 0, 'new' => '', 'color' => 
 $tagChoice += ['id' => 0, 'new' => '', 'color' => 'blue'];
 
 // Authorization: admins may import for any user, everybody else only for themselves.
-if (!isAdmin() && $user_id !== (int)$_SESSION['user_id']) {
+if (!isStaff() && $user_id !== (int)$_SESSION['user_id']) {
     logSecurityEventToDB($db, 'IMPORT_DENIED', (int)$_SESSION['user_id'], 'Target user: ' . $user_id);
     setFlash('error', t('Access denied.'));
     header('Location: csv_import.php');
@@ -198,7 +198,7 @@ $template_display = templateDisplayName($template);
                 </div>
                 <div class="user-info">
                     <div><?php echo e($_SESSION['username']); ?></div>
-                    <span><?= isAdmin() ? et('Administrator') : et('User') ?></span>
+                    <span><?= eRoleLabel() ?></span>
                 </div>
             </div>
             <a href="logout.php" class="btn-logout">

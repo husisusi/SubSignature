@@ -245,11 +245,32 @@ class LdapConfig
         return $cfg;
     }
 
+    /** Settings that decide WHERE the bind password is sent and how the server is verified. */
+    private const CONNECTION_KEYS = ['host', 'port', 'encryption', 'verify_cert', 'ca_file', 'bind_dn'];
+
+    /**
+     * True when $new points the stored bind password at a different server / account
+     * or weakens how the server is verified.
+     */
+    public static function connectionChanged(array $old, array $new): bool
+    {
+        foreach (self::CONNECTION_KEYS as $key) {
+            if (($old[$key] ?? null) !== ($new[$key] ?? null)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     /**
      * Validates posted form data. Returns [config, errors]. An empty password
-     * field keeps the stored one ($currentPassword).
+     * field keeps the stored one ($currentPassword) - but only while the connection
+     * settings (host, port, encryption, certificate check, CA file, bind account) stay
+     * the same. Anyone who may edit these settings could otherwise redirect the stored
+     * service-account password to a server of their own; so a changed connection
+     * requires the password to be typed again ($current = the stored configuration).
      */
-    public static function fromInput(array $in, string $currentPassword): array
+    public static function fromInput(array $in, string $currentPassword, ?array $current = null): array
     {
         $errors = [];
         $cfg = self::defaults();
@@ -278,6 +299,10 @@ class LdapConfig
         $cfg['bind_dn'] = cleanText($in['bind_dn'] ?? '', 512);
         $newPass = is_string($in['bind_pass'] ?? null) ? $in['bind_pass'] : '';
         $cfg['bind_pass'] = $newPass !== '' ? $newPass : $currentPassword;
+        if ($newPass === '' && $current !== null && $currentPassword !== '' && self::connectionChanged($current, $cfg)) {
+            $cfg['bind_pass'] = '';   // never carry the stored password over to a changed connection
+            $errors[] = t('Please enter the bind password again when you change the server, port, encryption, certificate settings or bind account.');
+        }
 
         $cfg['base_dn'] = cleanText($in['base_dn'] ?? '', 512);
         if ($cfg['base_dn'] === '') {

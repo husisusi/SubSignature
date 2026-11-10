@@ -3,8 +3,8 @@
  * tag_picker.php - optional tag for imported signatures (CSV and LDAP import).
  *
  * The picker offers "no tag", an existing tag, or a new tag (name + colour).
- * Tags are managed by administrators, so the picker is only shown to them and
- * the server ignores the fields for everybody else. A new tag is only created
+ * Tags are managed by administrators and technicians, so the picker is only shown to
+ * them and the server ignores the fields for everybody else. A new tag is only created
  * when the import itself runs, never while previewing.
  */
 
@@ -22,12 +22,12 @@ function importTagList(SQLite3 $db): array
 /**
  * Reads and validates the picker fields of a request.
  * Returns ['id' => int, 'new' => string, 'color' => string, 'error' => string];
- * id 0 and new '' mean "no tag". Non-admins always get "no tag".
+ * id 0 and new '' mean "no tag". Normal users always get "no tag".
  */
 function resolveImportTagChoice(SQLite3 $db, array $post): array
 {
     $none = ['id' => 0, 'new' => '', 'color' => 'blue', 'error' => ''];
-    if (!isAdmin()) {
+    if (!isStaff()) {
         return $none;
     }
     $raw = (string)($post['tag'] ?? '');
@@ -58,7 +58,7 @@ function resolveImportTagChoice(SQLite3 $db, array $post): array
  */
 function applyImportTagChoice(SQLite3 $db, array $choice): int
 {
-    if (!isAdmin()) {
+    if (!isStaff()) {
         return 0;
     }
     if ((int)$choice['id'] > 0) {
@@ -103,7 +103,7 @@ function importTagName(SQLite3 $db, int $tagId): string
  */
 function renderTagPicker(SQLite3 $db, array $choice, string $selectClass = 'form-input'): string
 {
-    if (!isAdmin()) {
+    if (!isStaff()) {
         return '';
     }
     $tags = importTagList($db);

@@ -1,5 +1,6 @@
 <?php
-// admin_users.php
+// admin_users.php - user management. Administrators only: a technician must never be able to
+// create users, change roles or passwords, or (de)activate and delete accounts.
 
 require_once 'includes/config.php';
 requireAdmin();
@@ -17,7 +18,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $self_id = (int)$_SESSION['user_id'];
 
     // Name of the target for the audit log (also verifies that it exists).
-    $stmt = $db->prepare('SELECT username FROM users WHERE id = ?');
+    $stmt = $db->prepare('SELECT username, role FROM users WHERE id = ?');
     $stmt->bindValue(1, $target_user_id, SQLITE3_INTEGER);
     $target = $stmt->execute()->fetchArray(SQLITE3_ASSOC);
 
@@ -41,32 +42,57 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // Admins cannot lock themselves out (deactivate / demote / delete themselves).
         setFlash('error', t('You cannot change your own account here.'));
     } else {
-        $done = true;
+        // Removing administrator power from an admin (demote, deactivate, delete) is only allowed while
+        // ANOTHER active administrator remains. The check is part of the SQL statement, so it is atomic
+        // even when two administrators act at the same moment.
+        $keepAdmin = "(role != 'admin' OR (SELECT COUNT(*) FROM users WHERE role = 'admin' AND is_active = 1 AND id != :id) > 0)";
+        $newRole = null;
+        $sql = null;
+
         switch ($action) {
             case 'activate':
-                $sql = 'UPDATE users SET is_active = 1 WHERE id = ?';
+                $sql = 'UPDATE users SET is_active = 1 WHERE id = :id';
                 break;
             case 'deactivate':
-                $sql = 'UPDATE users SET is_active = 0 WHERE id = ?';
+                $sql = 'UPDATE users SET is_active = 0 WHERE id = :id AND ' . $keepAdmin;
                 break;
-            case 'make_admin':
-                $sql = "UPDATE users SET role = 'admin' WHERE id = ?";
-                break;
-            case 'make_user':
-                $sql = "UPDATE users SET role = 'user' WHERE id = ?";
+            case 'set_role':
+                $newRole = $_POST['role'] ?? '';
+                if (!isValidRole($newRole)) {
+                    setFlash('error', t('Invalid role.'));
+                    break;
+                }
+                if ($newRole === $target['role']) {
+                    setFlash('success', t('Action completed for user {user}.', ['user' => $target['username']]));
+                    break; // nothing to change, nothing to log
+                }
+                $sql = $newRole === ROLE_ADMIN
+                    ? 'UPDATE users SET role = :role WHERE id = :id'
+                    : 'UPDATE users SET role = :role WHERE id = :id AND ' . $keepAdmin;
                 break;
             case 'delete':
-                $sql = 'DELETE FROM users WHERE id = ?';
+                $sql = 'DELETE FROM users WHERE id = :id AND ' . $keepAdmin;
                 break;
-            default:
-                $done = false;
         }
-        if ($done) {
+
+        if ($sql !== null) {
             $stmt = $db->prepare($sql);
-            $stmt->bindValue(1, $target_user_id, SQLITE3_INTEGER);
+            $stmt->bindValue(':id', $target_user_id, SQLITE3_INTEGER);
+            if ($newRole !== null) {
+                $stmt->bindValue(':role', $newRole, SQLITE3_TEXT);
+            }
             $stmt->execute();
-            logSecurityEventToDB($db, 'ADMIN_USER_' . strtoupper($action), $self_id, 'Target: ' . $target['username']);
-            setFlash('success', t('Action completed for user {user}.', ['user' => $target['username']]));
+
+            if ($db->changes() < 1) {
+                setFlash('error', t('At least one active administrator must remain.'));
+            } else {
+                if ($action === 'set_role') {
+                    logSecurityEventToDB($db, 'ADMIN_ROLE_CHANGED', $self_id, 'Target: ' . $target['username'] . ' (' . $target['role'] . ' -> ' . $newRole . ')');
+                } else {
+                    logSecurityEventToDB($db, 'ADMIN_USER_' . strtoupper($action), $self_id, 'Target: ' . $target['username']);
+                }
+                setFlash('success', t('Action completed for user {user}.', ['user' => $target['username']]));
+            }
         }
     }
     header('Location: admin_users.php');
@@ -85,7 +111,8 @@ while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
 // Statistics
 $total_users = count($users);
 $active_users = array_filter($users, function ($u) { return $u['is_active'] == 1; });
-$admin_users = array_filter($users, function ($u) { return $u['role'] == 'admin'; });
+$admin_users = array_filter($users, function ($u) { return $u['role'] === ROLE_ADMIN; });
+$technician_users = array_filter($users, function ($u) { return $u['role'] === ROLE_TECHNICIAN; });
 ?>
 <!DOCTYPE html>
 <html lang="<?= e(currentLang()) ?>" dir="<?= e(langDir()) ?>">
@@ -126,6 +153,8 @@ $admin_users = array_filter($users, function ($u) { return $u['role'] == 'admin'
         .badge { padding: 0.25rem 0.6rem; border-radius: 99px; font-size: 0.75rem; font-weight: 600; text-transform: uppercase; }
         .badge-admin { background: var(--danger-bg); color: var(--danger-text); border: 1px solid var(--danger-border); }
         .badge-user { background: var(--bg-hover); color: var(--primary); border: 1px solid var(--info-border); }
+        .badge-tech { background: var(--warning-bg); color: var(--warning-text); border: 1px solid var(--warning-border); }
+        .role-select { width: 100%; padding: 0.75rem; border: 1px solid var(--border); border-radius: 6px; font-size: 1rem; background: var(--bg-white); color: var(--text-main); }
         .status-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
         .status-active { color: var(--success-text); } .dot-active { background: #16a34a; }
         .status-inactive { color: var(--danger-text); } .dot-inactive { background: #dc2626; }
@@ -206,6 +235,11 @@ $admin_users = array_filter($users, function ($u) { return $u['role'] == 'admin'
                 <i class="fas fa-crown stat-icon"></i>
             </div>
             <div class="stat-card">
+                <span class="stat-label"><?= et('Technicians') ?></span>
+                <span class="stat-value" style="color:var(--warning-text);"><?php echo count($technician_users); ?></span>
+                <i class="fas fa-screwdriver-wrench stat-icon"></i>
+            </div>
+            <div class="stat-card">
                 <span class="stat-label"><?= et('Inactive') ?></span>
                 <span class="stat-value" style="color:var(--text-muted);"><?php echo $total_users - count($active_users); ?></span>
                 <i class="fas fa-user-slash stat-icon" style="color:var(--text-muted);"></i>
@@ -250,8 +284,10 @@ $admin_users = array_filter($users, function ($u) { return $u['role'] == 'admin'
                                 <?php echo e($user['full_name'] ?: '-'); ?>
                             </td>
                             <td>
-                                <?php if ($user['role'] == 'admin'): ?>
+                                <?php if ($user['role'] === ROLE_ADMIN): ?>
                                     <span class="badge badge-admin"><i class="fas fa-crown"></i> <?= et('Admin') ?></span>
+                                <?php elseif ($user['role'] === ROLE_TECHNICIAN): ?>
+                                    <span class="badge badge-tech"><i class="fas fa-screwdriver-wrench"></i> <?= et('Technician') ?></span>
                                 <?php else: ?>
                                     <span class="badge badge-user"><?= et('User') ?></span>
                                 <?php endif; ?>
@@ -284,12 +320,8 @@ $admin_users = array_filter($users, function ($u) { return $u['role'] == 'admin'
                                             <button type="button" data-post="admin_users.php" data-params='{"action":"activate","user_id":"<?php echo (int)$user['id']; ?>"}' class="btn-icon success" data-confirm="<?= et('Activate this user?') ?>" title="<?= et('Activate') ?>"><i class="fas fa-user-check"></i></button>
                                         <?php endif; ?>
                                         
-                                        <?php if ($user['role'] == 'user'): ?>
-                                            <button type="button" data-post="admin_users.php" data-params='{"action":"make_admin","user_id":"<?php echo (int)$user['id']; ?>"}' class="btn-icon" data-confirm="<?= et('Promote to Admin?') ?>" title="<?= et('Promote') ?>"><i class="fas fa-arrow-up"></i></button>
-                                        <?php else: ?>
-                                            <button type="button" data-post="admin_users.php" data-params='{"action":"make_user","user_id":"<?php echo (int)$user['id']; ?>"}' class="btn-icon" data-confirm="<?= et('Demote to User?') ?>" title="<?= et('Demote') ?>"><i class="fas fa-arrow-down"></i></button>
-                                        <?php endif; ?>
-                                        
+                                        <button type="button" class="btn-icon" data-role-id="<?php echo (int)$user['id']; ?>" data-role-name="<?php echo e($user['username']); ?>" data-role-current="<?php echo e(isValidRole($user['role']) ? $user['role'] : ROLE_USER); ?>" title="<?= et('Change role') ?>"><i class="fas fa-user-shield"></i></button>
+
                                         <button type="button" data-post="admin_users.php" data-params='{"action":"delete","user_id":"<?php echo (int)$user['id']; ?>"}' class="btn-icon danger" data-confirm="<?= et('Permanently delete?') ?>" title="<?= et('Delete') ?>"><i class="fas fa-trash"></i></button>
                                     <?php else: ?>
                                         <a href="profile.php" class="btn-icon" title="<?= et('Edit My Profile') ?>"><i class="fas fa-user-edit"></i></a>
@@ -333,6 +365,39 @@ $admin_users = array_filter($users, function ($u) { return $u['role'] == 'admin'
         </div>
     </div>
 
+    <div id="roleModal" class="modal-overlay">
+        <div class="modal-box">
+            <span class="modal-close" id="roleModalClose">&times;</span>
+            <div class="modal-header">
+                <h3><i class="fas fa-user-shield" style="color:var(--primary);"></i> <?= et('Change role') ?></h3>
+                <p style="color:var(--text-muted); font-size:0.9rem; margin-top:0.5rem;">
+                    <?= eth('Set the role for user: {user}', ['user' => '<strong id="roleModalUsername"></strong>']) ?>
+                </p>
+            </div>
+
+            <form method="POST" action="admin_users.php">
+                <?php echo csrfField(); ?>
+                <input type="hidden" name="action" value="set_role">
+                <input type="hidden" name="user_id" id="roleModalUserId">
+
+                <div class="form-group" style="margin-bottom:1.5rem;">
+                    <label for="role_select" style="display:block; margin-bottom:0.5rem; font-weight:500;"><?= et('Role') ?></label>
+                    <select id="role_select" name="role" class="role-select">
+                        <option value="user"><?= et('User') ?></option>
+                        <option value="technician"><?= et('Technician') ?></option>
+                        <option value="admin"><?= et('Administrator') ?></option>
+                    </select>
+                    <small style="color:var(--text-muted); display:block; margin-top:0.5rem;"><?= et('Technicians can use all tools and work with all signatures, but have no access to Users, System Configuration and System Logs.') ?></small>
+                </div>
+
+                <div style="display:flex; justify-content:flex-end; gap:0.5rem;">
+                    <button type="button" class="btn btn-danger" style="background:var(--bg-white); color:var(--text-main); border:1px solid var(--border);" id="roleModalCancel"><?= et('Cancel') ?></button>
+                    <button type="submit" class="btn btn-primary"><?= et('Save') ?></button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <script src="<?= assetUrl('js/post-action.js') ?>"></script>
     <script>
         const modal = document.getElementById('resetModal');
@@ -345,7 +410,22 @@ $admin_users = array_filter($users, function ($u) { return $u['role'] == 'admin'
             modal.style.display = 'flex';
         }
         function closeResetModal() { modal.style.display = 'none'; }
-        window.onclick = function(event) { if (event.target == modal) closeResetModal(); }
+        const roleModal = document.getElementById('roleModal');
+        function closeRoleModal() { roleModal.style.display = 'none'; }
+        window.onclick = function(event) {
+            if (event.target == modal) closeResetModal();
+            if (event.target == roleModal) closeRoleModal();
+        }
+        document.querySelectorAll('[data-role-id]').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                document.getElementById('roleModalUserId').value = btn.getAttribute('data-role-id');
+                document.getElementById('roleModalUsername').textContent = btn.getAttribute('data-role-name');
+                document.getElementById('role_select').value = btn.getAttribute('data-role-current');
+                roleModal.style.display = 'flex';
+            });
+        });
+        document.getElementById('roleModalClose').addEventListener('click', closeRoleModal);
+        document.getElementById('roleModalCancel').addEventListener('click', closeRoleModal);
         document.querySelectorAll('[data-reset-id]').forEach(function (btn) {
             btn.addEventListener('click', function () {
                 openResetModal(btn.getAttribute('data-reset-id'), btn.getAttribute('data-reset-name'));

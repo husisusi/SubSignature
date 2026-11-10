@@ -1,4 +1,4 @@
-# SubSignature - Security Review (release 1.4.0)
+# SubSignature - Security Review (release 1.5.0)
 
 Scope: the complete PHP code base of the repository (`public_html/`, `private_data/`
 layout, Apache configuration). Method: manual code review of every page, plus functional
@@ -31,6 +31,26 @@ not part of this review.
 | 13 | Low | `htmlspecialchars()` without flags (does not escape `'` on PHP < 8.1) in attributes. | Replaced by `e()` (`ENT_QUOTES | ENT_SUBSTITUTE`, UTF-8) everywhere. |
 | 14 | Low | Several bugs: deactivated-account message never matched, administrator label shown to normal users, `{{PHONE_CLEAN}}` not replaced in downloads/mails. | Fixed. |
 
+## Roles: administrator, technician, user (1.5.0)
+
+The technician may use everything except **Users**, **System Configuration** and **System Logs**. Because that is a
+partly trusted role, the review looked at how a technician could reach administrator rights, and closed these paths:
+
+| Path | Control |
+|------|---------|
+| Direct URL / crafted POST to Users, System Configuration, System Logs, other users' profiles, user creation | `requireAdmin()` (server side, role re-read from the database per request); `isAdmin()` is true for administrators only. A technician is redirected and an `UNAUTHORIZED_ACCESS` event is logged. |
+| Giving oneself or someone else a role | Only `admin_users.php` / `register.php?admin=1` (administrator only) write roles; the value is checked against a whitelist (`user`, `technician`, `admin`); public registration always creates `user`. Role changes are audit-logged. |
+| Locking everybody out / removing the last administrator | Demote / deactivate / delete of an administrator only succeeds while another active administrator exists (inside the SQL statement, atomic). Own account cannot be changed on that page. |
+| LDAP settings: redirecting the stored bind password to a rogue server or weakening certificate checks | Changing host, port, encryption, certificate verification, CA file or bind DN requires the bind password to be typed again (`LdapConfig::fromInput`); test / preview use the stored configuration only. The import cannot create users or roles. |
+| Stored XSS through templates (a technician writes a template that an administrator opens) | `sanitizeTemplateHtml()` (tokenizer based, attribute rebuild, URL allow-list, raw-text/foreign elements removed, fail closed) on save, import, preview, send and render, plus the DOM based sanitizer in the browser; standalone previews run under a `sandbox` CSP, modal previews in `sandbox=""` iframes. 100+ attack strings (event handlers with odd separators, entity-encoded schemes, comment and raw-text tricks, SVG/MathML mutation vectors) were checked in a real browser: no script executes, output is idempotent. |
+| Template or image upload leading to code execution | Template names are validated (`signature_*.html`), content with `<?` is refused, images are limited to JPG/PNG/GIF/WEBP with content sniffing and re-named files; no SVG, no PHP. |
+| API tokens | Read-only scope (`signatures:read`) - a technician can already read all signatures, so a token gives no additional data; tokens are hashed, shown once, revocable and every creation / revocation is audit-logged. |
+| Reading logs / users to cover tracks or find targets | Not reachable: logs, users and system configuration (SMTP, security settings) are administrator-only. The user drop-down in All Signatures lists usernames, which is needed to manage signatures. |
+
+Remaining trust assumption: a technician can change templates that all users see and can read every signature. Assign the
+role only to people who are allowed to do that. Their actions (template changes, imports, token handling, LDAP settings,
+bulk deletes) are written to the audit log, which only administrators can read.
+
 ## Controls for the new features
 
 **LDAP import**
@@ -46,10 +66,10 @@ not part of this review.
 
 * Every filter value is validated (whitelists for sort, source and colour, numeric tag id, length-limited text) and only bound as a prepared-statement parameter; the sort clause comes from a fixed map, never from user text.
 * Normal users are always scoped to their own `user_id` on the server, whatever `user_id` says in the URL; bulk delete / template change add `AND user_id = ?` for them.
-* Creating, deleting and assigning tags is administrator-only (403 for others), POST + CSRF; tag names are restricted to letters, digits, spaces and `. _ - / &`, unique case-insensitively, and escaped on output. Colours are keys that map to CSS classes - no user-controlled CSS.
+* Creating, deleting and assigning tags is limited to administrators and technicians (403 for others), POST + CSRF; tag names are restricted to letters, digits, spaces and `. _ - / &`, unique case-insensitively, and escaped on output. Colours are keys that map to CSS classes - no user-controlled CSS.
 * "Delete All" uses the same WHERE clause as the list, so it removes exactly what is shown; destructive admin actions are audit-logged.
 * Template changes only accept names of existing template files (no path input).
-* The tag option of the CSV and LDAP import is administrator-only on the server too (ignored for everybody else); a new tag name goes through the same validation, the tag is created inside the import transaction (CSV) or right before it (LDAP), and the tag id is always bound as a parameter.
+* The tag option of the CSV and LDAP import is restricted to administrators and technicians on the server too (ignored for everybody else); a new tag name goes through the same validation, the tag is created inside the import transaction (CSV) or right before it (LDAP), and the tag id is always bound as a parameter.
 
 **Token API**
 
@@ -60,7 +80,7 @@ not part of this review.
 ## Residual risks and recommendations
 
 * **Run behind HTTPS.** Without it, session cookies lose the `Secure` flag and the API refuses to work by design.
-* **Admins are trusted.** Administrators can edit templates (HTML) and configure the LDAP filter. Sanitizing is defence in depth, not a substitute for admin trust. Restrict admin access by network if possible.
+* **Administrators and technicians are trusted with templates.** Both can edit template HTML and configure the LDAP filter. Sanitizing is defence in depth, not a substitute for trust. Restrict access to the tooling by network if possible and give the technician role sparingly.
 * **`secret.key` protects stored secrets.** Anyone who can read both the database and `secret.key` can decrypt the SMTP/LDAP passwords. Keep `private_data/` outside the web root with mode 0750 and back both up together.
 * **Directory users do not get accounts.** Users who should log in to SubSignature must be created locally (or register); the LDAP import only fills their signatures.
 * **Bundled JavaScript libraries** (Jodit, Ace, Font Awesome) are third-party code and need to be updated by the project maintainers; they were not audited here.

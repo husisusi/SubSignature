@@ -2,7 +2,7 @@
 // admin_images.php - upload, list and delete images used by signature templates.
 
 require_once 'includes/config.php';
-requireAdmin();
+requireStaff();
 
 $message = popFlash('success');
 $error = popFlash('error');
@@ -230,7 +230,7 @@ if (isset($_GET['error'])) $error = $_GET['error'];
                 <div class="avatar"><?php echo strtoupper(substr($_SESSION['username'] ?? 'A', 0, 1)); ?></div>
                 <div class="user-info">
                     <div><?php echo e($_SESSION['username'] ?? 'Admin'); ?></div>
-                    <span><?= et('Administrator') ?></span>
+                    <span><?= eRoleLabel() ?></span>
                 </div>
             </div>
             <a href="logout.php" class="btn-logout"><i class="fas fa-sign-out-alt"></i> <span><?= et('Sign Out') ?></span></a>

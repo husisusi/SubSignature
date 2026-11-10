@@ -10,7 +10,7 @@ set_time_limit(300);
 ini_set('memory_limit', '256M');
 
 $target_user_id = (int)$_SESSION['user_id'];
-if (isAdmin() && isset($_GET['user_id'])) {
+if (isStaff() && isset($_GET['user_id'])) {
     $target_user_id = (int)$_GET['user_id'];
 }
 

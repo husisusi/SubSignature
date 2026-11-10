@@ -17,7 +17,7 @@ if (isset($_GET['cancel'])) {
 }
 
 // Access Control
-$is_admin = isAdmin();
+$is_admin = isStaff(); // administrators and technicians may import for any user
 $user_id = (int)$_SESSION['user_id'];
 
 // Load Users (Admin only)
@@ -288,7 +288,7 @@ $csrf_token = generateCSRFToken();
                 <div class="avatar"><?php echo strtoupper(substr($_SESSION['username'], 0, 1)); ?></div>
                 <div class="user-info">
                     <div><?php echo e($_SESSION['username']); ?></div>
-                    <span><?= isAdmin() ? et('Administrator') : et('User') ?></span>
+                    <span><?= eRoleLabel() ?></span>
                 </div>
             </div>
             <a href="logout.php" class="btn-logout"><i class="fas fa-sign-out-alt"></i> <span><?= et('Sign Out') ?></span></a>

@@ -7,7 +7,7 @@ bearer tokens.
 
 ## Quick start
 
-1. Sign in as administrator and open **API Tokens** in the sidebar.
+1. Sign in as administrator or technician and open **API Tokens** in the sidebar.
 2. Create a token (label, expiry). Copy it immediately - only its SHA-256 hash is stored.
 3. Call the API:
 

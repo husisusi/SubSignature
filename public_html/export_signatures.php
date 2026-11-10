@@ -6,7 +6,7 @@ require_once 'includes/config.php';
 requireLogin();
 
 $user_id = $_SESSION['user_id'];
-$is_admin = isAdmin();
+$is_admin = isStaff(); // administrators and technicians may export any user
 
 // Initialize variables
 $signatures = [];
@@ -306,7 +306,7 @@ if ($is_admin) {
                 </div>
                 <div class="user-info">
                     <div><?php echo e($_SESSION['username']); ?></div>
-                    <span><?= isAdmin() ? et('Administrator') : et('User') ?></span>
+                    <span><?= eRoleLabel() ?></span>
                 </div>
             </div>
             <a href="logout.php" class="btn-logout">
