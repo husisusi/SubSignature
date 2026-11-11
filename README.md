@@ -34,10 +34,10 @@ The focus is privacy and security. The application runs entirely on your server:
 * **Template editor** (WYSIWYG + code editor), image manager, template backup (ZIP).
 * **Signature rollout:** administrators and technicians can send signatures to users by email (SMTP).
 * **User management** with three roles (**administrator / technician / user**), activation, optional self-registration. See [Roles](#roles).
-* **All Signatures overview** (sidebar): search, filter by user, **template**, **tag** and **source** (manual / CSV / LDAP), sort, bulk actions (delete, send, change template, add or remove tags). See [All Signatures](#all-signatures-overview).
+* **All Signatures overview** (sidebar): search, filter by user, **template**, **tag** and **source** (manual / CSV / LDAP), sort, bulk actions (delete, send, change template, add or remove tags), **inline edit** of a single signature, and a **sync-status badge** per signature: up to date or out of date, counted per device ("2/3 up to date"). See [All Signatures](#all-signatures-overview).
 * **CSV import / export** of signatures (delimiter `,` or `;`, formula-injection safe export); administrators and technicians can put a **tag** on every imported signature.
 * **LDAP / Active Directory import** of signatures from directory data with selection in a preview, target user and template (import only, no accounts are created, no LDAP login). See [LDAP import](#ldap--active-directory-import).
-* **Read-only API with bearer tokens** to prepare a desktop agent for Outlook and Thunderbird. See [API](#api-for-the-desktop-agent).
+* **API with bearer tokens** for the desktop agent (Windows + Linux, already built): reads signatures for Outlook and Thunderbird, and reports back per-signature sync status. Fine-grained token scopes (`signatures:read`, `status:write`). See [API](#api-for-the-desktop-agent).
 * **18 languages** (English, Deutsch, Español, Français, Italiano, Português, Nederlands, Polski, Türkçe, Русский, Українська, العربية (RTL), हिन्दी, Bahasa Indonesia, 中文, 日本語, 한국어, Bosanski): one JSON file per language in `public_html/lang/`, automatic detection from the browser, switcher in the sidebar and on the login page, per-user choice, system-wide default. See [Languages](#languages).
 * **Company-wide placeholders** `{{COMPANY}}`, `{{WEBSITE}}`, `{{ADDRESS}}`, `{{DISCLAIMER}}`: maintained once in Admin -> Configuration and filled into every signature.
 * **System status** panel (Admin -> Configuration): PHP version and extensions, writable directories, data directory outside the web root, secret key, installer leftovers.
@@ -141,13 +141,29 @@ If the PHP `ldap` extension is missing, the page shows a notice; the settings ca
 
 **Bulk actions** on the selected signatures: *Send*, *Delete*, *Change template* (administrators and technicians for any signature, users for their own), *Add tag* / *Remove tag* (administrators and technicians). *Delete All* removes exactly the signatures the current filter shows.
 
+**Editing a single signature:** the pencil icon on a signature opens an edit dialog (name, role, email, phone, template; administrators and technicians can also change its tags there). Users may edit their own signatures, administrators and technicians any signature within their scope - the same ownership rule enforced everywhere else applies on the actual save, not only in the form that is shown. Editing an **LDAP-sourced** signature shows a warning that the next LDAP re-import will overwrite manual changes.
+
+**Sync status:** each signature carries a coloured badge showing whether the desktop agents have the current version. Every agent installation (device) that applied the signature is tracked on its own:
+
+| Badge | Meaning |
+|-------|---------|
+| Grey - *Never synced* | No device has reported this signature. |
+| Green - *Up to date* / *2/2 up to date* | Every device has applied the current version and reported within the freshness window. |
+| Yellow - *Out of date* / *1/3 up to date* | At least one device still has an older version, has not reported for a while (*No recent sync*) or reported a warning. |
+| Red | At least one device reported an error applying it. |
+
+"Current version" means the exact HTML the API serves right now: as soon as you edit a signature - or its template, or the company details - every device turns **Out of date** until its next agent run fetches and applies the new version, then it turns green again. With one device the badge names its state, with several it counts them (*2/3 up to date*).
+
+Hover over the badge for a summary, or click it for a list of all devices with their state, last report time, agent version and message. Two settings under **Admin → Configuration**: the freshness window (default 6 hours) and after how many days a silent device is forgotten (default 30, e.g. a replaced laptop). Only agents with a token that has the `status:write` scope report - see below.
+
 ## API for the desktop agent
 
-A planned **Go** agent for **Windows, Linux and macOS** will fetch signatures from the server and install them in Outlook and Thunderbird. The server side is ready:
+A **Go** agent for **Windows and Linux** (already built, see `subsignature-agent/` in the repository) fetches signatures from the server, installs them in Outlook and Thunderbird, and reports back whether each install succeeded. The server side:
 
-* Create a token under **Admin → API Tokens** (scope `signatures:read`, optional expiry, revocable, only the hash is stored).
+* Create a token under **Admin → API Tokens** with the scopes it needs: `signatures:read` to fetch signatures, `status:write` to push sync status (a token can have either, both, or be revoked independently of others). Optional expiry, revocable, only the hash is stored.
 * `GET /api/v1/signatures` returns rendered, sanitized HTML plus the raw fields, a plain-text variant and a hash for change detection; filters `username`, `email`, `updated_since`, paging.
-* HTTPS only, rate limited, no session or cookie involved.
+* `POST /api/v1/status` lets the agent report per signature `ok`/`warn`/`error` plus the version it applied (`html_sha256`), per device (feeding the sync-status badge above) - a narrow write that can only store status rows, never signature content, and needs its own scope so a read-only token cannot be used to fake a status report.
+* HTTPS only, rate limited (separate limits for reading and for status reports), no session or cookie involved.
 
 Full documentation with implementation notes for the agent: [docs/API.md](docs/API.md).
 
@@ -212,7 +228,7 @@ An overview of the protections and the results of the security review is in [doc
 
 ## Roadmap
 
-* SubSignature desktop agent (Go, Windows, Linux and macOS) that installs signatures in Outlook and Thunderbird using the API above.
+* macOS support for the desktop agent (currently Windows and Linux; see `subsignature-agent/`).
 * Optional LDAP import scheduling (cron/CLI).
 
 ## Contributing

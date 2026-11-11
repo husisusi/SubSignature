@@ -1,4 +1,4 @@
-VERSION ?= 0.4.0-alpha
+VERSION ?= 0.5.0-alpha
 LDFLAGS := -s -w -X subsignature-agent/internal/version.Version=$(VERSION)
 GOBUILD := CGO_ENABLED=0 go build -trimpath
 

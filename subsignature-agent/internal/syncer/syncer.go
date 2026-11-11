@@ -253,12 +253,58 @@ func Run(ctx context.Context, cfg *config.Config, opt Options) (*Report, error) 
 		r.apply(info, res)
 	}
 	r.applyOutlook(accts, res)
+
+	// Only report when the run completed in full: Skipped > 0 means it was
+	// aborted by a systemic error (auth/TLS/network/rate-limit - see
+	// api.Systemic), and sending yet another request right after the server
+	// told us to back off (or while the token/connection is broken) would
+	// make things worse, not better. The next successful run reports instead.
+	if r.cfg.Sync.ReportStatusOn() && !r.opt.DryRun && r.rep.Skipped == 0 {
+		r.reportStatus(ctx, emails)
+	}
+
 	if !r.opt.DryRun {
 		if err := r.st.Save(); err != nil {
 			r.fail("saving state", err)
 		}
 	}
 	return r.rep, errors.Join(r.rep.Errors...)
+}
+
+// reportStatus pushes this run's per-address outcome to the server (POST
+// /api/v1/status), so admins see a sync-status badge in "All Signatures".
+// Called only after a run that completed in full (see Run). An address with
+// no signature_id yet (no match found, or its very first fetch failed) has
+// nothing to attach a status to and is skipped; signature_sync_status is
+// keyed by signature, not by address. A failure to report is logged as a
+// note, not a sync error: the signatures were still applied correctly,
+// which is the actual job.
+func (r *runner) reportStatus(ctx context.Context, emails []string) {
+	var items []api.StatusItem
+	for _, email := range emails {
+		e := r.st.Get(email)
+		if e == nil || e.SignatureID <= 0 {
+			continue
+		}
+		status, msg := "ok", ""
+		switch {
+		case e.LastError != "":
+			status, msg = "error", e.LastError
+		case e.Warning != "":
+			status, msg = "warn", e.Warning
+		}
+		// ServerSHA256 identifies the version that was resolved (and, unless
+		// LastError says otherwise, applied) in this run.
+		items = append(items, api.StatusItem{SignatureID: e.SignatureID, Status: status, Message: msg, HTMLSHA256: e.ServerSHA256})
+	}
+	if len(items) == 0 {
+		return
+	}
+	deviceID := r.st.EnsureDeviceID()
+	if err := r.client.ReportStatus(ctx, deviceID, version.Version, items); err != nil {
+		r.note("could not report sync status to the server: %v", err)
+		r.log.Warn("reporting sync status failed", "err", err)
+	}
 }
 
 func (r *runner) loadState() error {
@@ -274,6 +320,16 @@ func (r *runner) fail(what string, err error) {
 		lvl = slog.LevelWarn
 	}
 	r.log.Log(context.Background(), lvl, what, "err", err)
+}
+
+// failFor records a failure that happened while applying (not while
+// resolving) one address - a Thunderbird/Outlook write failure, say. resolve()
+// runs before apply()/applyOutlook() and already set the entry's LastError to
+// "" on success, so without this an apply-time failure would never show up in
+// the state, in "status", or in the sync-status report pushed to the server.
+func (r *runner) failFor(email, what string, err error) {
+	r.fail(what, err)
+	r.st.Entry(email).LastError = err.Error()
 }
 
 func (r *runner) act(format string, a ...any) {
@@ -403,7 +459,7 @@ func (r *runner) resolve(ctx context.Context, email string) (rs *resolution, abo
 	if errors.Is(err, sigselect.ErrNone) {
 		r.log.Warn("no signature on the server - local setting stays unchanged", "email", email, "detail", err.Error())
 		r.rep.Missing = append(r.rep.Missing, email)
-		r.markChecked(email, now)
+		r.markChecked(email, now, "No matching signature found on the server for this address.")
 		return &resolution{}, false
 	}
 	if err != nil {
@@ -423,18 +479,18 @@ func (r *runner) resolve(ctx context.Context, email string) (rs *resolution, abo
 	}
 	e.SignatureID, e.Template, e.Source = choice.Sig.ID, choice.Sig.Template, choice.Sig.Source
 	e.ServerSHA256, e.ContentSHA256, e.ServerUpdatedAt = choice.Sig.HTMLSHA256, sha, choice.Sig.UpdatedAt.Time
-	e.CheckedAt, e.LastError = now, ""
+	e.CheckedAt, e.LastError, e.Warning = now, "", strings.Join(choice.Notes, "; ")
 	return &resolution{prepared: prepared, text: choice.Sig.Text, notes: choice.Notes}, false
 }
 
-func (r *runner) markChecked(email string, now time.Time) {
+func (r *runner) markChecked(email string, now time.Time, warning string) {
 	e := r.st.Entry(email)
-	e.CheckedAt, e.LastError = now, ""
+	e.CheckedAt, e.LastError, e.Warning = now, "", warning
 }
 
 func (r *runner) recordError(email string, now time.Time, what string, err error) {
 	e := r.st.Entry(email)
-	e.CheckedAt, e.LastError = now, err.Error()
+	e.CheckedAt, e.LastError, e.Warning = now, err.Error(), ""
 	r.fail(what, err)
 }
 
@@ -451,7 +507,7 @@ func (r *runner) apply(info profileInfo, res map[string]*resolution) {
 			changed, err := r.writeIfChanged(dir, path, rs.prepared)
 			switch {
 			case err != nil:
-				r.fail("signature file for "+id.Email, err)
+				r.failFor(id.Email, "signature file for "+id.Email, err)
 			case changed:
 				r.rep.FilesWritten++
 				r.act("profile %s: wrote signature for %s (%s)", info.prof.Name, id.Email, filepath.Base(path))
@@ -513,7 +569,17 @@ func Status(cfg *config.Config, opt Options) ([]string, error) {
 	if err != nil && !errors.Is(err, ErrNoProfile) {
 		return nil, err
 	}
-	var out []string
+	// The device id is what the admin sees for this installation in
+	// All Signatures (sync status per device).
+	dev := r.st.DeviceID
+	if dev == "" {
+		dev = "(not assigned yet - created by the first sync)"
+	}
+	report := "on"
+	if !cfg.Sync.ReportStatusOn() {
+		report = "off"
+	}
+	out := []string{"Device ID:     " + dev, "Status report: " + report, ""}
 	if errors.Is(err, ErrNoProfile) {
 		out = append(out, "No Thunderbird profile and no Outlook account found.")
 	}

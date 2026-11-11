@@ -21,10 +21,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($action === 'create') {
         $label = cleanText($_POST['label'] ?? '', 80);
         $days = (int)($_POST['expires_days'] ?? 0);
+        $rawScopes = is_array($_POST['scope'] ?? null) ? $_POST['scope'] : [];
+        $scopes = array_values(array_intersect($rawScopes, array_keys(apiScopeLabels())));
         if ($label === '') {
             setFlash('error', t('Please enter a label (for example the machine or deployment name).'));
         } elseif (!in_array($days, [0, 30, 90, 365], true)) {
             setFlash('error', t('Invalid expiry.'));
+        } elseif (!$scopes) {
+            setFlash('error', t('Please choose at least one permission.'));
         } else {
             // 256 bits of entropy: a fast hash is sufficient for lookup.
             $token = 'ssg_' . bin2hex(random_bytes(32));
@@ -32,7 +36,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt->bindValue(1, $label, SQLITE3_TEXT);
             $stmt->bindValue(2, hash('sha256', $token), SQLITE3_TEXT);
             $stmt->bindValue(3, substr($token, 0, 10), SQLITE3_TEXT);
-            $stmt->bindValue(4, 'signatures:read', SQLITE3_TEXT);
+            $stmt->bindValue(4, implode(',', $scopes), SQLITE3_TEXT);
             $stmt->bindValue(5, $admin_id, SQLITE3_INTEGER);
             if ($days > 0) {
                 $stmt->bindValue(6, gmdate('Y-m-d H:i:s', time() + $days * 86400), SQLITE3_TEXT);
@@ -40,7 +44,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $stmt->bindValue(6, null, SQLITE3_NULL);
             }
             $stmt->execute();
-            logSecurityEventToDB($db, 'API_TOKEN_CREATED', $admin_id, 'Label: ' . $label);
+            logSecurityEventToDB($db, 'API_TOKEN_CREATED', $admin_id, 'Label: ' . $label . ', scope: ' . implode(',', $scopes));
             setFlash('success', t('Token created. Copy it now, it will not be shown again.'));
             setFlash('new_token', $token);
         }
@@ -88,7 +92,10 @@ $api_url = $scheme . '://' . $host . $basePath . '/api/v1/';
     <style>
         .form-label { display: block; font-size: 0.85rem; font-weight: 600; color: var(--text-muted); margin-bottom: 0.4rem; }
         .form-input { width: 100%; padding: 0.6rem; border: 1px solid var(--border-strong); border-radius: 6px; font-size: 0.95rem; }
-        .create-row { display: grid; grid-template-columns: 2fr 1fr auto; gap: 1rem; align-items: end; padding: 1.5rem; }
+        .create-row { display: grid; grid-template-columns: 2fr 1fr auto; gap: 1rem; align-items: end; padding: 1.5rem 1.5rem 0.5rem; }
+        .scope-row { display: flex; gap: 1.5rem; flex-wrap: wrap; padding: 0 1.5rem 1.5rem; }
+        .scope-check { display: flex; align-items: center; gap: 0.4rem; font-size: 0.9rem; }
+        .scope-badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 0.72rem; font-weight: 600; background: var(--bg-subtle); border: 1px solid var(--border-strong); margin: 1px; white-space: nowrap; }
         .token-box { background: #0f172a; color: #e2e8f0; font-family: monospace; padding: 1rem; border-radius: 8px; word-break: break-all; margin: 1rem 0; user-select: all; }
         .tok-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
         .tok-table th, .tok-table td { text-align: left; padding: 0.7rem; border-bottom: 1px solid var(--border); }
@@ -120,7 +127,7 @@ $api_url = $scheme . '://' . $host . $basePath . '/api/v1/';
     <main class="main-content">
         <header class="page-header">
             <h2><?= et('API Tokens') ?></h2>
-            <p><?= et('Read-only access to signatures for the SubSignature desktop agent (Outlook / Thunderbird).') ?></p>
+            <p><?= et('Access for the SubSignature desktop agent (Outlook / Thunderbird): reading signatures and/or reporting sync status.') ?></p>
         </header>
 
         <?php if ($message): ?>
@@ -142,27 +149,39 @@ $api_url = $scheme . '://' . $host . $basePath . '/api/v1/';
 
         <section class="card" style="margin-bottom:1.5rem;">
             <div class="card-header"><h3><i class="fas fa-plus-circle"></i> <?= et('Create token') ?></h3></div>
-            <form method="POST" action="admin_api.php" class="create-row">
+            <form method="POST" action="admin_api.php">
                 <?php echo csrfField(); ?>
                 <input type="hidden" name="action" value="create">
-                <div>
-                    <label class="form-label" for="label"><?= et('Label') ?></label>
-                    <input type="text" id="label" name="label" class="form-input" maxlength="80" required placeholder="<?= et('e.g. Windows rollout') ?>">
+                <div class="create-row">
+                    <div>
+                        <label class="form-label" for="label"><?= et('Label') ?></label>
+                        <input type="text" id="label" name="label" class="form-input" maxlength="80" required placeholder="<?= et('e.g. Windows rollout') ?>">
+                    </div>
+                    <div>
+                        <label class="form-label" for="expires_days"><?= et('Expires') ?></label>
+                        <select id="expires_days" name="expires_days" class="form-input">
+                            <option value="90"><?= et('in 90 days') ?></option>
+                            <option value="30"><?= et('in 30 days') ?></option>
+                            <option value="365"><?= et('in 1 year') ?></option>
+                            <option value="0"><?= et('never') ?></option>
+                        </select>
+                    </div>
+                    <button type="submit" class="btn btn-primary"><i class="fas fa-key"></i> <?= et('Generate') ?></button>
                 </div>
-                <div>
-                    <label class="form-label" for="expires_days"><?= et('Expires') ?></label>
-                    <select id="expires_days" name="expires_days" class="form-input">
-                        <option value="90"><?= et('in 90 days') ?></option>
-                        <option value="30"><?= et('in 30 days') ?></option>
-                        <option value="365"><?= et('in 1 year') ?></option>
-                        <option value="0"><?= et('never') ?></option>
-                    </select>
+                <div class="scope-row">
+                    <span class="form-label" style="margin:0;"><?= et('Permissions') ?>:</span>
+                    <?php foreach (apiScopeLabels() as $value => $label): ?>
+                    <label class="scope-check">
+                        <input type="checkbox" name="scope[]" value="<?= e($value) ?>" <?= $value === 'signatures:read' ? 'checked' : '' ?>>
+                        <?= e($label) ?>
+                    </label>
+                    <?php endforeach; ?>
                 </div>
-                <button type="submit" class="btn btn-primary"><i class="fas fa-key"></i> <?= et('Generate') ?></button>
             </form>
             <p style="padding:0 1.5rem 1.5rem; color:var(--text-muted); font-size:0.85rem;">
                 <?= eth('API base URL: {url}.', ['url' => '<code>' . e($api_url) . '</code>']) ?>
                 <?= eth('Send the token as {header}. The API is only served over HTTPS.', ['header' => '<code>Authorization: Bearer &lt;token&gt;</code>']) ?>
+                <?= et('"Read signatures" lets the agent fetch signature content. "Report sync status" lets it report back whether it applied a signature - it can never change a signature\'s content with this permission. The recommended setup is one token per rollout group with both permissions.') ?>
                 <?= eth('See {file}.', ['file' => '<code>docs/API.md</code>']) ?>
             </p>
         </section>
@@ -183,7 +202,7 @@ $api_url = $scheme . '://' . $host . $basePath . '/api/v1/';
                         <tr>
                             <td><?php echo e($t['label']); ?></td>
                             <td><code><?php echo e($t['token_prefix']); ?>…</code></td>
-                            <td><?php echo e($t['scope']); ?></td>
+                            <td><?php foreach (explode(',', $t['scope']) as $s): $s = trim($s); if ($s === '') continue; ?><span class="scope-badge"><?php echo e(apiScopeLabels()[$s] ?? $s); ?></span><?php endforeach; ?></td>
                             <td><?php echo e($t['created_at']); ?></td>
                             <td><?php echo $t['expires_at'] ? e($t['expires_at']) : 'never'; ?></td>
                             <td><?php echo $t['last_used_at'] ? e($t['last_used_at'] . ' (' . $t['last_used_ip'] . ')') : '–'; ?></td>

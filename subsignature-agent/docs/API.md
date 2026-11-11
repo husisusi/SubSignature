@@ -2,7 +2,7 @@
 
 The basis is the server documentation
 [`docs/API.md` in the SubSignature repository](https://github.com/husisusi/SubSignature/blob/main/docs/API.md)
-(API v1, since SubSignature 1.4.0, read-only). This document records **what the agent uses from it** and
+(API v1, since SubSignature 1.4.0; the status report since 1.6.0, the applied version in it since 1.7.0). This document records **what the agent uses from it** and
 **which decisions** it makes where the server documentation leaves things open.
 
 > **Status:** the Linux agent runs against the project owner's real server. The automated tests run against a
@@ -16,6 +16,7 @@ The basis is the server documentation
 |---|---|
 | `GET /api/v1/` | `subsignature-agent ping`: check reachability, TLS and token; shows service, version, token label and the clock difference to the server |
 | `GET /api/v1/signatures?email=<address>&limit=50&offset=<n>` | Fetch the signatures of an address, page by page until a page is not full |
+| `POST /api/v1/status` | After a complete sync: report per signature `ok`/`warn`/`error`, the applied version (`html_sha256`) and this installation's device id (see "Status report") |
 
 Not used, with reasons:
 
@@ -36,7 +37,7 @@ Accept: application/json
 ```
 
 * Token: `ssg_…`, 256 bit; created by an admin/technician under **API Tokens**, shown only once (the server stores
-  only the hash), scope `signatures:read`, revocable at any time. **One token per rollout group** is also what the
+  only the hash), scope `signatures:read` (plus `status:write` for the status report), revocable at any time. **One token per rollout group** is also what the
   documentation recommends.
 * The address is sent URL-encoded (`+` as `%2B`). The server compares case-insensitively.
 * There are no redirects (3xx are not followed; the token never goes to another host).
@@ -64,7 +65,7 @@ Accept: application/json
 | `source` | `manual`, `csv` or `ldap`; optionally as a ranking (`<prefer-source>`) |
 | `updated_at`, `created_at` | `YYYY-MM-DD HH:MM:SS`, **UTC**; "most recently changed" |
 | `html` | Fragment sanitized by the server, with absolute image URLs. The agent checks it **additionally** (tripwire) and turns it into a complete HTML document |
-| `html_sha256` | A change marker according to the documentation; **how it is computed is not documented**. The agent therefore does not verify it and only records it in its state |
+| `html_sha256` | SHA-256 (hex) of `html`. The agent does not verify it; it records the value in its state and **sends it back** in the status report, so the server can tell whether this device has the current version |
 | `text` | Plain-text version; used for the `.txt`/`.rtf` files of classic Outlook |
 | `role`, `phone`, `count` | read but not used |
 
@@ -110,11 +111,35 @@ The API defines neither a default signature nor an order. The agent decides in t
 
 There is no ETag. Every run fetches the complete response per address and compares the **fully prepared HTML** with the
 file in the profile: only on a difference is anything written. A deleted or hand-modified file therefore heals itself.
-The server's `html_sha256` value is only additional information.
+The server's `html_sha256` value is not used for this decision; it is only reported back (see below).
+
+## Status report
+
+After every **real** sync (`sync`/`run`, never `check`) that was not aborted (no 401/403/429/network abort), the agent
+sends one `POST /api/v1/status` with all addresses that resolved to a signature id:
+
+```json
+{ "device_id": "PC-ANNA-3f9a2b1c", "agent_version": "0.5.0-alpha",
+  "items": [ { "signature_id": 2, "status": "ok", "html_sha256": "9f2c…" },
+             { "signature_id": 7, "status": "warn", "message": "…", "html_sha256": "1b0e…" } ] }
+```
+
+* `status`: `error` if writing/applying failed (the error text goes into `message`), `warn` for a non-fatal note
+  (e.g. an ambiguous selection), otherwise `ok`.
+* `html_sha256`: the server's value for the version that was applied. The server compares it with the current version:
+  equal = **up to date**, different = **out of date** (the signature, its template or the company details changed since).
+  A value that is not 64 hex characters is left out rather than failing the report.
+* `device_id`: generated once (host name + random suffix from `crypto/rand`) and kept in the state file; shown by
+  `subsignature-agent status`. Every installation (and every user profile on a shared PC) is its own device, so All
+  Signatures can show "2/3 up to date". It is a label only, never authentication.
+* Needs a token with the **`status:write`** scope (separate from `signatures:read`). A 403 or any other failure only
+  logs a warning – the signatures themselves are applied regardless.
+* At most 200 items per request; more are split into several requests.
+* Off per installation with `<report-status>false</report-status>`.
 
 ## Open points (to verify against a real server)
 
-1. The documentation states neither how `html_sha256` is computed nor the time zone of `updated_since` – the agent deliberately uses neither.
+1. The agent does not use `updated_since` (template changes are invisible to it) and does not verify `html_sha256`; it only reports the value back.
 2. Whether `username` and `email` may be queried together (AND) – the agent filters itself instead.
 3. Does `count` always equal the number of `items`? The agent relies on `items` only.
 4. Does a server ever answer with `"items": null` instead of `[]`? The agent would treat that as an error.
@@ -128,4 +153,5 @@ The first alpha (0.1.0) ran against a **self-designed** contract. Dropped since 
 `default` flag, `sha256` verification, `404` as "no signature", configurable header and scheme (always
 `Authorization: Bearer`), running without a token. Added: paging, error format, `Retry-After`, `ping`,
 account/template/source selection. In the configuration `<name>` is now `<template>` (the old name is still read, with
-a warning), `duplicate-policy` only knows `newest` and `skip`, `api-path` is the API root `/api/v1`.
+a warning), `duplicate-policy` only knows `newest` and `skip`, `api-path` is the API root `/api/v1`. 0.5.0 added the
+status report (`POST /status`) including the applied `html_sha256`.

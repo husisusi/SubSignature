@@ -63,6 +63,13 @@
     <!-- Wait time after a failure (network gone, server down). -->
     <retry-interval>10m</retry-interval>
     <run-on-start>true</run-on-start>
+    <!-- After each sync, report back to the server whether this device applied
+         each signature (ok/warn/error) and which version it applied - shown
+         as a status badge in "All Signatures" ("up to date", "out of date",
+         "2/3 up to date" with several devices). Needs a token with the
+         status:write permission in addition to signatures:read; set to false
+         to turn it off. -->
+    <report-status>true</report-status>
   </sync>
 
   <signature>

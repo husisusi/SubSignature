@@ -68,6 +68,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_config'])) {
     $default_language = (string)($_POST['default_language'] ?? 'en');
     setSetting($db, 'default_language', isSupportedLanguage($default_language) ? $default_language : 'en');
 
+    // Agent sync status freshness window (All Signatures): how long a reported
+    // "ok" counts as green before the badge turns yellow (stale).
+    $status_freshness_hours = (int)($_POST['status_freshness_hours'] ?? 6);
+    if ($status_freshness_hours < 1 || $status_freshness_hours > 168) {
+        $problems[] = t('The sync freshness window must be between 1 and 168 hours.');
+        $status_freshness_hours = 6;
+    }
+    setSetting($db, 'status_freshness_hours', (string)$status_freshness_hours);
+
+    // Agent devices that stopped reporting are forgotten after this many days.
+    $status_device_retention_days = (int)($_POST['status_device_retention_days'] ?? 30);
+    if ($status_device_retention_days < 1 || $status_device_retention_days > 365) {
+        $problems[] = t('The device retention must be between 1 and 365 days.');
+        $status_device_retention_days = 30;
+    }
+    setSetting($db, 'status_device_retention_days', (string)$status_device_retention_days);
+
     // Company-wide values for the {{COMPANY}}, {{WEBSITE}}, {{ADDRESS}}, {{DISCLAIMER}} placeholders
     $company_website = cleanText($_POST['company_website'] ?? '', 200);
     if ($company_website !== '' && !preg_match('#^https?://[^\s<>"\']+$#i', $company_website)) {
@@ -136,6 +153,8 @@ $smtp_from_name = getSetting($db, 'smtp_from_name', 'Signature Admin');
 
 $allow_registration = getSetting($db, 'allow_registration', '1') === '1';
 $default_language = getSetting($db, 'default_language', 'en');
+$status_freshness_hours = (int)getSetting($db, 'status_freshness_hours', '6');
+$status_device_retention_days = statusDeviceRetentionDays($db);
 $company = companyFields();
 $health = systemHealthChecks();
 ?>
@@ -267,6 +286,26 @@ $health = systemHealthChecks();
                                 <option value="<?php echo e($code); ?>" <?php echo $code === $default_language ? 'selected' : ''; ?>><?php echo e($langName); ?></option>
                             <?php endforeach; ?>
                         </select>
+                    </div>
+                    <div class="config-item">
+                        <div>
+                            <h4 style="margin:0; font-size:0.95rem;"><i class="fas fa-satellite-dish"></i> <?= et('Agent sync freshness window') ?></h4>
+                            <p style="margin:0; color:var(--text-muted); font-size:0.8rem;"><?= et('How long a signature stays "green" in All Signatures after an agent reports it synced. Older reports turn the status yellow.') ?></p>
+                        </div>
+                        <div style="display:flex; align-items:center; gap:0.4rem;">
+                            <input type="number" name="status_freshness_hours" class="form-input" style="width:80px;" min="1" max="168" value="<?php echo (int)$status_freshness_hours; ?>">
+                            <span style="color:var(--text-muted); font-size:0.85rem;"><?= et('hours') ?></span>
+                        </div>
+                    </div>
+                    <div class="config-item">
+                        <div>
+                            <h4 style="margin:0; font-size:0.95rem;"><i class="fas fa-laptop"></i> <?= et('Forget silent devices after') ?></h4>
+                            <p style="margin:0; color:var(--text-muted); font-size:0.8rem;"><?= et('Devices (agent installations) that have not reported for this long are no longer counted in "2/3 up to date" and are removed - for example a replaced laptop.') ?></p>
+                        </div>
+                        <div style="display:flex; align-items:center; gap:0.4rem;">
+                            <input type="number" name="status_device_retention_days" class="form-input" style="width:80px;" min="1" max="365" value="<?php echo (int)$status_device_retention_days; ?>">
+                            <span style="color:var(--text-muted); font-size:0.85rem;"><?= et('days') ?></span>
+                        </div>
                     </div>
                 </section>
 

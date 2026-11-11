@@ -2,6 +2,7 @@ package syncer
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"encoding/pem"
 	"errors"
@@ -12,6 +13,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -21,6 +23,7 @@ import (
 	"subsignature-agent/internal/api"
 	"subsignature-agent/internal/config"
 	"subsignature-agent/internal/sigselect"
+	"subsignature-agent/internal/state"
 	"subsignature-agent/internal/thunderbird"
 )
 
@@ -36,22 +39,41 @@ const testToken = "ssg_tok"
 
 // fakeServer mimics the SubSignature API v1 (list with email filter, error format).
 type fakeServer struct {
-	mu          sync.Mutex
-	items       []map[string]any
-	down        bool   // 503 for everything
-	rateLimited string // if set: 429 rate_limited with this Retry-After
-	ignoreEmail bool   // the server "forgets" the email filter and returns everything
-	hits        map[string]int
-	total       int
-	pings       int
+	mu              sync.Mutex
+	items           []map[string]any
+	down            bool   // 503 for everything
+	rateLimited     string // if set: 429 rate_limited with this Retry-After
+	ignoreEmail     bool   // the server "forgets" the email filter and returns everything
+	hits            map[string]int
+	total           int
+	pings           int
+	statusForbidden bool               // simulate a token without the status:write scope
+	statusReports   []fakeStatusReport // every POST /status body received, in order
+}
+
+// fakeStatusReport is one decoded POST /api/v1/status body.
+type fakeStatusReport struct {
+	DeviceID     string `json:"device_id"`
+	AgentVersion string `json:"agent_version"`
+	Items        []struct {
+		SignatureID int64  `json:"signature_id"`
+		Status      string `json:"status"`
+		Message     string `json:"message"`
+		HTMLSHA256  string `json:"html_sha256"`
+	} `json:"items"`
 }
 
 func row(id int64, user, email, tpl, source, updated, html string) map[string]any {
 	return map[string]any{
 		"id": id, "username": user, "name": "Person " + user, "role": "", "email": email, "phone": "",
 		"template": tpl, "source": source, "created_at": updated, "updated_at": updated,
-		"html": html, "html_sha256": fmt.Sprintf("marker-%d-%d", id, len(html)), "text": "",
+		"html": html, "html_sha256": htmlHash(html), "text": "",
 	}
+}
+
+// htmlHash mimics the server: html_sha256 is the hex SHA-256 of the HTML.
+func htmlHash(html string) string {
+	return fmt.Sprintf("%x", sha256.Sum256([]byte(html)))
 }
 
 func newFake() *fakeServer {
@@ -84,6 +106,18 @@ func (f *fakeServer) edit(id int64, key string, val any) {
 	}
 }
 
+// itemField returns a field of a server-side signature as a string.
+func (f *fakeServer) itemField(id int64, key string) string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, it := range f.items {
+		if it["id"] == id {
+			return fmt.Sprint(it[key])
+		}
+	}
+	return ""
+}
+
 func (f *fakeServer) setDown(v bool) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -100,6 +134,18 @@ func (f *fakeServer) totalHits() int {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return f.total
+}
+
+func (f *fakeServer) setStatusForbidden(v bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.statusForbidden = v
+}
+
+func (f *fakeServer) statusReportsCopy() []fakeStatusReport {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]fakeStatusReport(nil), f.statusReports...)
 }
 
 func fakeErr(w http.ResponseWriter, status int, code string, hdr ...string) {
@@ -133,6 +179,20 @@ func (f *fakeServer) Handler() http.Handler {
 			f.pings++
 			fmt.Fprintf(w, `{"service":"SubSignature","version":"1.4.0","api":"v1","token":"Test-Token","server_time":%q}`,
 				time.Now().Add(90*time.Second).UTC().Format("2006-01-02T15:04:05+00:00"))
+			return
+		}
+		if r.Method == http.MethodPost && r.URL.Path == "/api/v1/status" {
+			if f.statusForbidden {
+				fakeErr(w, http.StatusForbidden, "forbidden")
+				return
+			}
+			var rep fakeStatusReport
+			if err := json.NewDecoder(r.Body).Decode(&rep); err != nil {
+				fakeErr(w, http.StatusBadRequest, "bad_request")
+				return
+			}
+			f.statusReports = append(f.statusReports, rep)
+			fmt.Fprintf(w, `{"received":%d,"updated":%d}`, len(rep.Items), len(rep.Items))
 			return
 		}
 		if r.URL.Path != "/api/v1/signatures" {
@@ -321,7 +381,7 @@ func TestFullFlowHTTP(t *testing.T) {
 
 	// 3. Server-side change: only the file changes, user.js does not (no Thunderbird restart needed).
 	fake.edit(10, "html", "<p>Erika v2</p>")
-	fake.edit(10, "html_sha256", "marker-new")
+	fake.edit(10, "html_sha256", htmlHash("<p>Erika v2</p>"))
 	rep, err = e.run()
 	if err != nil || rep.FilesWritten != 1 || rep.PrefsChanged != 0 {
 		t.Fatalf("change: files=%d prefs=%d err=%v", rep.FilesWritten, rep.PrefsChanged, err)
@@ -648,6 +708,10 @@ func TestStatus(t *testing.T) {
 	}
 	if strings.Contains(all, "id4") {
 		t.Error("the orphaned identity must not appear")
+	}
+	// The device id the server shows for this installation is printed too.
+	if !strings.Contains(all, "Device ID:     "+e.deviceID(t)) || !strings.Contains(all, "Status report: on") {
+		t.Errorf("device id / status report line missing:\n%s", all)
 	}
 }
 
@@ -999,5 +1063,159 @@ func TestPing(t *testing.T) {
 	e.cfg.Server.Auth.Token = "ssg_falsch"
 	if _, err := Ping(context.Background(), e.cfg, e.opt); !errors.Is(err, api.ErrAuth) {
 		t.Fatalf("err = %v", err)
+	}
+}
+
+// ---------- sync-status reporting (POST /api/v1/status) ----------
+
+func (e *env) deviceID(t *testing.T) string {
+	t.Helper()
+	st, err := state.Load(filepath.Join(e.opt.StateDir, "state.json"))
+	if err != nil {
+		t.Fatalf("loading state: %v", err)
+	}
+	return st.DeviceID
+}
+
+func TestReportStatusSentAfterSync(t *testing.T) {
+	fake := newFake()
+	srv := httptest.NewServer(fake.Handler())
+	defer srv.Close()
+	e := newEnv(t, srv.URL)
+
+	if _, err := e.run(); err != nil {
+		t.Fatal(err)
+	}
+	reports := fake.statusReportsCopy()
+	if len(reports) != 1 {
+		t.Fatalf("got %d status reports, expected 1", len(reports))
+	}
+	rep := reports[0]
+	if !deviceIDPatternForTest.MatchString(rep.DeviceID) {
+		t.Errorf("device_id %q does not look valid", rep.DeviceID)
+	}
+	if rep.AgentVersion == "" {
+		t.Error("agent_version is empty")
+	}
+	// nobody@example.com has no signature on the server (Missing) and never
+	// gets a signature_id - nothing to attach a status to, so only max and
+	// erika are reported (never 3, matching rep.Emails above).
+	if len(rep.Items) != 2 {
+		t.Fatalf("got %d items, expected 2 (max, erika), items=%+v", len(rep.Items), rep.Items)
+	}
+	byID := map[int64]struct{ status, message string }{}
+	for _, it := range rep.Items {
+		byID[it.SignatureID] = struct{ status, message string }{it.Status, it.Message}
+	}
+	// erika has exactly one matching signature (#10): clean "ok", no message.
+	if got := byID[10]; got.status != "ok" || got.message != "" {
+		t.Errorf("erika (#10) = %+v, expected ok with no message", got)
+	}
+	// ... and the report names the version that was applied, so the server
+	// can tell "up to date" from "out of date".
+	for _, it := range rep.Items {
+		if it.SignatureID == 10 && it.HTMLSHA256 != fake.itemField(10, "html_sha256") {
+			t.Errorf("erika (#10) html_sha256 = %q, expected the server's %q", it.HTMLSHA256, fake.itemField(10, "html_sha256"))
+		}
+	}
+	// max has several candidates for the same template (duplicate content
+	// merged, then resolved by duplicate-policy=newest): that produces a
+	// selection note, so this should be reported as "warn", not silently "ok".
+	maxStatus, maxOK := struct{ status, message string }{}, false
+	for id, got := range byID {
+		if id == 1 || id == 2 || id == 3 {
+			maxStatus, maxOK = got, true
+		}
+	}
+	if !maxOK || maxStatus.status != "warn" || maxStatus.message == "" {
+		t.Errorf("max = %+v (ok=%v), expected warn with a selection note", maxStatus, maxOK)
+	}
+
+	// The device id is generated once and then kept stable across runs.
+	id1 := e.deviceID(t)
+	if id1 == "" {
+		t.Fatal("device id was not persisted")
+	}
+	if _, err := e.run(); err != nil {
+		t.Fatal(err)
+	}
+	reports = fake.statusReportsCopy()
+	if len(reports) != 2 {
+		t.Fatalf("got %d status reports after the second run, expected 2", len(reports))
+	}
+	if reports[1].DeviceID != id1 {
+		t.Errorf("device_id changed between runs: %q -> %q", id1, reports[1].DeviceID)
+	}
+	if id2 := e.deviceID(t); id2 != id1 {
+		t.Errorf("persisted device id changed: %q -> %q", id1, id2)
+	}
+}
+
+// deviceIDPatternForTest mirrors the server's validation (see api.Client.ReportStatus).
+var deviceIDPatternForTest = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9 ._\-@]{0,79}$`)
+
+func TestReportStatusDisabledByConfig(t *testing.T) {
+	fake := newFake()
+	srv := httptest.NewServer(fake.Handler())
+	defer srv.Close()
+	e := newEnv(t, srv.URL)
+	off := false
+	e.cfg.Sync.ReportStatus = &off
+
+	rep, err := e.run()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rep.Errors) != 0 {
+		t.Errorf("errors: %v", rep.Errors)
+	}
+	if len(fake.statusReportsCopy()) != 0 {
+		t.Error("report-status=false must not send any status report")
+	}
+}
+
+func TestReportStatusSkippedOnAbort(t *testing.T) {
+	fake := newFake()
+	srv := httptest.NewServer(fake.Handler())
+	defer srv.Close()
+	e := newEnv(t, srv.URL)
+	if _, err := e.run(); err != nil {
+		t.Fatal(err)
+	}
+	before := len(fake.statusReportsCopy())
+
+	fake.mu.Lock()
+	fake.rateLimited = "60"
+	fake.mu.Unlock()
+	if _, err := e.run(); !errors.Is(err, api.ErrRateLimited) {
+		t.Fatalf("err = %v", err)
+	}
+	if n := len(fake.statusReportsCopy()); n != before {
+		t.Errorf("an aborted run must not push a status report (got %d reports, had %d before)", n, before)
+	}
+}
+
+func TestReportStatusForbiddenIsNotFatal(t *testing.T) {
+	fake := newFake()
+	srv := httptest.NewServer(fake.Handler())
+	defer srv.Close()
+	e := newEnv(t, srv.URL)
+	fake.setStatusForbidden(true)
+
+	rep, err := e.run()
+	if err != nil {
+		t.Fatalf("a token without status:write must not fail the sync itself: %v", err)
+	}
+	if len(rep.Errors) != 0 {
+		t.Errorf("errors: %v", rep.Errors)
+	}
+	found := false
+	for _, n := range rep.Notes {
+		if strings.Contains(n, "sync status") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected a note about the failed status report, got %v", rep.Notes)
 	}
 }

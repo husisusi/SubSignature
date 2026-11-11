@@ -519,3 +519,196 @@ func TestTLS12IsMinimum(t *testing.T) {
 		t.Fatal("TLS 1.1 was accepted")
 	}
 }
+
+// ---------- ReportStatus (POST /api/v1/status) ----------
+
+type capturedStatusRequest struct {
+	method string
+	path   string
+	auth   string
+	body   statusReportRequest
+}
+
+func TestReportStatusRequestAndResponse(t *testing.T) {
+	var got capturedStatusRequest
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got.method, got.path, got.auth = r.Method, r.URL.Path, r.Header.Get("Authorization")
+		if err := json.NewDecoder(r.Body).Decode(&got.body); err != nil {
+			t.Errorf("decoding request body: %v", err)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprintf(w, `{"received":%d,"updated":%d}`, len(got.body.Items), len(got.body.Items))
+	}))
+	defer srv.Close()
+
+	c := newTestClient(t, srv.URL, nil)
+	err := c.ReportStatus(context.Background(), "WIN-TEST-1", "1.6.0", []StatusItem{
+		{SignatureID: 1, Status: "ok"},
+		{SignatureID: 2, Status: "error", Message: "could not write registry"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.method != http.MethodPost || got.path != "/api/v1/status" {
+		t.Errorf("method/path = %s %s", got.method, got.path)
+	}
+	if got.auth != "Bearer "+testToken {
+		t.Errorf("Authorization = %q", got.auth)
+	}
+	if got.body.DeviceID != "WIN-TEST-1" || got.body.AgentVersion != "1.6.0" {
+		t.Errorf("device_id/agent_version = %q/%q", got.body.DeviceID, got.body.AgentVersion)
+	}
+	if len(got.body.Items) != 2 || got.body.Items[0].Status != "ok" || got.body.Items[1].Message != "could not write registry" {
+		t.Errorf("items = %+v", got.body.Items)
+	}
+}
+
+func TestReportStatusSendsAppliedHash(t *testing.T) {
+	var got capturedStatusRequest
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&got.body); err != nil {
+			t.Errorf("decoding request body: %v", err)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"received":3,"updated":3}`)
+	}))
+	defer srv.Close()
+
+	valid := strings.Repeat("ab", 32)
+	c := newTestClient(t, srv.URL, nil)
+	err := c.ReportStatus(context.Background(), "dev-1", "", []StatusItem{
+		{SignatureID: 1, Status: "ok", HTMLSHA256: valid},
+		{SignatureID: 2, Status: "ok", HTMLSHA256: strings.ToUpper(valid)}, // normalised to lower case
+		{SignatureID: 3, Status: "ok", HTMLSHA256: "not-a-hash"},           // dropped, report still sent
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.body.Items) != 3 {
+		t.Fatalf("items = %+v", got.body.Items)
+	}
+	if got.body.Items[0].HTMLSHA256 != valid || got.body.Items[1].HTMLSHA256 != valid {
+		t.Errorf("valid hashes not sent as lower-case hex: %+v", got.body.Items)
+	}
+	if got.body.Items[2].HTMLSHA256 != "" {
+		t.Errorf("invalid hash must be left out, got %q", got.body.Items[2].HTMLSHA256)
+	}
+}
+
+func TestReportStatusNoItemsSendsNoRequest(t *testing.T) {
+	called := false
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { called = true }))
+	defer srv.Close()
+	c := newTestClient(t, srv.URL, nil)
+	if err := c.ReportStatus(context.Background(), "dev-1", "", nil); err != nil {
+		t.Fatal(err)
+	}
+	if called {
+		t.Error("an empty report must not cause a request")
+	}
+}
+
+func TestReportStatusValidatesLocallyBeforeSending(t *testing.T) {
+	called := false
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { called = true }))
+	defer srv.Close()
+	c := newTestClient(t, srv.URL, nil)
+
+	cases := []struct {
+		name     string
+		deviceID string
+		agentVer string
+		items    []StatusItem
+	}{
+		{"empty device id", "", "", []StatusItem{{SignatureID: 1, Status: "ok"}}},
+		{"device id starts with a separator", "-bad", "", []StatusItem{{SignatureID: 1, Status: "ok"}}},
+		{"device id too long", strings.Repeat("a", 81), "", []StatusItem{{SignatureID: 1, Status: "ok"}}},
+		{"invalid agent version", "dev-1", "1.0;rm -rf", []StatusItem{{SignatureID: 1, Status: "ok"}}},
+		{"invalid status", "dev-1", "", []StatusItem{{SignatureID: 1, Status: "deleted"}}},
+		{"non-positive signature id", "dev-1", "", []StatusItem{{SignatureID: 0, Status: "ok"}}},
+	}
+	for _, c2 := range cases {
+		t.Run(c2.name, func(t *testing.T) {
+			called = false
+			if err := c.ReportStatus(context.Background(), c2.deviceID, c2.agentVer, c2.items); err == nil {
+				t.Error("expected a validation error")
+			}
+			if called {
+				t.Error("an invalid report must be rejected before any request is sent")
+			}
+		})
+	}
+}
+
+func TestReportStatusForbiddenHintsAtScope(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		apiErr(w, http.StatusForbidden, "forbidden", "missing scope")
+	}))
+	defer srv.Close()
+	c := newTestClient(t, srv.URL, nil)
+	err := c.ReportStatus(context.Background(), "dev-1", "", []StatusItem{{SignatureID: 1, Status: "ok"}})
+	if !errors.Is(err, ErrAuth) {
+		t.Fatalf("err = %v, expected ErrAuth", err)
+	}
+	if !strings.Contains(err.Error(), "status:write") {
+		t.Errorf("err = %v, expected a hint mentioning status:write", err)
+	}
+}
+
+func TestReportStatusBatchesLargeRequests(t *testing.T) {
+	var batches [][]int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body statusReportRequest
+		json.NewDecoder(r.Body).Decode(&body)
+		var ids []int
+		for _, it := range body.Items {
+			ids = append(ids, int(it.SignatureID))
+		}
+		batches = append(batches, ids)
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprintf(w, `{"received":%d,"updated":%d}`, len(body.Items), len(body.Items))
+	}))
+	defer srv.Close()
+	c := newTestClient(t, srv.URL, nil)
+
+	const n = 450 // > 2x maxStatusItemsPerRequest (200): exercises 3 batches
+	items := make([]StatusItem, n)
+	for i := range items {
+		items[i] = StatusItem{SignatureID: int64(i + 1), Status: "ok"}
+	}
+	if err := c.ReportStatus(context.Background(), "dev-1", "", items); err != nil {
+		t.Fatal(err)
+	}
+	if len(batches) != 3 {
+		t.Fatalf("got %d requests, expected 3 (200+200+50)", len(batches))
+	}
+	if len(batches[0]) != 200 || len(batches[1]) != 200 || len(batches[2]) != 50 {
+		t.Errorf("batch sizes = %d, %d, %d", len(batches[0]), len(batches[1]), len(batches[2]))
+	}
+}
+
+func TestReportStatusStopsAtFirstFailingBatch(t *testing.T) {
+	var requests int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if atomic.AddInt32(&requests, 1) == 1 {
+			apiErr(w, http.StatusInternalServerError, "internal_error", "boom")
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"received":1,"updated":1}`)
+	}))
+	defer srv.Close()
+	c := newTestClient(t, srv.URL, nil)
+
+	items := make([]StatusItem, 201) // 2 batches
+	for i := range items {
+		items[i] = StatusItem{SignatureID: int64(i + 1), Status: "ok"}
+	}
+	err := c.ReportStatus(context.Background(), "dev-1", "", items)
+	if !errors.Is(err, ErrServer) {
+		t.Fatalf("err = %v, expected ErrServer", err)
+	}
+	if atomic.LoadInt32(&requests) != 1 {
+		t.Errorf("sent %d requests, expected to stop after the first failure", requests)
+	}
+}

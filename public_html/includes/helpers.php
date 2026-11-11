@@ -397,6 +397,18 @@ function renderStoredSignature(array $sig): string
 }
 
 /**
+ * SHA-256 (hex) of the rendered signature HTML. The API hands this value to the
+ * agent (html_sha256), the agent reports it back with its status, and All
+ * Signatures compares it with the current value: equal means the device has
+ * the latest version. Template, company-setting and field changes all change
+ * the hash, so every kind of edit is detected.
+ */
+function signatureHtmlSha256(array $sig): string
+{
+    return hash('sha256', renderStoredSignature($sig));
+}
+
+/**
  * Builds a safe ASCII file name part from free text.
  */
 function safeFileNamePart($text, string $fallback = 'signature'): string
@@ -748,6 +760,8 @@ function pruneOldLogs($db): void
     $stmt->bindValue(1, time() - 86400, SQLITE3_INTEGER);
     $stmt->execute();
 
+    pruneDeviceStatus($db);
+
     // Remove abandoned temporary files (LDAP previews etc.) older than 2 hours.
     foreach (glob(TMP_DIR . '/*.json') ?: [] as $file) {
         if (is_file($file) && filemtime($file) < time() - 7200) {
@@ -842,6 +856,181 @@ function signatureTagColorLabel(string $color): string
 function normalizeTagColor($color): string
 {
     return in_array($color, signatureTagColors(), true) ? $color : 'gray';
+}
+
+/**
+ * API token permissions: machine value => human label. "signatures:read" lets
+ * the agent fetch signature content; "status:write" lets it report back
+ * whether it applied a signature (and nothing else - it cannot change any
+ * signature's content). Both can be granted to the same token.
+ */
+function apiScopeLabels(): array
+{
+    return [
+        'signatures:read' => t('Read signatures'),
+        'status:write'    => t('Report sync status'),
+    ];
+}
+
+/** Human-readable scope list for display (e.g. "Read signatures, Report sync status"). */
+function apiScopeDisplay(string $scope): string
+{
+    $labels = apiScopeLabels();
+    $parts = [];
+    foreach (explode(',', $scope) as $s) {
+        $s = trim($s);
+        if ($s !== '') {
+            $parts[] = $labels[$s] ?? $s;
+        }
+    }
+    return implode(', ', $parts);
+}
+
+/**
+ * Upper bound of device rows kept per signature (see POST /api/v1/status).
+ * A status token could otherwise invent unlimited device ids.
+ */
+const STATUS_MAX_DEVICES_PER_SIGNATURE = 25;
+
+/**
+ * Admin setting "status_device_retention_days" (1-365, default 30): devices
+ * that have not reported for longer are no longer counted and get pruned.
+ */
+function statusDeviceRetentionDays(SQLite3 $db): int
+{
+    $days = (int)getSetting($db, 'status_device_retention_days', '30');
+    return ($days >= 1 && $days <= 365) ? $days : 30;
+}
+
+/**
+ * Deletes device status rows that are older than the retention window.
+ */
+function pruneDeviceStatus(SQLite3 $db): void
+{
+    try {
+        $stmt = $db->prepare("DELETE FROM signature_device_status WHERE synced_at < datetime('now', ?)");
+        $stmt->bindValue(1, '-' . statusDeviceRetentionDays($db) . ' days', SQLITE3_TEXT);
+        $stmt->execute();
+    } catch (Exception $e) {
+        error_log('Pruning device status failed: ' . $e->getMessage());
+    }
+}
+
+/**
+ * State of ONE device for one signature:
+ *
+ *   current  - reported "ok" for the latest version, within the freshness window
+ *   outdated - applied an older version (the signature, its template or the
+ *              company settings changed since) - waits for the next agent run
+ *   stale    - latest version, but no report within the freshness window
+ *   warn     - latest version applied, but the agent reported a warning
+ *   error    - the agent reported an error applying it
+ *
+ * $currentSha is signatureHtmlSha256() of the signature as it is now.
+ * Rows without html_sha256 (agents before 1.7.0) fall back to comparing the
+ * signature's updated_at with the report time; template changes are not
+ * visible to that fallback.
+ * synced_at is always server-generated (UTC); client times are never used.
+ */
+function classifyDeviceSync(array $row, string $currentSha, ?string $sigUpdatedAt, int $freshnessHours): string
+{
+    $status = (string)($row['status'] ?? '');
+    if ($status === 'error') {
+        return 'error';
+    }
+    $syncedTs = strtotime((string)$row['synced_at'] . ' UTC');
+    $applied = (string)($row['html_sha256'] ?? '');
+    if ($applied !== '') {
+        if (!hash_equals($currentSha, $applied)) {
+            return 'outdated';
+        }
+    } elseif ($sigUpdatedAt !== null && $sigUpdatedAt !== '') {
+        $updTs = strtotime($sigUpdatedAt . ' UTC');
+        if ($updTs !== false && $syncedTs !== false && $updTs > $syncedTs) {
+            return 'outdated';
+        }
+    }
+    if ($status === 'warn') {
+        return 'warn';
+    }
+    if ($syncedTs === false || (time() - $syncedTs) > max(1, $freshnessHours) * 3600) {
+        return 'stale';
+    }
+    return 'current';
+}
+
+/**
+ * Display label of a device state (see classifyDeviceSync()).
+ */
+function deviceSyncLabel(string $state): string
+{
+    switch ($state) {
+        case 'current':  return t('Up to date');
+        case 'outdated': return t('Out of date');
+        case 'stale':    return t('No recent sync');
+        case 'warn':     return t('Synced with warning');
+        default:         return t('Sync error');
+    }
+}
+
+/**
+ * Sums up all device reports of one signature into the badge shown in All
+ * Signatures:
+ *
+ *   grey   - no device has reported this signature (within the retention window)
+ *   green  - every device has the latest version and reported recently
+ *   yellow - at least one device is out of date, silent or reported a warning
+ *            (a device with a warning but the latest version still counts as
+ *            up to date in "2/3 up to date")
+ *   red    - at least one device reported an error
+ *
+ * With one device the label names its state ("Out of date"); with several
+ * it counts them ("2/3 up to date"). 'devices' lists every device for the
+ * tooltip, most recent report first.
+ *
+ * @param array $deviceRows rows of signature_device_status for this signature
+ */
+function summarizeSyncStatus(array $deviceRows, string $currentSha, ?string $sigUpdatedAt, int $freshnessHours): array
+{
+    if (!$deviceRows) {
+        return ['level' => 'grey', 'label' => t('Never synced'), 'current' => 0, 'total' => 0, 'devices' => []];
+    }
+    usort($deviceRows, function ($a, $b) {
+        return strcmp((string)$b['synced_at'], (string)$a['synced_at']);
+    });
+
+    $devices = [];
+    $current = 0;      // devices that have the latest version (incl. those with a warning)
+    $hasError = false;
+    $hasWarn = false;
+    foreach ($deviceRows as $row) {
+        $state = classifyDeviceSync($row, $currentSha, $sigUpdatedAt, $freshnessHours);
+        $current += ($state === 'current' || $state === 'warn') ? 1 : 0;
+        $hasError = $hasError || $state === 'error';
+        $hasWarn = $hasWarn || $state === 'warn';
+        $devices[] = [
+            'device_id'     => (string)$row['device_id'],
+            'state'         => $state,
+            'label'         => deviceSyncLabel($state),
+            'synced_at'     => (string)$row['synced_at'],
+            'message'       => (string)($row['message'] ?? ''),
+            'agent_version' => (string)($row['agent_version'] ?? ''),
+        ];
+    }
+    $total = count($devices);
+
+    if ($hasError) {
+        $level = 'red';
+    } elseif ($current === $total && !$hasWarn) {
+        $level = 'green';
+    } else {
+        $level = 'yellow';
+    }
+    $label = ($total === 1)
+        ? $devices[0]['label']
+        : t('{current}/{total} up to date', ['current' => $current, 'total' => $total]);
+
+    return ['level' => $level, 'label' => $label, 'current' => $current, 'total' => $total, 'devices' => $devices];
 }
 
 /**

@@ -21,7 +21,7 @@ define('SUBSIG_BOOTSTRAPPED', true);
 // ---------------------------------------------------------------------
 // 1. CONSTANTS & PATHS
 // ---------------------------------------------------------------------
-define('APP_VERSION', '1.5.0');
+define('APP_VERSION', '1.7.0');
 define('APP_ROOT', dirname(__DIR__));                      // public_html/
 define('TEMPLATES_DIR', APP_ROOT . '/templates');
 define('IMAGES_DIR', APP_ROOT . '/img');
@@ -36,7 +36,7 @@ define('TMP_DIR', BASE_DIR . '/tmp');
 define('SECRET_KEY_FILE', BASE_DIR . '/secret.key');
 
 // Current database schema version (see runMigrations()).
-define('SCHEMA_VERSION', 5);
+define('SCHEMA_VERSION', 7);
 
 // ---------------------------------------------------------------------
 // 2. DIRECTORY CHECKS
@@ -292,6 +292,43 @@ function runMigrations(SQLite3 $db): void
             $stmt->bindValue(1, encryptSecret($smtp), SQLITE3_TEXT);
             $stmt->execute();
         }
+
+        // ---- Version 6: agent sync status --------------------------------
+        // 1.6.0 created a one-row-per-signature table (signature_sync_status);
+        // version 7 replaces it, see below. Only the setting remains here.
+        // Admin-configurable: how long a successful report counts as "fresh"
+        // before the badge turns stale (yellow) in All Signatures.
+        $db->exec("INSERT OR IGNORE INTO system_settings (setting_key, setting_value) VALUES ('status_freshness_hours', '6')");
+
+        // ---- Version 7: per-device sync status ----------------------------
+        // One row per (signature, device): every agent install that applied a
+        // signature keeps its own last report, so All Signatures can show
+        // "2/3 up to date". html_sha256 is the hash of the signature HTML the
+        // device applied; comparing it with the current HTML tells whether
+        // the device already has the latest version.
+        $db->exec("CREATE TABLE IF NOT EXISTS signature_device_status (
+            signature_id INTEGER NOT NULL,
+            device_id TEXT NOT NULL,
+            status TEXT NOT NULL,
+            message TEXT,
+            agent_version TEXT,
+            html_sha256 TEXT,
+            synced_at DATETIME NOT NULL,
+            PRIMARY KEY (signature_id, device_id),
+            FOREIGN KEY (signature_id) REFERENCES user_signatures(id) ON DELETE CASCADE
+        )");
+        $db->exec('CREATE INDEX IF NOT EXISTS idx_devstatus_synced ON signature_device_status(synced_at)');
+        // Carry over the reports of a 1.6.0 installation, then drop the old table.
+        if ($db->querySingle("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'signature_sync_status'")) {
+            $db->exec("INSERT OR IGNORE INTO signature_device_status
+                         (signature_id, device_id, status, message, agent_version, html_sha256, synced_at)
+                       SELECT signature_id, COALESCE(NULLIF(device_id, ''), 'unknown'), status, message, agent_version, NULL, synced_at
+                         FROM signature_sync_status");
+            $db->exec('DROP TABLE signature_sync_status');
+        }
+        // Devices that have not reported for this many days are no longer
+        // counted (e.g. a replaced laptop) and their rows are pruned.
+        $db->exec("INSERT OR IGNORE INTO system_settings (setting_key, setting_value) VALUES ('status_device_retention_days', '30')");
 
         $db->exec('PRAGMA user_version = ' . (int)SCHEMA_VERSION);
         $db->exec('COMMIT');

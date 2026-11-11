@@ -79,7 +79,19 @@ type Sync struct {
 	Jitter        Duration `xml:"jitter"`
 	RetryInterval Duration `xml:"retry-interval"`
 	RunOnStart    bool     `xml:"run-on-start"`
+	// ReportStatus: after each real sync (not "check"), push a status report
+	// (ok/warn/error per address) to the server via POST /api/v1/status, so
+	// admins see in "All Signatures" whether and when this device last
+	// applied a signature. Requires a token with the status:write scope in
+	// addition to signatures:read; a server/token that lacks it only makes
+	// this one call fail (logged as a warning), the sync itself still
+	// succeeds. Default true.
+	ReportStatus *bool `xml:"report-status"`
 }
+
+// ReportStatusOn reports whether this device should push its sync status to
+// the server after a run.
+func (y Sync) ReportStatusOn() bool { return y.ReportStatus == nil || *y.ReportStatus }
 
 // Override applies to exactly one address and replaces the global values for it.
 type Override struct {
@@ -175,7 +187,7 @@ func Find(explicit string) (string, error) { return FindEnv(explicit, platform.C
 func FindEnv(explicit string, env platform.Env) (string, error) {
 	if explicit != "" {
 		if _, err := os.Stat(explicit); err != nil {
-			return "", fmt.Errorf("Konfiguration %s: %w", explicit, err)
+			return "", fmt.Errorf("configuration %s: %w", explicit, err)
 		}
 		return explicit, nil
 	}

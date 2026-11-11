@@ -1,9 +1,11 @@
-# SubSignature API v1 (read-only)
+# SubSignature API v1
 
-The API lets a client program - in particular the planned **SubSignature desktop agent**
-for Windows, Linux and macOS - fetch signatures from the server and install them in Outlook
-and Thunderbird. It is read-only, stateless (no cookies, no CSRF) and authenticated with
-bearer tokens.
+The API lets a client program - in particular the **SubSignature desktop agent**
+(`subsignature-agent/`, already built and in use for Windows and Linux) - fetch signatures
+from the server and install them in Outlook and Thunderbird, and report back whether that
+install succeeded. It is stateless (no cookies, no CSRF) and authenticated with bearer
+tokens throughout. The `GET` endpoints are read-only; `POST /api/v1/status` is the one
+narrow write the API allows (see below) and needs its own token scope.
 
 ## Quick start
 
@@ -24,24 +26,28 @@ curl -H "Authorization: Bearer ssg_xxxxxxxx..." \
 | Authentication | `Authorization: Bearer <token>`. Tokens are 256-bit random values with the prefix `ssg_`. |
 | Storage | The server stores only `SHA-256(token)`; a leaked database does not leak usable tokens. |
 | Lifetime | Optional expiry; tokens can be revoked at any time (effective immediately). |
-| Scope | `signatures:read`. No endpoint can change data. |
+| Scope | `signatures:read` for the `GET` endpoints; `status:write` for `POST /api/v1/status`. A token can hold either, both, or neither - requests against a scope the token lacks get `403 forbidden`. |
 | Brute force | 20 invalid tokens per client IP and 5 minutes, then `429`. |
-| Rate limit | 600 requests per minute per token. |
+| Rate limit | 600 requests per minute per token for `signatures:read`; 120 requests per minute per token for `status:write` (its own bucket, so a busy read rollout cannot starve status reporting or vice versa). |
 | Visibility | Only signatures of **active** users are returned. |
 
 Use one token per deployment/agent group, so a single token can be revoked without
-affecting the others.
+affecting the others. Grant `status:write` only to tokens the agent rollout actually uses to
+report status - a token scoped to `signatures:read` alone can never write anything, by design:
+a leaked read-only token cannot be used to fake a status report, and a leaked status token
+cannot be used to read signature content.
 
 ## Endpoints
 
-All endpoints use `GET` and return `application/json; charset=utf-8`.
+All endpoints return `application/json; charset=utf-8`. The three below use `GET`;
+`POST /api/v1/status` (its own scope) is documented in its own section further down.
 
 ### `GET /api/v1/`
 
 Service information. Useful as a health and credentials check.
 
 ```json
-{ "service": "SubSignature", "version": "1.4.0", "api": "v1", "token": "Windows rollout", "server_time": "2026-11-07T20:51:07+00:00" }
+{ "service": "SubSignature", "version": "1.6.0", "api": "v1", "token": "Windows rollout", "server_time": "2026-11-07T20:51:07+00:00" }
 ```
 
 ### `GET /api/v1/signatures`
@@ -89,6 +95,56 @@ Service information. Useful as a health and credentials check.
 
 One signature in the same format. `404` if it does not exist or its owner is inactive.
 
+### `POST /api/v1/status`
+
+Needs the `status:write` scope. Lets the agent report, per signature it fetched, whether
+applying it on the client succeeded **and which version it applied** - so **All Signatures**
+can show per signature whether every device has the current version (grey/green/yellow/red,
+"2/3 up to date"). Each `device_id` gets its own row per signature; a later report from the
+same device replaces that row. The endpoint never touches signature content, and an unknown
+or deleted `signature_id` is silently skipped, not an error - the agent has no way to know
+server-side IDs changed since its last fetch.
+
+Request body (JSON object, max 64 KiB):
+
+```json
+{
+  "device_id": "DESKTOP-ANNA-3f9a2b1c",
+  "agent_version": "0.5.0-alpha",
+  "items": [
+    { "signature_id": 2, "status": "ok", "html_sha256": "9f2c…(64 hex characters)" },
+    { "signature_id": 5, "status": "warn", "message": "Outlook default signature not set (no account found)." }
+  ]
+}
+```
+
+| Field | Rules |
+|-------|-------|
+| `device_id` | Required, 1-80 chars, `^[A-Za-z0-9][A-Za-z0-9 ._\-@]{0,79}$`. Identifies the reporting install for the admin's tooltip only - never trusted for anything security-relevant. |
+| `agent_version` | Optional, at most 40 chars, `^[A-Za-z0-9][A-Za-z0-9 ._+\-]{0,39}$`. |
+| `items` | Required, 1-200 entries per request (batch larger sets into several requests). |
+| `items[].signature_id` | Required, positive integer. |
+| `items[].status` | Required, one of `ok`, `warn`, `error`. |
+| `items[].message` | Optional, at most 300 chars. Free text shown in the admin's sync-status tooltip; use it for `warn`/`error` detail. |
+| `items[].html_sha256` | Optional (since 1.7.0), exactly 64 hex characters: the `html_sha256` of the version the device applied, as received from `GET /signatures`. Equal to the current value = **up to date**, different = **out of date**. Without it the server falls back to comparing the signature's `updated_at` with the report time (template or company-detail changes are then not detected). |
+
+If the same `signature_id` appears more than once in `items`, the last entry wins. The
+server timestamps the report itself (`synced_at = datetime('now')`, UTC) - it never trusts a
+client-supplied time.
+
+Limits on stored data: at most 25 devices are kept per signature (the most recently
+reporting ones), and devices that have not reported for the admin-configurable retention
+period (default 30 days) are deleted - so a token holder cannot grow the table without bound.
+
+Response:
+
+```json
+{ "received": 2, "updated": 2 }
+```
+
+`received` is how many distinct signature IDs were in the request after de-duplication;
+`updated` is how many of those actually matched an existing signature row.
+
 ## Errors
 
 ```json
@@ -99,63 +155,49 @@ One signature in the same format. `404` if it does not exist or its owner is ina
 |------|--------|---------|
 | 400 | `bad_request` | Invalid parameter. |
 | 401 | `unauthorized` | Token missing, wrong, expired or revoked. |
-| 403 | `https_required` / `forbidden` | Plain HTTP, or the token lacks the scope. |
+| 403 | `https_required` / `forbidden` | Plain HTTP, or the token lacks the scope required for this request. |
 | 404 | `not_found` | Unknown endpoint or signature. |
-| 405 | `method_not_allowed` | Anything but `GET`. |
+| 405 | `method_not_allowed` | Anything but `GET` on the reading endpoints, or anything but `POST` on `/status` (see the `Allow` response header). |
+| 413 | `payload_too_large` | `POST /status` body over 64 KiB. |
 | 429 | `too_many_attempts` / `rate_limited` | Honour the `Retry-After` header. |
 
-## Notes for the agent (Python)
+## The desktop agent
 
-The agent is planned in **Python 3** (standard library only: `urllib`, `json`, `ssl`, `pathlib`,
-`winreg` on Windows) for **Windows, Linux and macOS**, shipped as a single signed executable
-(PyInstaller or Nuitka) so no Python installation is needed on the clients. Suggested design:
+The agent that talks to this API is already built and in use: a single Go binary (standard
+library only, cross-compiled, no runtime to install) that runs on both Windows and Linux. Its
+own documentation lives next to its source in [`subsignature-agent/`](../subsignature-agent/)
+([`subsignature-agent/README.md`](../subsignature-agent/README.md) for setup and the CLI,
+[`subsignature-agent/docs/WINDOWS.md`](../subsignature-agent/docs/WINDOWS.md) for Outlook and
+new-Outlook caveats); this section only covers how it uses this API, for anyone reading the
+API on its own.
 
-1. **Configuration**: server URL, token, and the mapping "which signature belongs to this
-   machine/user". Store the token in the OS secret store (Windows Credential Manager / DPAPI,
-   macOS Keychain, Secret Service/libsecret on Linux - for example through the `keyring`
-   package), never in plain text. At least restrict the file to the user (mode `0600`).
-2. **Selecting the signature**: query `GET /signatures?email=<primary address>` (or
-   `?username=`). The email address is taken from the Outlook profile or the Thunderbird
-   account configuration.
-3. **HTTP client**: `urllib.request` with an `ssl.create_default_context()` (certificate and
-   host name verification stay on). Do not disable certificate checks; for a private CA load
-   it with `context.load_verify_locations(cafile=...)`.
-   ```python
-   import json, ssl, urllib.request
-
-   ctx = ssl.create_default_context(cafile=CA_FILE or None)
-   req = urllib.request.Request(
-       f"{SERVER}/api/v1/signatures?email={address}",
-       headers={"Authorization": f"Bearer {TOKEN}", "Accept": "application/json"},
-   )
-   with urllib.request.urlopen(req, context=ctx, timeout=20) as resp:
-       data = json.load(resp)
-   ```
-4. **Run as the logged-in user**, not as a system service: the agent writes into the user's
-   profile. Windows: scheduled task "at log on"; Linux: systemd user service or autostart
-   entry; macOS: a LaunchAgent in `~/Library/LaunchAgents`.
-5. **Outlook (Windows)**: write the HTML to
-   `%APPDATA%\Microsoft\Signatures\<name>.htm` (plus `.txt` from the `text` field) and set
-   the default signature values under
-   `HKCU\Software\Microsoft\Office\16.0\Common\MailSettings`
-   (`NewSignature`, `ReplySignature`) with `winreg`. Classic Outlook only; new Outlook uses
-   roaming signatures and needs a different mechanism.
-6. **Thunderbird (Windows, Linux, macOS)**: signatures are stored per identity in `prefs.js`
-   (`mail.identity.idN.htmlSigText`, `mail.identity.idN.htmlSigFormat=true`) or in a file
-   referenced by `mail.identity.idN.sig_file` (with `attach_signature=true`). Edit the
-   profile only while Thunderbird is closed, or ship the values through a `user.js`.
-   Profile locations: `%APPDATA%\Thunderbird\Profiles` (Windows), `~/.thunderbird`
-   (Linux), `~/Library/Thunderbird/Profiles` (macOS).
-7. **macOS mail clients (to be evaluated)**: Apple Mail keeps signatures under
-   `~/Library/Mail/V*/MailData/Signatures/` and Outlook for Mac uses its own profile
-   database. Both are fragile and version dependent, so Thunderbird is the first macOS
-   target; the others should be added only after testing on real systems.
-8. **Polling**: poll `updated_since=<last successful sync>` every few hours with jitter
-   (responses are never cached, `Cache-Control: no-store`). Because an edited *template*
-   changes the HTML of many signatures without touching their rows, also do a full sync
-   (no `updated_since`) about once a day and compare `html_sha256`.
-9. **Images**: signature images are absolute URLs inside the template; the agent does not
-   need to download them. (Hosting images on your own HTTPS server keeps recipients'
-   mail clients happy.)
-10. **Intranet without HTTPS**: the API insists on HTTPS. Terminate TLS on a reverse proxy
-    with a certificate from your internal CA and give the agent that CA file.
+1. **Reading signatures**: on every `sync`, the agent calls `GET /signatures?email=<address>`
+   for each configured identity, compares `html_sha256` against its local state file, and only
+   rewrites the signature file / registry value when it changed - so a quiet mailbox produces
+   no disk or registry writes. The HTTP client uses Go's default TLS verification; a private
+   CA is loaded from the `ca-file` setting in `config.xml`, never disabled.
+2. **Applying it**: Outlook gets the HTML (and text) written under
+   `%APPDATA%\Microsoft\Signatures\` with the registry default-signature values updated
+   (classic Outlook only - the agent detects the new Outlook, which stores signatures
+   server-side, and reports that case rather than guessing). Thunderbird gets its identity
+   prefs updated directly. Both are config-file driven, not auto-discovered guesses.
+3. **Reporting back**: after a sync that completed without being rate-limited or aborted, the
+   agent calls `POST /api/v1/status` (scope `status:write`, a separate token scope from
+   reading) with one entry per signature it actually resolved to a signature ID - `ok` when
+   the write succeeded, `warn` for a non-fatal issue (such as "no matching Outlook account"),
+   `error` when applying it failed - plus the `html_sha256` of the version it applied (agent
+   0.5.0 and later). This is what feeds the sync-status badge in **All
+   Signatures**. It can be turned off per install with `<report-status>false</report-status>`
+   in `config.xml` (default: on); turning it off only stops the report, it never affects
+   whether the signature itself gets applied.
+4. **Device identity**: `device_id` is the host name plus a random suffix (generated once
+   with `crypto/rand`, kept in the agent's local state file, shown by
+   `subsignature-agent status`). Every installation - and every user profile on a shared
+   PC - is its own device, which is what All Signatures counts in "2/3 up to date". It only
+   labels *which install* reported; it is never trusted for authentication or authorization.
+5. **Polling**: the agent runs on a timer (every 2 hours by default, configurable) and
+   fetches every address in full on each run (no `updated_since`), comparing the prepared HTML
+   with the installed file - so an edited *template*, which changes the HTML of many
+   signatures without touching their rows, is picked up on the next run as well.
+6. **Intranet without HTTPS**: the API insists on HTTPS; for an internal CA, point the agent's
+   `ca-file` setting at that CA's certificate rather than disabling verification.

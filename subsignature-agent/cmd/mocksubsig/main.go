@@ -1,10 +1,12 @@
 // mocksubsig is a small test server that mimics the SubSignature API v1
-// (read-only) as described in the server documentation - with TLS (self-signed
+// as described in the server documentation - with TLS (self-signed
 // certificate) or without. For developing and testing the agent only, not for production.
 //
 // Mimicked: bearer token (ssg_...), GET /api/v1/, GET /api/v1/signatures
 // (email, username, updated_since, limit, offset), GET /api/v1/signatures/{id},
-// error format {"error":{"code","message"}}, https_required, brute-force lockout
+// POST /api/v1/status (device_id, agent_version, items[] with
+// signature_id/status/message/html_sha256 - the status:write permission), error format
+// {"error":{"code","message"}}, https_required, brute-force lockout
 // (20 invalid tokens per address in 5 minutes) and a rate limit per token, each
 // with Retry-After. Not mimicked: how html_sha256 is really computed
 // (here SHA-256 over the HTML; the agent treats the value as opaque).
@@ -24,11 +26,13 @@ import (
 	"encoding/pem"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"math/big"
 	"net"
 	"net/http"
 	"os"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -107,11 +111,22 @@ type server struct {
 	items         []item
 	httpsRequired bool // like a real server without API_ALLOW_HTTP
 	rateLimit     int  // requests per minute and token
+	statusScope   bool // whether the token carries status:write (for POST /status)
 
 	mu       sync.Mutex
 	badTries map[string][]time.Time // address -> times of invalid tokens
 	calls    []time.Time
 }
+
+// statusItem mirrors one entry of a POST /api/v1/status request.
+type statusItem struct {
+	SignatureID int64  `json:"signature_id"`
+	Status      string `json:"status"`
+	Message     string `json:"message,omitempty"`
+	HTMLSHA256  string `json:"html_sha256,omitempty"`
+}
+
+var sha256HexPattern = regexp.MustCompile(`^[0-9a-fA-F]{64}$`)
 
 func apiError(w http.ResponseWriter, status int, code, msg string, hdr ...string) {
 	log.Printf("abgelehnt: %d %s", status, code)
@@ -268,6 +283,133 @@ func (s *server) one(w http.ResponseWriter, r *http.Request) {
 	apiError(w, http.StatusNotFound, "not_found", "Signature not found.")
 }
 
+// status mimics POST /api/v1/status. It shares the auth/lockout/rate-limit
+// logic of guard() but checks for POST (not GET) and, additionally, the
+// status:write permission - set via -no-status-scope to test how the agent
+// handles a token that only has signatures:read.
+func (s *server) status(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		apiError(w, http.StatusMethodNotAllowed, "method_not_allowed", "Only POST is allowed.", "Allow", "POST")
+		return
+	}
+	if s.httpsRequired && r.TLS == nil {
+		apiError(w, http.StatusForbidden, "https_required", "The API is only available over HTTPS.")
+		return
+	}
+	ip, _, _ := net.SplitHostPort(r.RemoteAddr)
+	s.mu.Lock()
+	now := time.Now()
+	recent := s.badTries[ip][:0]
+	for _, t := range s.badTries[ip] {
+		if now.Sub(t) < 5*time.Minute {
+			recent = append(recent, t)
+		}
+	}
+	s.badTries[ip] = recent
+	if len(recent) >= 20 {
+		s.mu.Unlock()
+		apiError(w, http.StatusTooManyRequests, "too_many_attempts", "Too many invalid tokens.", "Retry-After", "300")
+		return
+	}
+	got, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
+	if !ok || subtle.ConstantTimeCompare([]byte(got), []byte(s.token)) != 1 {
+		s.badTries[ip] = append(s.badTries[ip], now)
+		s.mu.Unlock()
+		apiError(w, http.StatusUnauthorized, "unauthorized", "Token is missing, invalid, expired or revoked.")
+		return
+	}
+	if !s.statusScope {
+		s.mu.Unlock()
+		apiError(w, http.StatusForbidden, "forbidden", "The token lacks the status:write permission.")
+		return
+	}
+	win := s.calls[:0]
+	for _, t := range s.calls {
+		if now.Sub(t) < time.Minute {
+			win = append(win, t)
+		}
+	}
+	s.calls = win
+	if len(s.calls) >= s.rateLimit {
+		s.mu.Unlock()
+		apiError(w, http.StatusTooManyRequests, "rate_limited", "Too many requests.", "Retry-After", "30")
+		return
+	}
+	s.calls = append(s.calls, now)
+	s.mu.Unlock()
+
+	body, err := io.ReadAll(io.LimitReader(r.Body, 65536+1))
+	if err != nil || len(body) > 65536 {
+		apiError(w, http.StatusRequestEntityTooLarge, "payload_too_large", "Request body must be at most 64 KiB.")
+		return
+	}
+	var req struct {
+		DeviceID     string       `json:"device_id"`
+		AgentVersion string       `json:"agent_version"`
+		Items        []statusItem `json:"items"`
+	}
+	if err := json.Unmarshal(body, &req); err != nil {
+		apiError(w, http.StatusBadRequest, "bad_request", "Request body must be a JSON object.")
+		return
+	}
+	if req.DeviceID == "" {
+		apiError(w, http.StatusBadRequest, "bad_request", "device_id is required.")
+		return
+	}
+	if len(req.Items) == 0 {
+		apiError(w, http.StatusBadRequest, "bad_request", "items must be a non-empty array.")
+		return
+	}
+	if len(req.Items) > 200 {
+		apiError(w, http.StatusBadRequest, "bad_request", "items must not contain more than 200 entries per request.")
+		return
+	}
+	allowedStatus := map[string]bool{"ok": true, "warn": true, "error": true}
+	for _, it := range req.Items {
+		if !allowedStatus[it.Status] {
+			apiError(w, http.StatusBadRequest, "bad_request", "status must be one of: ok, warn, error.")
+			return
+		}
+		if it.HTMLSHA256 != "" && !sha256HexPattern.MatchString(it.HTMLSHA256) {
+			apiError(w, http.StatusBadRequest, "bad_request", "html_sha256 must be 64 hexadecimal characters.")
+			return
+		}
+	}
+
+	s.mu.Lock()
+	known := 0
+	for _, it := range req.Items {
+		for _, sig := range s.items {
+			if sig.ID == it.SignatureID {
+				known++
+				break
+			}
+		}
+	}
+	s.mu.Unlock()
+
+	for _, it := range req.Items {
+		// Like the server: compare the applied version with the current one.
+		current := "unknown signature"
+		s.mu.Lock()
+		for _, sig := range s.items {
+			if sig.ID == it.SignatureID {
+				current = "out of date"
+				if it.HTMLSHA256 == "" {
+					current = "no hash sent"
+				} else if strings.EqualFold(sig.HTMLSHA256, it.HTMLSHA256) {
+					current = "up to date"
+				}
+				break
+			}
+		}
+		s.mu.Unlock()
+		log.Printf("POST /api/v1/status device=%q version=%q signature=%d status=%s version-check=%s message=%q",
+			req.DeviceID, req.AgentVersion, it.SignatureID, it.Status, current, it.Message)
+	}
+	writeJSON(w, map[string]any{"received": len(req.Items), "updated": known})
+}
+
 func parseTime(v string) (time.Time, error) {
 	for _, l := range []string{time.RFC3339, tsLayout, "2006-01-02T15:04:05", "2006-01-02"} {
 		if t, err := time.ParseInLocation(l, v, time.UTC); err == nil {
@@ -285,6 +427,7 @@ func main() {
 	token := flag.String("token", "ssg_"+strings.Repeat("0123456789abcdef", 4), "expected token")
 	rateLimit := flag.Int("rate-limit", 600, "requests per minute and token, then 429 rate_limited")
 	dataFile := flag.String("data", "", "JSON file with a list of entries (fields as in the API, optionally \"active\":false) instead of the demo data")
+	noStatusScope := flag.Bool("no-status-scope", false, "reject POST /api/v1/status with 403 (simulates a token without the status:write permission)")
 	flag.Parse()
 
 	items := demoData()
@@ -299,11 +442,13 @@ func main() {
 		}
 	}
 
-	s := &server{token: *token, items: items, httpsRequired: *httpsRequired, rateLimit: *rateLimit, badTries: map[string][]time.Time{}}
+	s := &server{token: *token, items: items, httpsRequired: *httpsRequired, rateLimit: *rateLimit,
+		statusScope: !*noStatusScope, badTries: map[string][]time.Time{}}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v1/{$}", s.root)
 	mux.HandleFunc("/api/v1/signatures", s.list)
 	mux.HandleFunc("/api/v1/signatures/{id}", s.one)
+	mux.HandleFunc("/api/v1/status", s.status)
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		apiError(w, http.StatusNotFound, "not_found", "Unknown endpoint.")
 	})

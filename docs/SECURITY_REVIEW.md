@@ -1,4 +1,11 @@
-# SubSignature - Security Review (release 1.5.0)
+# SubSignature - Security Review (release 1.5.0, updated for 1.6.0 and 1.7.0)
+
+The findings and role analysis below cover the code base as of 1.5.0. The 1.6.0 additions
+(single-signature editing, the sync-status badge and its `POST /api/v1/status` endpoint,
+multi-scope API tokens) and the 1.7.0 changes (per-device sync status with version
+comparison) were reviewed separately; see "Findings addressed before the 1.6.0 / 1.7.0
+release" and "Controls for the 1.6.0 / 1.7.0 features" further down, which extend rather
+than replace the sections above them.
 
 Scope: the complete PHP code base of the repository (`public_html/`, `private_data/`
 layout, Apache configuration). Method: manual code review of every page, plus functional
@@ -44,7 +51,7 @@ partly trusted role, the review looked at how a technician could reach administr
 | LDAP settings: redirecting the stored bind password to a rogue server or weakening certificate checks | Changing host, port, encryption, certificate verification, CA file or bind DN requires the bind password to be typed again (`LdapConfig::fromInput`); test / preview use the stored configuration only. The import cannot create users or roles. |
 | Stored XSS through templates (a technician writes a template that an administrator opens) | `sanitizeTemplateHtml()` (tokenizer based, attribute rebuild, URL allow-list, raw-text/foreign elements removed, fail closed) on save, import, preview, send and render, plus the DOM based sanitizer in the browser; standalone previews run under a `sandbox` CSP, modal previews in `sandbox=""` iframes. 100+ attack strings (event handlers with odd separators, entity-encoded schemes, comment and raw-text tricks, SVG/MathML mutation vectors) were checked in a real browser: no script executes, output is idempotent. |
 | Template or image upload leading to code execution | Template names are validated (`signature_*.html`), content with `<?` is refused, images are limited to JPG/PNG/GIF/WEBP with content sniffing and re-named files; no SVG, no PHP. |
-| API tokens | Read-only scope (`signatures:read`) - a technician can already read all signatures, so a token gives no additional data; tokens are hashed, shown once, revocable and every creation / revocation is audit-logged. |
+| API tokens | A technician can grant a token `signatures:read` and/or `status:write`. `signatures:read` gives no additional data (a technician can already read all signatures); `status:write` only ever lets a request overwrite the four sync-status columns of a signature row that already exists - never its content, never other tables. Tokens are hashed, shown once, revocable and every creation / revocation / scope choice is audit-logged. |
 | Reading logs / users to cover tracks or find targets | Not reachable: logs, users and system configuration (SMTP, security settings) are administrator-only. The user drop-down in All Signatures lists usernames, which is needed to manage signatures. |
 
 Remaining trust assumption: a technician can change templates that all users see and can read every signature. Assign the
@@ -76,6 +83,47 @@ bulk deletes) are written to the audit log, which only administrators can read.
 * 256-bit random tokens, stored as SHA-256 only, shown once, optional expiry, revocable.
 * HTTPS enforced, read-only scope, per-IP failure throttling and per-token rate limit, no cookies/session, restrictive headers and a `default-src 'none'` CSP.
 * Responses contain rendered, sanitized HTML; only active users' signatures are exposed.
+
+## Findings addressed before the 1.6.0 release
+
+| # | Severity | Finding | Resolution |
+|---|----------|---------|------------|
+| 15 | Medium | The new single-signature edit (`update_one`) checked ownership with a separate `SELECT` before the `UPDATE`, the same pattern used elsewhere in the code base - but, unlike `delete_one`, the `UPDATE` statement itself did not repeat the `user_id` condition, leaving a (narrow, same-request) window between check and act. | The `UPDATE` now carries `AND user_id = :uid` directly (when the request is scoped to one user), matching `delete_one`; a post-update `$db->changes() === 0` check rolls the transaction back and reports "not found" instead of silently succeeding on zero rows. |
+
+## Findings addressed in 1.7.0
+
+| # | Severity | Finding | Resolution |
+|---|----------|---------|------------|
+| 16 | Low (availability) | 1.6.0's API Tokens page called the HTML translation helper `eth()` without its parameter array; the resulting `ArgumentCountError` reached the global exception handler, which aborts the page ("An internal error occurred") - the token list and its revoke/delete buttons were no longer reachable. No data exposure. | The call uses `et()`; `eth()` now defaults its parameters to `[]`, so the same mistake elsewhere degrades to plain escaped text instead of aborting the page. |
+| 17 | Low (resource use) | With per-device status rows, a holder of a `status:write` token could invent unlimited `device_id` values and grow the status table without bound. | At most 25 devices are kept per signature (the most recently reporting ones); devices silent for longer than the retention setting (default 30 days, 1-365) are deleted on every status report and with the regular log cleanup. |
+
+## Controls for the 1.6.0 features
+
+**Single-signature edit (`update_one`)**
+
+* Same role scoping as the rest of All Signatures: normal users can only edit their own signature; the owner is re-verified on the actual write (see finding 15), not only in the form shown to the user.
+* Tag assignment on edit is restricted to administrators and technicians on the server, independent of whether the field is shown in the form; tag ids are validated against `signature_tags` before being written.
+* Editing an LDAP-sourced signature is allowed (it is still the administrator's/technician's/user's own row) but the UI warns that a future LDAP re-import overwrites manual changes - the import logic itself is unchanged and still only updates rows with `source = 'ldap'`.
+* POST + CSRF like every other state-changing action here; validation (name/role/email/phone format and length) reuses the same `validateSignatureFields()` as signature creation.
+
+**Sync-status badge and `POST /api/v1/status`**
+
+* The endpoint needs its own `status:write` scope, separate from `signatures:read` - a token leaked from an agent's config can be scoped to read-only or status-only, never both by default, so a compromised read token cannot inject fake status and a compromised status token cannot read signature content.
+* The write is narrow by construction: the `UPSERT` only ever targets the status table (`signature_device_status` since 1.7.0: `status`, `message`, `agent_version`, `html_sha256`, `synced_at` per `signature_id` + `device_id`) for a `signature_id` that already exists in `user_signatures` (the `SELECT ... WHERE id = :id` source produces no row otherwise); it cannot create, rename or change the content of a signature.
+* All fields are validated server-side (length caps, character allow-lists, `status` restricted to `ok`/`warn`/`error`, at most 200 items and 64 KiB per request) before anything is written; `device_id`/`agent_version` are free text shown only in an admin tooltip, escaped on output like any other field, and never trusted for authentication.
+* The timestamp (`synced_at`) is set by the server (`datetime('now')`), not taken from the request - an agent (or an attacker replaying a captured request) cannot backdate or future-date a status report.
+* The endpoint has its own, smaller rate-limit bucket (120/min per token) so it cannot be starved by - or starve - ordinary read traffic from the same rollout.
+* The admin-configurable freshness window (`status_freshness_hours`, used only to colour the badge) is validated and clamped server-side (1-168) in `admin_config.php`; an out-of-range value cannot be stored.
+
+## Controls for the 1.7.0 features
+
+**Per-device status and version comparison**
+
+* The reported `html_sha256` must be exactly 64 hex characters; it is only ever compared (`hash_equals`) with the server's own hash of the current HTML and shown as "up to date"/"out of date". A forged value can at worst make a badge wrong - which a `status:write` token could already do - it never influences what any client receives.
+* "Out of date" is computed from the server's rendered HTML (`renderStoredSignature()` - the same function the API uses), so template and company-detail changes are detected without trusting the client.
+* The sync-details dialog builds its table with `textContent` from a JSON block (`JSON_HEX_TAG|APOS|QUOT|AMP`), so device ids and messages from agents cannot inject markup; the tooltip text goes through `e()`.
+* The device retention setting (`status_device_retention_days`) is validated and clamped server-side (1-365).
+* Migration from 1.6.0 copies the old one-row-per-signature table into the new per-device table inside the migration transaction and then drops it.
 
 ## Residual risks and recommendations
 

@@ -2,7 +2,7 @@
 
 This document describes what the agent does on Windows, where it writes and what it deliberately cannot do.
 
-> **Status 0.4.0-alpha:** the Windows programs are **built** on Linux (amd64, arm64) and statically checked. The logic
+> **Status 0.5.0-alpha:** the Windows programs are **built** on Linux (amd64, arm64) and statically checked. The logic
 > (finding accounts, creating files, setting and reverting registry values) runs in the tests against an in-memory
 > registry. **Nothing has been run on a real Windows with a real Outlook yet.** The thin part that really talks to
 > Windows (`internal/outlook/registry_windows.go`, the lock file, `install.ps1`) is therefore untested. Please start

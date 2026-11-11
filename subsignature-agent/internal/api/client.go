@@ -4,6 +4,7 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"crypto/x509"
@@ -15,6 +16,7 @@ import (
 	"net/url"
 	"os"
 	"path"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -39,6 +41,19 @@ const (
 	pageSize     = 50 // entries per request (the server allows 1-500)
 	maxPages     = 20 // safeguard against endless loops: at most 1000 entries per address
 	maxRetryWait = time.Hour
+
+	// Limits of POST /api/v1/status, mirrored here so bad input is rejected
+	// locally (clear error, no wasted request) instead of only server-side.
+	maxStatusItemsPerRequest = 200
+	maxDeviceIDLen           = 80
+	maxAgentVersionLen       = 40
+	maxStatusMessageLen      = 300
+)
+
+var (
+	deviceIDPattern     = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9 ._\-@]{0,79}$`)
+	agentVersionPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9 ._+\-]{0,39}$`)
+	sha256HexPattern    = regexp.MustCompile(`^[0-9a-f]{64}$`)
 )
 
 // APIError describes an error response of the server.
@@ -280,6 +295,157 @@ func (c *Client) Signatures(ctx context.Context, email string) ([]Signature, err
 	return nil, fmt.Errorf("%w: more than %d entries for %s", ErrProtocol, maxPages*pageSize, email)
 }
 
+// StatusItem is one entry of a POST /api/v1/status report: what happened
+// when this device tried to apply a signature it had fetched earlier.
+// Status must be "ok", "warn" or "error" (enforced server-side too).
+type StatusItem struct {
+	SignatureID int64
+	Status      string
+	Message     string // free text for the admin's tooltip; truncated to 300 chars
+	// HTMLSHA256 is the html_sha256 of the signature version this device
+	// applied, exactly as received from GET /signatures. The server compares
+	// it with the current version to show "up to date" or "out of date".
+	// Optional; a value that is not 64 hex characters is left out.
+	HTMLSHA256 string
+}
+
+type statusReportRequest struct {
+	DeviceID     string             `json:"device_id"`
+	AgentVersion string             `json:"agent_version,omitempty"`
+	Items        []statusReportItem `json:"items"`
+}
+
+type statusReportItem struct {
+	SignatureID int64  `json:"signature_id"`
+	Status      string `json:"status"`
+	Message     string `json:"message,omitempty"`
+	HTMLSHA256  string `json:"html_sha256,omitempty"`
+}
+
+type statusReportResponse struct {
+	Received int `json:"received"`
+	Updated  int `json:"updated"`
+}
+
+// ReportStatus calls POST /api/v1/status: tells the server which signatures
+// this device applied and how it went. Requires a token with the
+// "status:write" scope - a 403 here most likely means that scope is missing
+// (the agent never learns this content from the server; it only reports what
+// it itself observed while applying signatures fetched earlier).
+//
+// deviceID identifies this installation to the admin (shown as a tooltip in
+// All Signatures) and is never used for authentication - the bearer token
+// is. It must match ^[A-Za-z0-9][A-Za-z0-9 ._\-@]{0,79}$, same as the server
+// requires. agentVersion is optional free text (e.g. "1.6.0"). At most
+// maxStatusItemsPerRequest items are sent per call; more are split into
+// several requests, stopping at the first error.
+func (c *Client) ReportStatus(ctx context.Context, deviceID, agentVersion string, items []StatusItem) error {
+	if !deviceIDPattern.MatchString(deviceID) {
+		return fmt.Errorf("api: invalid device_id %q (must match %s)", deviceID, deviceIDPattern.String())
+	}
+	if agentVersion != "" && !agentVersionPattern.MatchString(agentVersion) {
+		return fmt.Errorf("api: invalid agent_version %q (must match %s)", agentVersion, agentVersionPattern.String())
+	}
+	if len(items) == 0 {
+		return nil // nothing to report
+	}
+
+	for start := 0; start < len(items); start += maxStatusItemsPerRequest {
+		end := start + maxStatusItemsPerRequest
+		if end > len(items) {
+			end = len(items)
+		}
+		if err := c.reportStatusBatch(ctx, deviceID, agentVersion, items[start:end]); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (c *Client) reportStatusBatch(ctx context.Context, deviceID, agentVersion string, items []StatusItem) error {
+	const allowedStatuses = "ok, warn, error"
+	reqItems := make([]statusReportItem, 0, len(items))
+	for _, it := range items {
+		switch it.Status {
+		case "ok", "warn", "error":
+		default:
+			return fmt.Errorf("api: invalid status %q for signature %d (must be one of: %s)", it.Status, it.SignatureID, allowedStatuses)
+		}
+		if it.SignatureID <= 0 {
+			return fmt.Errorf("api: invalid signature_id %d", it.SignatureID)
+		}
+		sha := strings.ToLower(it.HTMLSHA256)
+		if !sha256HexPattern.MatchString(sha) {
+			// Never fail the whole report over the optional field: the server
+			// then falls back to comparing timestamps for this entry.
+			sha = ""
+		}
+		reqItems = append(reqItems, statusReportItem{
+			SignatureID: it.SignatureID,
+			Status:      it.Status,
+			Message:     clean(it.Message, maxStatusMessageLen),
+			HTMLSHA256:  sha,
+		})
+	}
+
+	payload, err := json.Marshal(statusReportRequest{
+		DeviceID:     deviceID,
+		AgentVersion: agentVersion,
+		Items:        reqItems,
+	})
+	if err != nil {
+		return fmt.Errorf("api: encoding status report: %w", err)
+	}
+
+	body, err := c.post(ctx, c.endpoint("status", nil), payload)
+	if err != nil {
+		return err
+	}
+	var sr statusReportResponse
+	if err := json.Unmarshal(body, &sr); err != nil {
+		return fmt.Errorf("%w: not valid JSON: %v", ErrProtocol, err)
+	}
+	return nil
+}
+
+// post performs a POST request with a JSON body and returns the body only for HTTP 200.
+func (c *Client) post(ctx context.Context, rawURL string, body []byte) ([]byte, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, rawURL, bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("User-Agent", c.o.UserAgent)
+	req.Header.Set("Authorization", "Bearer "+c.o.Token)
+
+	resp, err := c.hc.Do(req)
+	if err != nil {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		var cve *tls.CertificateVerificationError
+		if errors.As(err, &cve) {
+			return nil, fmt.Errorf("%w: %v (check ca-file or renew the server certificate)", ErrTLS, cve.Err)
+		}
+		// Do not pass on the transport's error text unfiltered: it contains the URL including the address.
+		return nil, fmt.Errorf("%w: %s", ErrUnreachable, redactURLError(err))
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusOK {
+		b, err := io.ReadAll(io.LimitReader(resp.Body, maxBody+1))
+		if err != nil {
+			return nil, fmt.Errorf("%w: response aborted: %s", ErrUnreachable, redactURLError(err))
+		}
+		if len(b) > maxBody {
+			return nil, fmt.Errorf("%w: response larger than %d MiB", ErrProtocol, maxBody>>20)
+		}
+		return b, nil
+	}
+	return nil, c.statusError(resp)
+}
+
 // get performs a GET request and returns the body only for HTTP 200.
 func (c *Client) get(ctx context.Context, rawURL string) ([]byte, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
@@ -347,7 +513,7 @@ func (c *Client) statusError(resp *http.Response) error {
 		ae.Hint = "use server/url with https:// (the server allows HTTP only with API_ALLOW_HTTP)"
 	case resp.StatusCode == http.StatusForbidden:
 		ae.kind = ErrAuth
-		ae.Hint = "the token lacks the permission signatures:read"
+		ae.Hint = "the token lacks the required permission (signatures:read for reading, status:write for reporting sync status)"
 	case resp.StatusCode == http.StatusTooManyRequests:
 		ae.kind = ErrRateLimited
 		ae.RetryAfter = parseRetryAfter(resp.Header.Get("Retry-After"), time.Now())

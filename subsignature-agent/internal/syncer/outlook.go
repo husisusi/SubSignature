@@ -42,7 +42,7 @@ func (r *runner) applyOutlook(accts []outlook.Account, res map[string]*resolutio
 		versions[a.Version] = true
 		dir, err := outlook.SignatureDir(r.reg, r.opt.Env, a.Version)
 		if err != nil {
-			r.fail("Outlook account "+a.Email, err)
+			r.failFor(a.Email, "Outlook account "+a.Email, err)
 			continue
 		}
 		name := outlook.SignatureName(o.SignatureName, a.Email)
@@ -59,7 +59,7 @@ func (r *runner) applyOutlook(accts []outlook.Account, res map[string]*resolutio
 			}{{".htm", outlook.HTM(rs.prepared)}, {".txt", outlook.TXT(text)}, {".rtf", outlook.RTF(text)}} {
 				c, err := r.writeIfChanged(dir, base+f.ext, string(f.data))
 				if err != nil {
-					r.fail("Outlook signature file for "+a.Email, err)
+					r.failFor(a.Email, "Outlook signature file for "+a.Email, err)
 					failed = true
 					break
 				}
@@ -139,7 +139,7 @@ func (r *runner) setDefault(a outlook.Account, valueName string, want bool, cur 
 		return 1
 	}
 	if err := outlook.SetDefault(r.reg, a, valueName, name); err != nil {
-		r.fail(fmt.Sprintf("Outlook account %s: setting %q", a.Email, valueName), err)
+		r.failFor(a.Email, fmt.Sprintf("Outlook account %s: setting %q", a.Email, valueName), err)
 		return 0
 	}
 	*managed = true

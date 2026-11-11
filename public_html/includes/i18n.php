@@ -238,8 +238,10 @@ function et(string $text, array $params = []): string
 /**
  * Like et(), but the parameters are trusted HTML fragments (e.g. "<code>x</code>")
  * that are inserted unescaped. Never pass user input here.
+ * $htmlParams defaults to [] so a call without parameters behaves like et()
+ * instead of aborting the page with an ArgumentCountError.
  */
-function eth(string $text, array $htmlParams): string
+function eth(string $text, array $htmlParams = []): string
 {
     $map = loadTranslations(currentLang());
     $out = e($map[$text] ?? $text);

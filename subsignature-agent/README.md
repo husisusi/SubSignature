@@ -1,10 +1,11 @@
-# SubSignature Agent for Linux and Windows — alpha 0.4.0
+# SubSignature Agent for Linux and Windows — alpha 0.5.0
 
 A small Go program (standard library only, one file per system) that
 
 1. fetches the **HTML signature** for each of the user's e-mail addresses from the **SubSignature server** via its API (v1, bearer token),
 2. applies it in the mail client,
-3. repeats this **every 2 hours** (configurable) and only changes what has changed.
+3. repeats this **every 2 hours** (configurable) and only changes what has changed,
+4. reports back to the server, after each real sync, whether applying it worked — so the admin's **All Signatures** page can show a per-signature sync-status badge (grey/green/yellow/red). Off with `<report-status>false</report-status>`; a `check` (dry run) never reports.
 
 | System | Mail clients |
 |---|---|
@@ -17,8 +18,12 @@ administrator rights, and can undo everything with `remove`.
 > **The new Outlook** (`olk.exe`) cannot be configured by a local program: it stores signatures in the mailbox and
 > reads neither files nor the registry. The agent detects it and says so. Background and alternatives: [`docs/WINDOWS.md`](docs/WINDOWS.md).
 
-> **Status 0.4.0:**
-> * Same behaviour as 0.3.0; documentation, comments and all program output are now in English.
+> **Status 0.5.0:**
+> * New: after each real sync the agent reports to the server per signature whether applying it worked **and which
+>   version it applied** (`html_sha256`), so the server's **All Signatures** page can show "up to date" / "out of
+>   date" per device ("2/3 up to date"). `status` now shows this installation's **device ID**. Needs SubSignature
+>   1.7.0 for the version comparison (1.6.0 accepts the report but ignores the version).
+> * Documentation, comments and all program output are in English.
 > * **Linux/Thunderbird:** in use by the project owner against the real server and a real Thunderbird.
 > * **Windows:** built on Linux and checked with simulated tests (in-memory registry) – **nothing has been run on a real
 >   Windows with a real Outlook yet.** Please start with `check` on a test machine. Details and checklist:
@@ -102,6 +107,33 @@ find Thunderbird profile(s) ──► read identities (e-mail addresses)
   The same profile reachable through two paths (Snap link) is handled only once. Default: the default profile of
   each installation (`<profiles>all</profiles>` for all).
 
+## Status reporting
+
+After a real sync (not `check`) that finished without being rate-limited or aborted, the
+agent calls `POST /api/v1/status` once per run with the outcome for every address it
+resolved to a signature: `ok`, `warn` (e.g. no matching Outlook account was found) or
+`error` (the write itself failed), plus a short message for `warn`/`error`, and the
+`html_sha256` of the version it applied. Nothing about the signature's *content* is sent — only
+that one small status line per signature ID, and a `device_id` that only labels which install
+reported it.
+
+On the server, **All Signatures** compares the reported `html_sha256` with the current version:
+after an admin edits a signature (or its template, or the company details), every device shows
+**out of date** until its next run fetched and applied the new version. With several devices the
+badge counts them, e.g. **2/3 up to date**; a click on the badge lists every device.
+
+* The `device_id` is a random value generated once with `crypto/rand` and kept in the local
+  state file; it does not reveal the hostname alone (a random suffix is appended), and it is
+  never used for authentication — only the bearer token is.
+* Needs a token scoped `status:write` (separate from `signatures:read`, see
+  [`docs/API.md`](docs/API.md)); without that scope the agent logs a warning and carries on —
+  a missing or wrong scope never blocks the actual signature sync.
+* Addresses the server has no matching signature for are never reported — there is nothing
+  server-side to attach a status to.
+* Turn it off per install with `<report-status>false</report-status>` in `config.xml`.
+* `subsignature-agent status` prints this installation's device ID, i.e. the name it has in the
+  server's sync-status list.
+
 ## Configuration (XML)
 
 Fully commented in [`internal/config/config.example.xml`](internal/config/config.example.xml)
@@ -114,6 +146,7 @@ Fully commented in [`internal/config/config.example.xml`](internal/config/config
 | `server/tls/ca-file`, `insecure-skip-verify` | Your own CA (intranet) / verification off (test only) |
 | `server/auth/token-env`, `token-file`, `token` | **Required:** `ssg_…` token: environment variable → file → clear text |
 | `sync/interval`, `jitter`, `retry-interval`, `run-on-start` | Pacing (default 2 h + up to 5 min jitter; after errors again after 10 min) |
+| `sync/report-status` | Push a per-signature `ok`/`warn`/`error` status to the server after each real sync (default `true`; `check` never reports regardless). Needs a token with the `status:write` scope. |
 | `signature/template`, `username`, `override`, `duplicate-policy`, `prefer-source`, `html-policy` | Which template/account, what to do with duplicates, HTML check |
 | `thunderbird/enabled`, `profiles`, `profile-path`, `sig-on-reply` … | Thunderbird: on/off, which profiles, reply/forward behaviour |
 | `outlook/enabled`, `profiles`, `signature-name`, `set-new`, `set-reply`, `roaming-signatures` | Windows only, classic Outlook: on/off, name of the signature, whether it becomes the default, roaming signatures |
@@ -192,11 +225,15 @@ neither a "default" marker nor a defined order. The agent therefore chooses itse
   signature folder (`..\`) is rejected; `remove` does not blindly trust its own state file. Details: [`docs/WINDOWS.md`](docs/WINDOWS.md).
 * **Removal:** `subsignature-agent remove` deletes everything the agent has set up and restores the previous default
   signature in Outlook.
+* **Status reporting is a narrow, separate write:** `status:write` is its own token scope (never implied by
+  `signatures:read` and vice versa); only `ok`/`warn`/`error` plus a short, length-capped message and a
+  non-authenticating device id are sent — never signature content, and never a client-supplied timestamp (the
+  server stamps `synced_at` itself).
 
 ## Tests
 
 ```bash
-make all         # gofmt, go vet for Linux AND Windows, go test -race (162 test functions, 213 cases), build
+make all         # gofmt, go vet for Linux AND Windows, go test -race (173 test functions, 230 cases), build
 make dist        # Linux amd64/arm64, Windows amd64/arm64
 ```
 
@@ -249,8 +286,9 @@ signature again when the account or signature is gone on the server · storing a
   "Set your signature using Outlook event-based activation" (`setSignatureAsync`), vendor documentation (Exclaimer,
   CI-Solution): agents that write local files have no effect in the new Outlook.
 * Thunderbird in the Microsoft Store: Mozilla Bugzilla 1878276 and the Mozilla forum (profile under `%LOCALAPPDATA%\Packages\MozillaThunderbird.…`).
-* SubSignature API documentation `docs/API.md` (API v1, SubSignature 1.4.0): endpoints, fields, errors, limits and the
-  recommendations for agents (query by e-mail, paging, change detection, token handling, running as the logged-in user).
+* SubSignature API documentation `docs/API.md` (API v1, SubSignature 1.6.0): endpoints, fields, errors, limits and the
+  recommendations for agents (query by e-mail, paging, change detection, token handling, running as the logged-in user,
+  and — since 1.6.0 — the `POST /status` status-report endpoint).
 * Mozilla help "Signatures": signature from a file (text or HTML). A Mozilla forum post additionally mentions that this file can be maintained centrally on a server.
 * Mozilla help on profile locations; Mozilla forum on Snap/Flatpak paths.
 * Mozilla Bugzilla 1986555 (comment) and forum posts on `sig_file`/`sig_file-rel`: both settings are stored, the relative one takes precedence according to the comment → the agent sets both.

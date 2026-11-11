@@ -27,12 +27,67 @@ function sourceLabel(?string $source): string
     return t('Manual');
 }
 
-function renderSignatureItem($sig, array $f, array $tags, $show_owner_name = false) {
+function renderSignatureItem($sig, array $f, array $tags, $show_owner_name = false, array $deviceRows = [], $freshnessHours = 6) {
     // Final, sanitised HTML of the signature for the preview textarea.
-    $encodedHtml = e(renderStoredSignature($sig));
+    $html = renderStoredSignature($sig);
+    $encodedHtml = e($html);
     $deleteUrl = 'all_signatures.php?' . sigQuery($f);
     $source = in_array($sig['source'] ?? '', ['ldap', 'csv'], true) ? $sig['source'] : 'manual';
+
+    // Same value as signatureHtmlSha256() / the API's html_sha256 (same render
+    // function), computed from the HTML that is rendered here anyway.
+    $currentSha = hash('sha256', $html);
+    $sync = summarizeSyncStatus($deviceRows, $currentSha, $sig['updated_at'] ?? null, (int)$freshnessHours);
+
+    // Tooltip: one line per device, most recent report first.
+    $syncTooltipLines = [$sync['label']];
+    if (!$sync['devices']) {
+        $syncTooltipLines[] = t('No agent has reported syncing this signature yet.');
+    }
+    foreach ($sync['devices'] as $dev) {
+        $ts = strtotime($dev['synced_at'] . ' UTC');
+        $line = t('{device}: {state}, last report {time}', [
+            'device' => $dev['device_id'],
+            'state'  => $dev['label'],
+            'time'   => $ts ? gmdate('Y-m-d H:i', $ts) . ' UTC' : $dev['synced_at'],
+        ]);
+        if ($dev['agent_version'] !== '') $line .= ' (' . t('agent {version}', ['version' => $dev['agent_version']]) . ')';
+        if ($dev['message'] !== '') $line .= ' - ' . $dev['message'];
+        $syncTooltipLines[] = $line;
+    }
+    $syncTooltip = implode("\n", $syncTooltipLines);
+
+    // Same information for the details dialog (click on the badge; tooltips do
+    // not exist on touch screens). Inserted with textContent by the script.
+    $syncData = ['name' => (string)$sig['name'], 'level' => $sync['level'], 'label' => $sync['label'], 'devices' => []];
+    foreach ($sync['devices'] as $dev) {
+        $ts = strtotime($dev['synced_at'] . ' UTC');
+        $syncData['devices'][] = [
+            'device'  => $dev['device_id'],
+            'state'   => $dev['state'],
+            'label'   => $dev['label'],
+            'time'    => $ts ? gmdate('Y-m-d H:i', $ts) . ' UTC' : $dev['synced_at'],
+            'version' => $dev['agent_version'],
+            'message' => $dev['message'],
+        ];
+    }
+
+    // Data for the edit modal. Rendered as JSON inside a <script type="application/json">
+    // block (never interpreted as HTML/JS), so no field needs separate JS-string escaping.
+    // JSON_HEX_TAG also keeps a "</script" in any field from breaking out of the block.
+    $editData = [
+        'id'       => (int)$sig['id'],
+        'name'     => (string)$sig['name'],
+        'role'     => (string)$sig['role'],
+        'email'    => (string)$sig['email'],
+        'phone'    => (string)$sig['phone'],
+        'template' => resolveTemplateName((string)($sig['template'] ?? '')),
+        'source'   => $source,
+        'tagIds'   => array_map(function ($t) { return (int)$t['id']; }, $tags),
+    ];
     ?>
+    <script type="application/json" class="edit-data" id="edit-data-<?php echo (int)$sig['id']; ?>"><?php echo json_encode($editData, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP | JSON_UNESCAPED_UNICODE); ?></script>
+    <script type="application/json" class="sync-data" id="sync-data-<?php echo (int)$sig['id']; ?>"><?php echo json_encode($syncData, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP | JSON_UNESCAPED_UNICODE); ?></script>
     <div class="signature-item" style="flex-wrap: nowrap; gap: 15px;">
         <div style="display:flex; align-items:center; padding-left:5px;">
             <input type="checkbox" class="sig-checkbox" value="<?php echo (int)$sig['id']; ?>" onchange="updateBulkButtons()">
@@ -48,6 +103,9 @@ function renderSignatureItem($sig, array $f, array $tags, $show_owner_name = fal
                             <i class="fas fa-user"></i> <?php echo e($sig['username']); ?>
                         </span>
                         <?php endif; ?>
+                        <button type="button" class="sync-badge sync-<?php echo e($sync['level']); ?>" title="<?php echo e($syncTooltip); ?>" onclick="openSyncModal(<?php echo (int)$sig['id']; ?>)">
+                            <span class="sync-dot"></span><?php echo e($sync['label']); ?>
+                        </button>
                         <?php foreach ($tags as $tg): ?>
                         <a class="sig-tag tag-c-<?php echo e(normalizeTagColor($tg['color'])); ?>" href="all_signatures.php?<?php echo e(sigQuery($f, ['tag' => (string)(int)$tg['id']])); ?>" title="<?= et('Filter by this tag') ?>"><?php echo e($tg['name']); ?></a>
                         <?php endforeach; ?>
@@ -66,6 +124,7 @@ function renderSignatureItem($sig, array $f, array $tags, $show_owner_name = fal
                     <button type="button" onclick="openModal(<?php echo (int)$sig['id']; ?>)" class="btn btn-sm btn-secondary" style="background:var(--bg-white); border:1px solid var(--border-strong);" title="<?= et('Preview') ?>"><i class="fas fa-eye"></i></button>
                     <?php endif; ?>
                     <a href="download.php?id=<?php echo (int)$sig['id']; ?>" class="btn btn-sm btn-primary" title="<?= et('Download') ?>"><i class="fas fa-download"></i></a>
+                    <button type="button" onclick="openEditModal(<?php echo (int)$sig['id']; ?>)" class="btn btn-sm btn-secondary" style="background:var(--bg-white); border:1px solid var(--border-strong);" title="<?= et('Edit') ?>"><i class="fas fa-pen"></i></button>
                     <button type="button" data-post="<?php echo e($deleteUrl); ?>" data-params='{"action":"delete_one","id":"<?php echo (int)$sig['id']; ?>"}'
                        data-confirm="<?= et('Delete?') ?>" class="btn btn-sm btn-danger" title="<?= et('Delete') ?>"><i class="fas fa-trash"></i></button>
                 </div>
@@ -85,6 +144,25 @@ function loadSignatureTags(SQLite3 $db, array $signatures): array
                         JOIN signature_tags t ON t.id = m.tag_id
                         WHERE m.signature_id IN ($marks) ORDER BY t.name COLLATE NOCASE");
     foreach ($ids as $i => $id) $st->bindValue($i + 1, $id, SQLITE3_INTEGER);
+    $res = $st->execute();
+    $map = [];
+    while ($r = $res->fetchArray(SQLITE3_ASSOC)) $map[(int)$r['signature_id']][] = $r;
+    return $map;
+}
+
+/**
+ * Agent device reports of the given signatures, limited to the retention
+ * window: [signature_id => [row, row, ...]] (one row per device).
+ */
+function loadSignatureDeviceStatus(SQLite3 $db, array $signatures): array
+{
+    $ids = array_values(array_filter(array_map(function ($s) { return (int)$s['id']; }, $signatures)));
+    if (!$ids) return [];
+    $marks = implode(',', array_fill(0, count($ids), '?'));
+    $st = $db->prepare("SELECT * FROM signature_device_status
+                        WHERE signature_id IN ($marks) AND synced_at >= datetime('now', ?)");
+    foreach ($ids as $i => $id) $st->bindValue($i + 1, $id, SQLITE3_INTEGER);
+    $st->bindValue(count($ids) + 1, '-' . statusDeviceRetentionDays($db) . ' days', SQLITE3_TEXT);
     $res = $st->execute();
     $map = [];
     while ($r = $res->fetchArray(SQLITE3_ASSOC)) $map[(int)$r['signature_id']][] = $r;
@@ -170,11 +248,13 @@ $result = $stmt->execute();
 $signatures = [];
 while ($row = $result->fetchArray(SQLITE3_ASSOC)) $signatures[] = $row;
 $sigTags = loadSignatureTags($db, $signatures);
+$sigDeviceStatus = loadSignatureDeviceStatus($db, $signatures);
+$statusFreshnessHours = (int)getSetting($db, 'status_freshness_hours', '6');
 
 // AJAX Handler (infinite scroll)
 if (isset($_GET['ajax'])) {
     if (empty($signatures)) exit;
-    foreach ($signatures as $sig) renderSignatureItem($sig, $f, $sigTags[(int)$sig['id']] ?? [], ($target_user_id === 'all'));
+    foreach ($signatures as $sig) renderSignatureItem($sig, $f, $sigTags[(int)$sig['id']] ?? [], ($target_user_id === 'all'), $sigDeviceStatus[(int)$sig['id']] ?? [], $statusFreshnessHours);
     exit;
 }
 
@@ -222,6 +302,85 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($target_user_id !== 'all') $stmtDel->bindValue(':uid', $target_user_id, SQLITE3_INTEGER);
         $stmtDel->execute();
         setFlash('success', t('Signature deleted.'));
+        header('Location: ' . $redirect);
+        exit;
+    }
+
+    // EDIT SINGLE (admins may edit any signature of the selected scope, users only their own)
+    if ($action === 'update_one') {
+        $id = (int)($_POST['id'] ?? 0);
+
+        $ownerSql = 'SELECT user_id FROM user_signatures WHERE id = :id';
+        if ($target_user_id !== 'all') $ownerSql .= ' AND user_id = :uid';
+        $ownerSt = $db->prepare($ownerSql);
+        $ownerSt->bindValue(':id', $id, SQLITE3_INTEGER);
+        if ($target_user_id !== 'all') $ownerSt->bindValue(':uid', $target_user_id, SQLITE3_INTEGER);
+        $owner = $ownerSt->execute()->fetchArray(SQLITE3_ASSOC);
+
+        if (!$owner) {
+            setFlash('error', t('Signature not found.'));
+            header('Location: ' . $redirect);
+            exit;
+        }
+
+        [$fields, $errors] = validateSignatureFields($_POST, true);
+
+        if ($errors) {
+            setFlash('error', implode(' ', $errors));
+            header('Location: ' . $redirect);
+            exit;
+        }
+
+        $tpl = resolveTemplateName((string)($_POST['template'] ?? ''));
+
+        $db->exec('BEGIN');
+        // Ownership was already checked above (ownerSql); the same condition is
+        // repeated directly on this UPDATE too, so the actual write is never
+        // broader than what was verified - the same belt-and-suspenders pattern
+        // delete_one uses, not only a check-then-act without a second gate.
+        $updSql = "UPDATE user_signatures SET name = :name, role = :role, email = :email, phone = :phone, template = :tpl, updated_at = datetime('now') WHERE id = :id";
+        if ($target_user_id !== 'all') $updSql .= ' AND user_id = :uid';
+        $upd = $db->prepare($updSql);
+        $upd->bindValue(':name', $fields['name'], SQLITE3_TEXT);
+        $upd->bindValue(':role', $fields['role'], SQLITE3_TEXT);
+        $upd->bindValue(':email', $fields['email'], SQLITE3_TEXT);
+        $upd->bindValue(':phone', $fields['phone'], SQLITE3_TEXT);
+        $upd->bindValue(':tpl', $tpl, SQLITE3_TEXT);
+        $upd->bindValue(':id', $id, SQLITE3_INTEGER);
+        if ($target_user_id !== 'all') $upd->bindValue(':uid', $target_user_id, SQLITE3_INTEGER);
+        $upd->execute();
+        if ($db->changes() === 0) {
+            // Ownership changed between the check above and here (or the row was
+            // deleted meanwhile) - stop, do not touch tags, do not log a success.
+            $db->exec('ROLLBACK');
+            setFlash('error', t('Signature not found.'));
+            header('Location: ' . $redirect);
+            exit;
+        }
+
+        // Tags: administrators and technicians only (matches the create_tag/delete_tag/bulk_tag boundary below).
+        if ($is_admin) {
+            $rawTagIds = $_POST['tags'] ?? [];
+            $tagIds = is_array($rawTagIds)
+                ? array_values(array_unique(array_filter(array_map('intval', $rawTagIds), function ($v) { return $v > 0; })))
+                : [];
+            $delTags = $db->prepare('DELETE FROM signature_tag_map WHERE signature_id = :id');
+            $delTags->bindValue(':id', $id, SQLITE3_INTEGER);
+            $delTags->execute();
+            foreach ($tagIds as $tagId) {
+                // Inserts only for tags that really exist.
+                $insTag = $db->prepare('INSERT OR IGNORE INTO signature_tag_map (signature_id, tag_id) SELECT :id, id FROM signature_tags WHERE id = :tag');
+                $insTag->bindValue(':id', $id, SQLITE3_INTEGER);
+                $insTag->bindValue(':tag', $tagId, SQLITE3_INTEGER);
+                $insTag->execute();
+            }
+        }
+        $db->exec('COMMIT');
+
+        if ($is_admin) {
+            logSecurityEventToDB($db, 'SIGNATURE_EDITED', $current_user_id, 'id ' . $id . ' (user ' . (int)$owner['user_id'] . ')');
+        }
+        setFlash('success', t('Signature updated.'));
         header('Location: ' . $redirect);
         exit;
     }
@@ -448,6 +607,20 @@ $errorMessage = popFlash('error');
     }
     .user-select:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1); }
     .user-select:hover { border-color: var(--text-faint); }
+    /* Plain text field with the same look as .user-select, but without the dropdown arrow */
+    .edit-input {
+        background-color: var(--bg-white);
+        color: var(--text-main);
+        padding: 0.6rem 1rem;
+        border: 1px solid var(--border-strong);
+        border-radius: 6px;
+        font-size: 0.95rem;
+        outline: none;
+        transition: all 0.2s ease-in-out;
+        box-sizing: border-box;
+    }
+    .edit-input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1); }
+    .edit-input:hover { border-color: var(--text-faint); }
 
     .search-input { flex: 1; padding: 0.6rem; border: 1px solid var(--border); border-radius: 6px; }
     .count-badge { background-color: var(--bg-hover); color: var(--primary); font-size: 0.9rem; padding: 0.3rem 0.8rem; border-radius: 999px; font-weight: 700; margin-left: 10px; border: 1px solid var(--info-border); }
@@ -482,6 +655,28 @@ $errorMessage = popFlash('error');
     :root[data-theme="dark"] .tag-c-pink { --tc: #f472b6; } :root[data-theme="dark"] .tag-c-gray { --tc: #94a3b8; }
     .meta-chip { background: var(--bg-subtle); padding: 2px 6px; border-radius: 4px; color: inherit; text-decoration: none; margin-inline-start: 4px; }
     .meta-chip:hover { color: var(--primary); }
+
+    /* SYNC STATUS BADGE - whether/when an agent last reported applying this signature */
+    .sync-badge { --sc: #94a3b8; display: inline-flex; align-items: center; gap: 5px; font-size: 0.7rem; font-weight: 600;
+                   padding: 2px 8px; border-radius: 999px; color: var(--sc); border: 1px solid var(--sc); background: transparent; cursor: pointer;
+                   font-family: inherit; line-height: 1.4; }
+    .sync-badge:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+    .sync-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+    .sync-table th, .sync-table td { text-align: start; padding: 0.5rem 0.6rem; border-bottom: 1px solid var(--border); vertical-align: top; }
+    .sync-table th { color: var(--text-muted); font-weight: 600; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.03em; }
+    .sync-table .sync-msg { color: var(--text-muted); font-size: 0.8rem; margin-top: 0.15rem; }
+    @supports (background: color-mix(in srgb, red 10%, transparent)) {
+        .sync-badge { border-color: color-mix(in srgb, var(--sc) 45%, transparent); background: color-mix(in srgb, var(--sc) 12%, transparent); }
+    }
+    .sync-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--sc); flex-shrink: 0; }
+    .sync-grey   { --sc: #94a3b8; }
+    .sync-green  { --sc: #16a34a; }
+    .sync-yellow { --sc: #d97706; }
+    .sync-red    { --sc: #dc2626; }
+    :root[data-theme="dark"] .sync-grey   { --sc: #94a3b8; }
+    :root[data-theme="dark"] .sync-green  { --sc: #4ade80; }
+    :root[data-theme="dark"] .sync-yellow { --sc: #fbbf24; }
+    :root[data-theme="dark"] .sync-red    { --sc: #f87171; }
 
     /* BULK BAR + TAG MANAGER */
     .bulk-bar { display: none; gap: 10px; align-items: center; flex-wrap: wrap; padding: 10px 15px; background: var(--info-bg); border-bottom: 1px solid var(--info-border); }
@@ -664,7 +859,7 @@ $errorMessage = popFlash('error');
             <?php if (empty($signatures)): ?>
             <div class="empty-state"><i class="fas fa-folder-open empty-icon"></i><p><?= et('No signatures found.') ?></p></div>
             <?php else: ?>
-            <?php foreach ($signatures as $sig) renderSignatureItem($sig, $f, $sigTags[(int)$sig['id']] ?? [], ($target_user_id === 'all')); ?>
+            <?php foreach ($signatures as $sig) renderSignatureItem($sig, $f, $sigTags[(int)$sig['id']] ?? [], ($target_user_id === 'all'), $sigDeviceStatus[(int)$sig['id']] ?? [], $statusFreshnessHours); ?>
             <?php endif; ?>
         </div>
 
@@ -679,6 +874,81 @@ $errorMessage = popFlash('error');
         <div class="modal-header"><h3 style="margin:0"><?= et('Preview') ?></h3><button class="close-modal-btn" onclick="closeModal()">&times;</button></div>
         <div class="modal-body"><iframe id="modalFrame" class="modal-iframe" sandbox=""></iframe></div>
         <div class="modal-footer"><button class="btn btn-sm btn-secondary" onclick="closeModal()"><?= et('Close') ?></button></div>
+    </div>
+</div>
+
+<div id="syncModal" class="modal-overlay">
+    <div class="modal-box" style="max-width: 680px; height: auto; max-height: 90vh;">
+        <div class="modal-header"><h3 style="margin:0"><i class="fas fa-rotate"></i> <?= et('Sync status') ?>: <span id="syncModalName"></span></h3><button class="close-modal-btn" onclick="closeSyncModal()">&times;</button></div>
+        <div class="modal-body" style="height:auto; max-height:calc(90vh - 80px); overflow-y:auto; padding:1.25rem 1.5rem;">
+            <p id="syncModalSummary" style="margin:0 0 1rem;"></p>
+            <p id="syncModalEmpty" style="display:none; color:var(--text-muted);"><?= et('No agent has reported syncing this signature yet.') ?></p>
+            <table class="sync-table" id="syncModalTable">
+                <thead><tr><th><?= et('Device') ?></th><th><?= et('Status') ?></th><th><?= et('Last report') ?></th><th><?= et('Agent') ?></th></tr></thead>
+                <tbody></tbody>
+            </table>
+            <p style="margin:1rem 0 0; font-size:0.8rem; color:var(--text-muted);"><?= et('"Out of date" means the signature, its template or the company details changed after this device last applied it. The device catches up on its next agent run.') ?></p>
+        </div>
+    </div>
+</div>
+
+<div id="editModal" class="modal-overlay">
+    <div class="modal-box" style="max-width: 560px; height: auto; max-height: 90vh;">
+        <div class="modal-header"><h3 style="margin:0"><i class="fas fa-pen"></i> <?= et('Edit signature') ?></h3><button class="close-modal-btn" onclick="closeEditModal()">&times;</button></div>
+        <form id="editForm" method="POST" action="all_signatures.php?<?php echo e($filterQS); ?>">
+            <?php echo csrfField(); ?>
+            <input type="hidden" name="action" value="update_one">
+            <input type="hidden" name="id" id="edit_id" value="">
+            <div class="modal-body" style="height:auto; max-height:calc(90vh - 130px); overflow-y:auto; padding:1.25rem 1.5rem;">
+                <div id="editLdapWarning" style="display:none; background:var(--warning-bg); color:var(--warning-text); border:1px solid var(--warning-border); border-radius:8px; padding:0.6rem 0.9rem; font-size:0.85rem; margin-bottom:1rem;">
+                    <i class="fas fa-triangle-exclamation"></i> <?= et('This signature came from an LDAP import. The next import may overwrite your changes if this field is still mapped there.') ?>
+                </div>
+                <div style="display:flex; flex-direction:column; gap:0.9rem;">
+                    <label>
+                        <span style="font-weight:600; font-size:0.85rem;"><?= et('Name') ?></span>
+                        <input type="text" name="name" id="edit_name" maxlength="100" required class="edit-input" style="width:100%; margin-top:0.25rem;">
+                    </label>
+                    <label>
+                        <span style="font-weight:600; font-size:0.85rem;"><?= et('Role') ?></span>
+                        <input type="text" name="role" id="edit_role" maxlength="100" class="edit-input" style="width:100%; margin-top:0.25rem;">
+                    </label>
+                    <label>
+                        <span style="font-weight:600; font-size:0.85rem;"><?= et('Email') ?></span>
+                        <input type="email" name="email" id="edit_email" maxlength="254" required class="edit-input" style="width:100%; margin-top:0.25rem;">
+                    </label>
+                    <label>
+                        <span style="font-weight:600; font-size:0.85rem;"><?= et('Phone') ?></span>
+                        <input type="text" name="phone" id="edit_phone" maxlength="30" class="edit-input" style="width:100%; margin-top:0.25rem;">
+                    </label>
+                    <label>
+                        <span style="font-weight:600; font-size:0.85rem;"><?= et('Template') ?></span>
+                        <select name="template" id="edit_template" class="user-select" style="width:100%; margin-top:0.25rem;">
+                            <?php foreach ($allTemplates as $tpl): ?>
+                            <option value="<?php echo e($tpl); ?>"><?php echo e(templateDisplayName($tpl)); ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </label>
+                    <?php if ($is_admin): ?>
+                    <div>
+                        <span style="font-weight:600; font-size:0.85rem;"><?= et('Tags') ?></span>
+                        <div style="display:flex; flex-wrap:wrap; gap:0.5rem; margin-top:0.4rem;">
+                            <?php foreach ($facetTags as $tg): ?>
+                            <label style="display:flex; align-items:center; gap:0.3rem; font-size:0.8rem; background:var(--bg-subtle); border:1px solid var(--border); border-radius:6px; padding:0.25rem 0.5rem; cursor:pointer;">
+                                <input type="checkbox" name="tags[]" class="edit-tag-check" value="<?php echo (int)$tg['id']; ?>">
+                                <?php echo e($tg['name']); ?>
+                            </label>
+                            <?php endforeach; ?>
+                            <?php if (empty($facetTags)): ?><span style="color:var(--text-faint); font-size:0.8rem;"><?= et('No tags yet.') ?></span><?php endif; ?>
+                        </div>
+                    </div>
+                    <?php endif; ?>
+                </div>
+            </div>
+            <div class="modal-footer" style="display:flex; justify-content:flex-end; gap:0.5rem;">
+                <button type="button" class="btn btn-sm btn-secondary" onclick="closeEditModal()"><?= et('Cancel') ?></button>
+                <button type="submit" class="btn btn-sm btn-primary"><i class="fas fa-save"></i> <?= et('Save') ?></button>
+            </div>
+        </form>
     </div>
 </div>
 
@@ -985,6 +1255,79 @@ function openModal(id) {
 function closeModal() { modal.style.display = 'none'; modalFrame.srcdoc=''; }
 function closeProgressModal() { document.getElementById('progressModal').style.display = 'none'; }
 window.onclick = e => { if(e.target == modal) closeModal(); }
+
+// --- EDIT MODAL ---
+const editModal = document.getElementById('editModal');
+const editForm = document.getElementById('editForm');
+
+function openEditModal(id) {
+    const dataEl = document.getElementById('edit-data-' + id);
+    if (!dataEl) return;
+    let data;
+    try { data = JSON.parse(dataEl.textContent); } catch (e) { return; }
+
+    document.getElementById('edit_id').value = data.id;
+    document.getElementById('edit_name').value = data.name || '';
+    document.getElementById('edit_role').value = data.role || '';
+    document.getElementById('edit_email').value = data.email || '';
+    document.getElementById('edit_phone').value = data.phone || '';
+    const tplSelect = document.getElementById('edit_template');
+    if (tplSelect) tplSelect.value = data.template || tplSelect.value;
+
+    document.querySelectorAll('.edit-tag-check').forEach(cb => {
+        cb.checked = Array.isArray(data.tagIds) && data.tagIds.includes(parseInt(cb.value, 10));
+    });
+
+    const warning = document.getElementById('editLdapWarning');
+    if (warning) warning.style.display = (data.source === 'ldap') ? 'block' : 'none';
+
+    editModal.style.display = 'flex';
+}
+function closeEditModal() { editModal.style.display = 'none'; }
+
+// --- SYNC DETAILS (click on a sync badge) ---
+// Values come from a JSON block and are inserted with textContent only.
+const syncModal = document.getElementById('syncModal');
+function openSyncModal(id) {
+    const el = document.getElementById('sync-data-' + id);
+    if (!el) return;
+    let d;
+    try { d = JSON.parse(el.textContent); } catch (e) { return; }
+    document.getElementById('syncModalName').textContent = d.name || '';
+    const summary = document.getElementById('syncModalSummary');
+    summary.textContent = '';
+    const badge = document.createElement('span');
+    badge.className = 'sync-badge sync-' + (['grey','green','yellow','red'].includes(d.level) ? d.level : 'grey');
+    const dot = document.createElement('span'); dot.className = 'sync-dot';
+    badge.appendChild(dot); badge.appendChild(document.createTextNode(d.label || ''));
+    summary.appendChild(badge);
+
+    const tbody = document.querySelector('#syncModalTable tbody');
+    tbody.textContent = '';
+    const devices = Array.isArray(d.devices) ? d.devices : [];
+    document.getElementById('syncModalEmpty').style.display = devices.length ? 'none' : 'block';
+    document.getElementById('syncModalTable').style.display = devices.length ? '' : 'none';
+    const stateLevel = { current: 'green', outdated: 'yellow', stale: 'yellow', warn: 'yellow', error: 'red' };
+    devices.forEach(dev => {
+        const tr = document.createElement('tr');
+        const tdDev = document.createElement('td'); tdDev.textContent = dev.device || '';
+        const tdState = document.createElement('td');
+        const b = document.createElement('span');
+        b.className = 'sync-badge sync-' + (stateLevel[dev.state] || 'grey');
+        const bd = document.createElement('span'); bd.className = 'sync-dot';
+        b.appendChild(bd); b.appendChild(document.createTextNode(dev.label || ''));
+        tdState.appendChild(b);
+        if (dev.message) { const m = document.createElement('div'); m.className = 'sync-msg'; m.textContent = dev.message; tdState.appendChild(m); }
+        const tdTime = document.createElement('td'); tdTime.textContent = dev.time || '';
+        const tdVer = document.createElement('td'); tdVer.textContent = dev.version || '–';
+        tr.append(tdDev, tdState, tdTime, tdVer);
+        tbody.appendChild(tr);
+    });
+    syncModal.style.display = 'flex';
+}
+function closeSyncModal() { syncModal.style.display = 'none'; }
+window.addEventListener('click', e => { if (e.target == syncModal) closeSyncModal(); });
+window.addEventListener('click', e => { if (e.target == editModal) closeEditModal(); });
 
 // --- DELETE ALL ---
 function confirmDeleteAll() {

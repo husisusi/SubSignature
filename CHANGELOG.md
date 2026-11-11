@@ -1,5 +1,63 @@
 # Changelog
 
+## 1.7.0
+
+### Added (sync status)
+- **"Out of date" after an edit.** The agent now reports which version of a signature it applied (`html_sha256`); All Signatures compares it with the current version. As soon as a signature - or its template, or the company details - changes, the badge turns yellow **Out of date** and turns green again once the agent has fetched and applied the new version.
+- **Several devices per signature.** Every agent installation (device) is tracked separately; the badge counts them, e.g. **2/2 up to date** or **1/3 up to date**. With one device it names the state (*Up to date*, *Out of date*, *No recent sync*, *Synced with warning*, *Sync error*).
+- **Sync details dialog:** click a badge to see every device with its state, last report time, agent version and message (also works on touch screens, where tooltips do not exist).
+- **Admin -> Configuration: forget silent devices after N days** (`status_device_retention_days`, default 30, 1-365) - a replaced laptop stops counting and is removed.
+- Agent 0.5.0-alpha: sends `html_sha256` with every status item; `subsignature-agent status` shows the device ID (the name in the server's device list) and whether status reporting is on.
+
+### Fixed
+- **API Tokens page aborted with "An internal error occurred"** (1.6.0): a translation helper was called without its parameters. Fixed; `eth()` now tolerates a missing parameter list so this cannot break a page again.
+- **Edit signature dialog:** the text fields showed a dropdown arrow; they are plain text fields now.
+- Agent: the last German program output (`status` header, a configuration error) is now English.
+
+### Added (database)
+- Schema v7: table `signature_device_status` (one row per signature and device, with `html_sha256`), replacing 1.6.0's `signature_sync_status`; existing reports are carried over. Setting `status_device_retention_days`.
+
+### Security / behaviour
+- At most 25 devices are stored per signature and silent devices are pruned, so a `status:write` token cannot grow the table without bound.
+- `html_sha256` is validated (64 hex characters) and only compared with the server's own hash; it never affects what clients receive.
+
+### Changed
+- `POST /api/v1/status`: optional `items[].html_sha256`; reports are stored per `device_id`.
+- Docs: `docs/API.md`, `README.md`, `docs/SECURITY_REVIEW.md`, `subsignature-agent/README.md` and `subsignature-agent/docs/API.md` (which had not mentioned the status report yet).
+- The 15 new interface texts are translated into all 18 languages.
+
+### Upgrade notes
+- Copy the files, keep `private_data/`, reload once. The migration to schema v7 runs automatically and keeps the 1.6.0 status reports (they show as the device that reported them).
+- Update the agents to 0.5.0 to get "Out of date" detection for template and company-detail changes; agents from the 1.6.0 package (0.4.0-alpha) keep working, but for them only edits of the signature itself are detected (by comparing timestamps).
+
+## 1.6.0 (Never Released)
+
+### Added (desktop agent integration)
+- **The desktop agent now reports back.** After a real sync (not `check`), the Go agent (`subsignature-agent/`, Windows and Linux) tells the server whether each signature it applied actually worked - `ok`, `warn` (e.g. no matching Outlook account) or `error` - via the new `POST /api/v1/status` endpoint. Configurable per install with `<report-status>` in `config.xml` (default on); a dry-run `check` never reports, and neither does an aborted/rate-limited run.
+- **New API token scope `status:write`**, separate from `signatures:read`. **Admin -> API Tokens** now shows a checkbox per scope instead of a single implied one; a token can have either, both, or be revoked independently of the other.
+- Agent: a stable per-install `device_id` (random, generated once with `crypto/rand`, kept in the local state file) is sent with every status report so the admin can tell installs apart; it is never used for authentication.
+
+### Added (All Signatures)
+- **Edit a single signature** directly from All Signatures (pencil icon): name, role, email, phone and template, plus tags for administrators and technicians. Normal users can edit their own signatures. Editing an LDAP-sourced signature warns that the next LDAP re-import will overwrite the change.
+- **Sync-status badge** on every signature (grey = never reported, green = synced and fresh, yellow = synced but outdated or reported a warning, red = the agent reported an error), with a tooltip showing the last report time, device and message.
+- **Admin -> Configuration: sync freshness window** (`status_freshness_hours`, default 6, 1-168) - how long a successful report stays "green" before turning "yellow".
+
+### Added (database)
+- Schema v6: new table `signature_sync_status` (one row per signature, written only by `POST /api/v1/status`), setting `status_freshness_hours`. Migrated automatically.
+
+### Security / behaviour
+- **Closed a defense-in-depth gap in the new edit action:** `update_one`'s `UPDATE` statement now repeats the same `AND user_id = ...` ownership condition that `delete_one` already enforced directly on its SQL statement, instead of relying only on a `SELECT` check beforehand; a `0`-row update rolls back and reports "not found". Found and fixed before release - see `docs/SECURITY_REVIEW.md`.
+- `POST /api/v1/status` can only write the sync-status columns of a signature that already exists, never its content; all fields are validated and length-capped server-side, timestamps are server-set, and it has its own, smaller rate-limit bucket.
+
+### Changed
+- `docs/API.md` rewritten: no longer describes a hypothetical Python agent - it documents the real Go agent that already exists, plus the new `POST /api/v1/status` endpoint and the `status:write` scope.
+- The 23 new interface texts (edit dialog, sync-status badges and tooltips, the freshness-window setting, token permission checkboxes) are translated into all 18 languages.
+
+### Upgrade notes
+- Copy the files, keep `private_data/`, reload once. The migration to schema v6 runs automatically.
+- Existing API tokens keep their current scope (`signatures:read`); grant `status:write` explicitly to any token whose agent should report sync status.
+- Agents built before 1.6.0 keep working against the read endpoints unchanged; update them (and give their token the `status:write` scope) to get the sync-status badge filled in.
+
 ## 1.5.0
 
 ### Added

@@ -7,8 +7,11 @@
 package state
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"os"
+	"strings"
 	"time"
 
 	"subsignature-agent/internal/fsutil"
@@ -24,6 +27,12 @@ type Entry struct {
 	AppliedAt       time.Time `json:"applied_at,omitzero"`
 	CheckedAt       time.Time `json:"checked_at,omitzero"`
 	LastError       string    `json:"last_error,omitempty"`
+	// Warning holds a non-fatal note from the last successful selection
+	// (e.g. an ambiguous match that was resolved by duplicate-policy).
+	// Empty when the last check had no such note. Reported to the server as
+	// status "warn" (LastError, if set, takes priority and is reported as
+	// "error").
+	Warning string `json:"warning,omitempty"`
 }
 
 // RegValue is a remembered registry value (type and raw data).
@@ -59,7 +68,61 @@ type State struct {
 	// Outlook: the map key is the account's registry key.
 	Outlook map[string]*OutlookAccount `json:"outlook,omitempty"`
 	Roaming []RoamingSwitch            `json:"outlook_roaming,omitempty"`
-	path    string
+	// DeviceID identifies this installation to the server's admin UI (a
+	// tooltip in "All Signatures"), never used for authentication - the
+	// bearer token is. Generated once by EnsureDeviceID and kept stable
+	// across runs by being persisted here.
+	DeviceID string `json:"device_id,omitempty"`
+	path     string
+}
+
+// deviceIDSafe keeps only characters the server's device_id validation
+// accepts (see POST /api/v1/status): letters, digits, space . _ - @.
+func deviceIDSafe(s string) string {
+	var b strings.Builder
+	for _, r := range s {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9',
+			r == '.', r == '_', r == '-', r == '@', r == ' ':
+			b.WriteRune(r)
+		default:
+			b.WriteRune('-')
+		}
+	}
+	return b.String()
+}
+
+func isAlnum(b byte) bool {
+	return b >= 'a' && b <= 'z' || b >= 'A' && b <= 'Z' || b >= '0' && b <= '9'
+}
+
+// EnsureDeviceID returns the device's stable identifier, generating one from
+// the host name plus a random suffix on first call. The caller must Save()
+// the state for it to persist; until then repeated calls return the same
+// value from memory.
+func (s *State) EnsureDeviceID() string {
+	if s.DeviceID != "" {
+		return s.DeviceID
+	}
+	host, _ := os.Hostname()
+	host = deviceIDSafe(strings.TrimSpace(host))
+	if host == "" {
+		host = "agent"
+	}
+	if len(host) > 60 {
+		host = host[:60]
+	}
+	if !isAlnum(host[0]) {
+		host = "d" + host
+	}
+	suffix := make([]byte, 4)
+	_, _ = rand.Read(suffix) // crypto/rand failing is effectively impossible; a zero suffix is harmless here
+	id := host + "-" + hex.EncodeToString(suffix)
+	if len(id) > 80 {
+		id = id[:80]
+	}
+	s.DeviceID = id
+	return id
 }
 
 // OutlookEntry returns the entry of an Outlook account, creating it if needed.

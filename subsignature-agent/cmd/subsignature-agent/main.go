@@ -131,7 +131,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		if cfg.Server.BaseURL.Scheme == "http" {
 			scheme = "WITHOUT TLS (http, test only)"
 		}
-		fmt.Fprintf(stdout, "Konfiguration: %s\nServer:        %s [%s]\nIntervall:     %s\n\n", cfg.Path, cfg.Server.BaseURL, scheme, cfg.Sync.Interval.Duration)
+		fmt.Fprintf(stdout, "Configuration: %s\nServer:        %s [%s]\nInterval:      %s\n", cfg.Path, cfg.Server.BaseURL, scheme, cfg.Sync.Interval.Duration)
 		for _, l := range lines {
 			fmt.Fprintln(stdout, l)
 		}
