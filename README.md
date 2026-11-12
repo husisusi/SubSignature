@@ -225,6 +225,7 @@ An overview of the protections and the results of the security review is in [doc
 * **Jodit Editor** (MIT): WYSIWYG editor for template creation.
 * **Ace Editor** (BSD-3-Clause): standalone code editor written in JavaScript.
 * **Font Awesome Free** (Icons CC BY 4.0, Fonts SIL OFL 1.1, Code MIT): UI icons, hosted locally.
+* **PHPMailer** (LGPL-2.1): sending e-mails via SMTP.
 
 ## Roadmap
 
