@@ -48,6 +48,9 @@ type Options struct {
 	Registry outlook.Registry
 	Logger   *slog.Logger
 	Now      func() time.Time
+	// OutlookRunning reports whether classic Outlook runs for this user.
+	// Default: outlook.Running (process list of the own Windows session).
+	OutlookRunning func() bool
 }
 
 func (o *Options) fill() {
@@ -69,6 +72,9 @@ func (o *Options) fill() {
 	}
 	if o.Now == nil {
 		o.Now = time.Now
+	}
+	if o.OutlookRunning == nil {
+		o.OutlookRunning = outlook.Running
 	}
 }
 
@@ -98,6 +104,14 @@ type resolution struct {
 	notes    []string
 }
 
+// Mail clients the agent reports separately to the server: each one is its
+// own "device" there ("<device id> Thunderbird", "<device id> Outlook"), so
+// "All Signatures" shows whether every client on a PC has the current version.
+const (
+	clientThunderbird = "Thunderbird"
+	clientOutlook     = "Outlook"
+)
+
 type runner struct {
 	cfg    *config.Config
 	opt    Options
@@ -106,11 +120,18 @@ type runner struct {
 	reg    outlook.Registry
 	st     *state.State
 	rep    *Report
+
+	// Errors of this run, for the status report: fetching/selecting a
+	// signature affects every client of an address, writing it only the
+	// client that failed.
+	resolveErr map[string]string            // address -> error
+	clientErr  map[string]map[string]string // client -> address -> error
 }
 
 func newRunner(cfg *config.Config, opt Options) *runner {
 	opt.fill()
-	return &runner{cfg: cfg, opt: opt, log: opt.Logger, reg: opt.Registry, rep: &Report{}}
+	return &runner{cfg: cfg, opt: opt, log: opt.Logger, reg: opt.Registry, rep: &Report{},
+		resolveErr: map[string]string{}, clientErr: map[string]map[string]string{}}
 }
 
 // outlookOn: Outlook is only handled on Windows, and only if the
@@ -260,7 +281,7 @@ func Run(ctx context.Context, cfg *config.Config, opt Options) (*Report, error) 
 	// told us to back off (or while the token/connection is broken) would
 	// make things worse, not better. The next successful run reports instead.
 	if r.cfg.Sync.ReportStatusOn() && !r.opt.DryRun && r.rep.Skipped == 0 {
-		r.reportStatus(ctx, emails)
+		r.reportStatus(ctx, infos, accts)
 	}
 
 	if !r.opt.DryRun {
@@ -271,40 +292,78 @@ func Run(ctx context.Context, cfg *config.Config, opt Options) (*Report, error) 
 	return r.rep, errors.Join(r.rep.Errors...)
 }
 
-// reportStatus pushes this run's per-address outcome to the server (POST
-// /api/v1/status), so admins see a sync-status badge in "All Signatures".
+// reportStatus pushes this run's outcome to the server (POST /api/v1/status),
+// so admins see a sync-status badge in "All Signatures". Every mail client is
+// reported as its own device ("<device id> Thunderbird", "<device id>
+// Outlook"): with both on one PC the server shows "2/2 up to date", and an
+// error in Outlook does not mark Thunderbird as failed.
+//
 // Called only after a run that completed in full (see Run). An address with
 // no signature_id yet (no match found, or its very first fetch failed) has
-// nothing to attach a status to and is skipped; signature_sync_status is
-// keyed by signature, not by address. A failure to report is logged as a
-// note, not a sync error: the signatures were still applied correctly,
-// which is the actual job.
-func (r *runner) reportStatus(ctx context.Context, emails []string) {
-	var items []api.StatusItem
-	for _, email := range emails {
-		e := r.st.Get(email)
-		if e == nil || e.SignatureID <= 0 {
+// nothing to attach a status to and is skipped. A failure to report is
+// logged as a note, not a sync error: the signatures were still applied
+// correctly, which is the actual job.
+func (r *runner) reportStatus(ctx context.Context, infos []profileInfo, accts []outlook.Account) {
+	perClient := map[string][]string{}
+	seen := map[string]bool{}
+	add := func(client, email string) {
+		if k := client + "|" + email; !seen[k] {
+			seen[k] = true
+			perClient[client] = append(perClient[client], email)
+		}
+	}
+	for _, info := range infos {
+		for _, id := range info.ids {
+			add(clientThunderbird, id.Email)
+		}
+	}
+	for _, a := range accts {
+		add(clientOutlook, a.Email)
+	}
+
+	base := r.st.EnsureDeviceID()
+	for _, client := range []string{clientThunderbird, clientOutlook} {
+		var items []api.StatusItem
+		for _, email := range perClient[client] {
+			e := r.st.Get(email)
+			if e == nil || e.SignatureID <= 0 {
+				continue
+			}
+			status, msg := "ok", ""
+			switch {
+			case r.resolveErr[email] != "":
+				status, msg = "error", r.resolveErr[email]
+			case r.clientErr[client][email] != "":
+				status, msg = "error", r.clientErr[client][email]
+			case e.Warning != "":
+				status, msg = "warn", e.Warning
+			}
+			// ServerSHA256 identifies the version that was resolved (and, unless
+			// an error says otherwise, applied) in this run.
+			items = append(items, api.StatusItem{SignatureID: e.SignatureID, Status: status, Message: msg, HTMLSHA256: e.ServerSHA256})
+		}
+		if len(items) == 0 {
 			continue
 		}
-		status, msg := "ok", ""
-		switch {
-		case e.LastError != "":
-			status, msg = "error", e.LastError
-		case e.Warning != "":
-			status, msg = "warn", e.Warning
+		if err := r.client.ReportStatus(ctx, clientDeviceID(base, client), version.Version, items); err != nil {
+			r.note("could not report sync status to the server: %v", err)
+			r.log.Warn("reporting sync status failed", "client", client, "err", err)
+			if api.Systemic(err) {
+				return // token/network/rate limit: the next request would fail the same way
+			}
 		}
-		// ServerSHA256 identifies the version that was resolved (and, unless
-		// LastError says otherwise, applied) in this run.
-		items = append(items, api.StatusItem{SignatureID: e.SignatureID, Status: status, Message: msg, HTMLSHA256: e.ServerSHA256})
 	}
-	if len(items) == 0 {
-		return
+}
+
+// clientDeviceID is the device id under which a mail client is reported:
+// the installation's id plus the client name, at most 80 characters (the
+// server's limit).
+func clientDeviceID(base, client string) string {
+	suffix := " " + client
+	if len(base)+len(suffix) > 80 {
+		base = strings.TrimRight(base[:80-len(suffix)], " ")
 	}
-	deviceID := r.st.EnsureDeviceID()
-	if err := r.client.ReportStatus(ctx, deviceID, version.Version, items); err != nil {
-		r.note("could not report sync status to the server: %v", err)
-		r.log.Warn("reporting sync status failed", "err", err)
-	}
+	return base + suffix
 }
 
 func (r *runner) loadState() error {
@@ -330,6 +389,16 @@ func (r *runner) fail(what string, err error) {
 func (r *runner) failFor(email, what string, err error) {
 	r.fail(what, err)
 	r.st.Entry(email).LastError = err.Error()
+}
+
+// failClient records an error that concerns one mail client only (writing a
+// file, a setting); the status report marks only that client as failed.
+func (r *runner) failClient(client, email, what string, err error) {
+	r.failFor(email, what, err)
+	if r.clientErr[client] == nil {
+		r.clientErr[client] = map[string]string{}
+	}
+	r.clientErr[client][email] = err.Error()
 }
 
 func (r *runner) act(format string, a ...any) {
@@ -491,6 +560,7 @@ func (r *runner) markChecked(email string, now time.Time, warning string) {
 func (r *runner) recordError(email string, now time.Time, what string, err error) {
 	e := r.st.Entry(email)
 	e.CheckedAt, e.LastError, e.Warning = now, err.Error(), ""
+	r.resolveErr[email] = err.Error()
 	r.fail(what, err)
 }
 
@@ -507,7 +577,7 @@ func (r *runner) apply(info profileInfo, res map[string]*resolution) {
 			changed, err := r.writeIfChanged(dir, path, rs.prepared)
 			switch {
 			case err != nil:
-				r.failFor(id.Email, "signature file for "+id.Email, err)
+				r.failClient(clientThunderbird, id.Email, "signature file for "+id.Email, err)
 			case changed:
 				r.rep.FilesWritten++
 				r.act("profile %s: wrote signature for %s (%s)", info.prof.Name, id.Email, filepath.Base(path))
@@ -535,6 +605,12 @@ func (r *runner) apply(info profileInfo, res map[string]*resolution) {
 	changed, err := thunderbird.UpdateUserJS(info.prof.Dir, thunderbird.RenderBlock(items), r.opt.DryRun)
 	if err != nil {
 		r.fail("user.js in profile "+info.prof.Name, err)
+		for _, id := range info.ids {
+			if r.clientErr[clientThunderbird] == nil {
+				r.clientErr[clientThunderbird] = map[string]string{}
+			}
+			r.clientErr[clientThunderbird][id.Email] = "user.js in profile " + info.prof.Name + ": " + err.Error()
+		}
 		return
 	}
 	if changed {
@@ -579,7 +655,21 @@ func Status(cfg *config.Config, opt Options) ([]string, error) {
 	if !cfg.Sync.ReportStatusOn() {
 		report = "off"
 	}
-	out := []string{"Device ID:     " + dev, "Status report: " + report, ""}
+	out := []string{"Device ID:     " + dev, "Status report: " + report}
+	// Each mail client is its own device on the server (see reportStatus).
+	if r.st.DeviceID != "" {
+		var names []string
+		if len(infos) > 0 {
+			names = append(names, `"`+clientDeviceID(r.st.DeviceID, clientThunderbird)+`"`)
+		}
+		if len(accts) > 0 {
+			names = append(names, `"`+clientDeviceID(r.st.DeviceID, clientOutlook)+`"`)
+		}
+		if len(names) > 0 {
+			out = append(out, "Reported as:   "+strings.Join(names, ", "))
+		}
+	}
+	out = append(out, "")
 	if errors.Is(err, ErrNoProfile) {
 		out = append(out, "No Thunderbird profile and no Outlook account found.")
 	}

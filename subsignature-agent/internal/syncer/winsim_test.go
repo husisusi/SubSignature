@@ -118,8 +118,9 @@ func TestWindowsOutlookOnly(t *testing.T) {
 	if err != nil {
 		t.Fatalf("%v (%v)", err, rep.Errors)
 	}
-	if rep.Emails != 3 || rep.FilesWritten != 2 || rep.PrefsChanged != 2 {
-		t.Errorf("addresses=%d files=%d entries=%d, expected 3/2/2", rep.Emails, rep.FilesWritten, rep.PrefsChanged)
+	// 2 accounts + the roaming switch (disabled by default since 0.6.1)
+	if rep.Emails != 3 || rep.FilesWritten != 2 || rep.PrefsChanged != 3 {
+		t.Errorf("addresses=%d files=%d entries=%d, expected 3/2/3", rep.Emails, rep.FilesWritten, rep.PrefsChanged)
 	}
 	name := outlook.SignatureName("SubSignature", maxMail)
 	if name != "SubSignature max.mustermann@example.com" {
@@ -144,12 +145,16 @@ func TestWindowsOutlookOnly(t *testing.T) {
 	if _, ok := w.str(kNobody, outlook.ValueNew); ok {
 		t.Error("no default may be set for an address without a signature")
 	}
-	// Every write access hits only account keys and only the two values.
-	if len(w.reg.Writes) != 4 {
-		t.Errorf("%d write accesses, expected 4: %v", len(w.reg.Writes), w.reg.Writes)
+	// Every write access hits only account keys and only the two values - plus
+	// the two roaming switches in Outlook\Setup.
+	if len(w.reg.Writes) != 6 {
+		t.Errorf("%d write accesses, expected 6: %v", len(w.reg.Writes), w.reg.Writes)
 	}
+	setup := "set " + `Software\Microsoft\Office\16.0\Outlook\Setup|`
 	for _, wr := range w.reg.Writes {
-		if !strings.HasPrefix(wr, "set "+acctBase+`\0000000`) || !(strings.HasSuffix(wr, "|"+outlook.ValueNew) || strings.HasSuffix(wr, "|"+outlook.ValueReply)) {
+		account := strings.HasPrefix(wr, "set "+acctBase+`\0000000`) && (strings.HasSuffix(wr, "|"+outlook.ValueNew) || strings.HasSuffix(wr, "|"+outlook.ValueReply))
+		roaming := wr == setup+outlook.ValueNoRoaming || wr == setup+outlook.ValueNoRoamingOld
+		if !account && !roaming {
 			t.Errorf("unexpected registry write access: %s", wr)
 		}
 	}
@@ -337,6 +342,7 @@ func TestWindowsSetNewOnly(t *testing.T) {
 	w2 := newWinEnv(t)
 	k2 := w2.imap("00000002", maxMail)
 	w2.cfg.Outlook.SetReply, w2.cfg.Outlook.SetNew = &no, &no
+	w2.cfg.Outlook.RoamingSignatures = "keep"
 	if _, err := w2.run(); err != nil {
 		t.Fatal(err)
 	}
@@ -407,23 +413,23 @@ func TestWindowsRoamingSignatures(t *testing.T) {
 		return false
 	}
 
-	// keep (default): only a note, no change.
+	// keep: only a note, no change.
 	w := newWinEnv(t)
 	w.imap("00000002", maxMail)
+	w.cfg.Outlook.RoamingSignatures = "keep"
 	rep, err := w.run()
-	if err != nil || !hasNote(rep, "roaming signatures are not disabled") {
+	if err != nil || !hasNote(rep, "roaming signatures are on") {
 		t.Fatalf("err=%v notes=%v", err, rep.Notes)
 	}
 	if _, err := w.reg.Get(setup, outlook.ValueNoRoaming); err == nil {
 		t.Fatal("without being told to, the switch must not be set")
 	}
 
-	// disable: both switches, and remove reverts them.
+	// disable (the default since 0.6.1): both switches, and remove reverts them.
 	w = newWinEnv(t)
 	w.imap("00000002", maxMail)
-	w.cfg.Outlook.RoamingSignatures = "disable"
 	rep, err = w.run()
-	if err != nil || hasNote(rep, "not disabled") {
+	if err != nil || hasNote(rep, "roaming signatures are on") {
 		t.Fatalf("err=%v notes=%v", err, rep.Notes)
 	}
 	for _, n := range []string{outlook.ValueNoRoaming, outlook.ValueNoRoamingOld} {
@@ -665,5 +671,235 @@ func TestRemoveThunderbirdOnLinux(t *testing.T) {
 	}
 	if len(rep.Notes) == 0 {
 		t.Error("the note about the remaining setting in Thunderbird is missing")
+	}
+}
+
+// Field report (agent 0.5.0, Microsoft 365, IMAP): the account's texts are
+// REG_BINARY, the agent wrote "New Signature" as REG_BINARY too, and Outlook
+// listed the signature but did not use it. Outlook 2016+ only reads REG_SZ.
+func TestWindowsOutlook2016BinaryAccountGetsStringDefault(t *testing.T) {
+	w := newWinEnv(t)
+	key := acctBase + `\00000002`
+	w.reg.Put(key, "Account Name", outlook.StringValue(outlook.RegBinary, maxMail))
+	w.reg.Put(key, "Email", outlook.StringValue(outlook.RegBinary, maxMail))
+	name := outlook.SignatureName("SubSignature", maxMail)
+	// What 0.5.0 left behind: the right name, the wrong type.
+	w.reg.Put(key, outlook.ValueNew, outlook.StringValue(outlook.RegBinary, name))
+	w.reg.Put(key, outlook.ValueReply, outlook.StringValue(outlook.RegBinary, name))
+
+	rep, err := w.run()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, vn := range []string{outlook.ValueNew, outlook.ValueReply} {
+		v, err := w.reg.Get(key, vn)
+		if err != nil || v.Type != outlook.RegSZ {
+			t.Fatalf("%s: type %d, err %v - Outlook 2016+ only reads REG_SZ", vn, v.Type, err)
+		}
+		if s, _ := v.String(); s != name {
+			t.Errorf("%s = %q", vn, s)
+		}
+	}
+	if rep.PrefsChanged == 0 {
+		t.Error("rewriting the type must count as a change")
+	}
+	// Second run: nothing left to do.
+	w.reg.Writes = nil
+	if _, err := w.run(); err != nil {
+		t.Fatal(err)
+	}
+	if len(w.reg.Writes) != 0 {
+		t.Errorf("second run wrote again: %v", w.reg.Writes)
+	}
+}
+
+// Thunderbird and Outlook on one PC with the same address: each mail client is
+// reported as its own device, an edit on the server reaches both, and an error
+// in one client marks only that client as failed.
+func TestWindowsStatusReportPerMailClient(t *testing.T) {
+	w := newWinEnv(t)
+	w.addThunderbird(erikaMail)
+	w.imap("00000002", erikaMail)
+
+	if _, err := w.run(); err != nil {
+		t.Fatal(err)
+	}
+	st, err := state.Load(filepath.Join(w.opt.StateDir, "state.json"))
+	if err != nil || st.DeviceID == "" {
+		t.Fatalf("device id not persisted: %v", err)
+	}
+	base := st.DeviceID
+	byDevice := func() map[string]fakeStatusReport {
+		m := map[string]fakeStatusReport{}
+		for _, r := range w.fake.statusReportsCopy() {
+			m[r.DeviceID] = r // later reports of the same device replace earlier ones
+		}
+		return m
+	}
+	got := byDevice()
+	tb, ol := got[base+" Thunderbird"], got[base+" Outlook"]
+	if len(got) != 2 || len(tb.Items) != 1 || len(ol.Items) != 1 {
+		t.Fatalf("reports = %+v, expected one per mail client", got)
+	}
+	if tb.Items[0].Status != "ok" || ol.Items[0].Status != "ok" || ol.Items[0].HTMLSHA256 != w.fake.itemField(10, "html_sha256") {
+		t.Errorf("first run: thunderbird=%+v outlook=%+v", tb.Items[0], ol.Items[0])
+	}
+
+	// The signature is edited on the server: the next run rewrites the Outlook files too.
+	w.fake.edit(10, "html", "<p>Erika v2</p>")
+	w.fake.edit(10, "html_sha256", htmlHash("<p>Erika v2</p>"))
+	if _, err := w.run(); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(readFile(t, w.sigFile(erikaMail, ".htm")), "Erika v2") {
+		t.Error("Outlook .htm was not updated after the edit on the server")
+	}
+	if ol := byDevice()[base+" Outlook"]; ol.Items[0].HTMLSHA256 != htmlHash("<p>Erika v2</p>") {
+		t.Errorf("Outlook reported %q, expected the new version", ol.Items[0].HTMLSHA256)
+	}
+
+	// Outlook cannot write its file (here: a folder in its place); Thunderbird can.
+	w.fake.edit(10, "html", "<p>Erika v3</p>")
+	w.fake.edit(10, "html_sha256", htmlHash("<p>Erika v3</p>"))
+	must(t, os.Remove(w.sigFile(erikaMail, ".htm")))
+	must(t, os.MkdirAll(filepath.Join(w.sigFile(erikaMail, ".htm"), "blocker"), 0o755))
+	if _, err := w.run(); err == nil {
+		t.Fatal("expected an error for the Outlook file")
+	}
+	got = byDevice()
+	if s := got[base+" Thunderbird"].Items[0].Status; s != "ok" {
+		t.Errorf("Thunderbird = %q, an Outlook error must not mark Thunderbird as failed", s)
+	}
+	if it := got[base+" Outlook"].Items[0]; it.Status != "error" || it.Message == "" {
+		t.Errorf("Outlook = %+v, expected error with a message", it)
+	}
+}
+
+func hasNotePart(rep *Report, part string) bool {
+	for _, n := range rep.Notes {
+		if strings.Contains(n, part) {
+			return true
+		}
+	}
+	return false
+}
+
+// While Outlook runs, remove leaves Outlook alone (Outlook would write its old
+// values back when it closes and keeps showing the signature until a restart).
+func TestWindowsRemoveWaitsForOutlookToClose(t *testing.T) {
+	w := newWinEnv(t)
+	prof := w.addThunderbird(maxMail)
+	k := w.imap("00000002", maxMail)
+	if _, err := w.run(); err != nil {
+		t.Fatal(err)
+	}
+
+	running := true
+	w.opt.OutlookRunning = func() bool { return running }
+	w.reg.Writes = nil
+	if _, err := Remove(w.cfg, w.opt); !errors.Is(err, ErrOutlookRunning) {
+		t.Fatalf("err = %v, expected ErrOutlookRunning", err)
+	}
+	if len(w.reg.Writes) != 0 {
+		t.Errorf("registry changed while Outlook runs: %v", w.reg.Writes)
+	}
+	if _, err := os.Stat(w.sigFile(maxMail, ".htm")); err != nil {
+		t.Error("Outlook file deleted while Outlook runs")
+	}
+	if js := readFile(t, filepath.Join(prof, "user.js")); strings.Contains(js, "subsignature") {
+		t.Error("Thunderbird must be cleaned up anyway")
+	}
+
+	// Outlook closed: the second remove finishes the job (the state was kept).
+	running = false
+	if _, err := Remove(w.cfg, w.opt); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := w.str(k, outlook.ValueNew); ok {
+		t.Error("default signature still set")
+	}
+	if _, err := os.Stat(w.sigFile(maxMail, ".htm")); err == nil {
+		t.Error("Outlook file still there")
+	}
+	if _, err := w.reg.Get(`Software\Microsoft\Office\16.0\Outlook\Setup`, outlook.ValueNoRoaming); err == nil {
+		t.Error("roaming switch not reverted")
+	}
+}
+
+func TestWindowsSyncWhileOutlookRuns(t *testing.T) {
+	w := newWinEnv(t)
+	k := w.imap("00000002", maxMail)
+	w.opt.OutlookRunning = func() bool { return true }
+	rep, err := w.run()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Written anyway (Outlook applies it after a restart), but the user is told.
+	if got, _ := w.str(k, outlook.ValueNew); !strings.HasPrefix(got, "SubSignature ") {
+		t.Errorf("New = %q", got)
+	}
+	if !hasNotePart(rep, "Outlook is running") {
+		t.Errorf("notes = %v", rep.Notes)
+	}
+	lines, err := Status(w.cfg, w.opt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(strings.Join(lines, "\n"), "Outlook (classic): running") {
+		t.Errorf("status does not say that Outlook runs:\n%s", strings.Join(lines, "\n"))
+	}
+}
+
+// Outlook's roaming signatures overwrite the agent's file: detected, reported
+// in status, and rewritten by the next sync.
+func TestWindowsOutlookFileChangedOutsideTheAgent(t *testing.T) {
+	w := newWinEnv(t)
+	w.imap("00000002", maxMail)
+	if _, err := w.run(); err != nil {
+		t.Fatal(err)
+	}
+	must(t, os.WriteFile(w.sigFile(maxMail, ".htm"), []byte("<p>old cloud copy</p>"), 0o600))
+
+	lines, _ := Status(w.cfg, w.opt)
+	if !strings.Contains(strings.Join(lines, "\n"), "CHANGED OUTSIDE THE AGENT") {
+		t.Errorf("status:\n%s", strings.Join(lines, "\n"))
+	}
+	rep, err := w.run()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasNotePart(rep, "changed outside the agent") {
+		t.Errorf("notes = %v", rep.Notes)
+	}
+	if !strings.Contains(readFile(t, w.sigFile(maxMail, ".htm")), "Max New") {
+		t.Error("file not rewritten")
+	}
+	lines, _ = Status(w.cfg, w.opt)
+	if strings.Contains(strings.Join(lines, "\n"), "CHANGED OUTSIDE") {
+		t.Error("still reported as changed after the rewrite")
+	}
+}
+
+// A NewSignature/ReplySignature in Common\MailSettings (group policy or a
+// leftover) can override the per-account default: reported, never written.
+func TestWindowsForcedDefaultSignatureIsReported(t *testing.T) {
+	w := newWinEnv(t)
+	w.imap("00000002", maxMail)
+	w.reg.Put(`Software\Policies\Microsoft\Office\16.0\Common\MailSettings`, "NewSignature", outlook.StringValue(outlook.RegExpandSZ, "Corporate"))
+	rep, err := w.run()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasNotePart(rep, `NewSignature is fixed to "Corporate" by a group policy`) {
+		t.Errorf("notes = %v", rep.Notes)
+	}
+	for _, wr := range w.reg.Writes {
+		if strings.Contains(wr, "MailSettings") {
+			t.Errorf("MailSettings must never be written: %s", wr)
+		}
+	}
+	lines, _ := Status(w.cfg, w.opt)
+	if !strings.Contains(strings.Join(lines, "\n"), "WARNING: NewSignature fixed to \"Corporate\" by group policy") {
+		t.Errorf("status:\n%s", strings.Join(lines, "\n"))
 	}
 }

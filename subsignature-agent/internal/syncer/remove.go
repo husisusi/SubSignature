@@ -89,8 +89,17 @@ func (r *runner) removeThunderbird() {
 	}
 }
 
+// ErrOutlookRunning: remove does not touch Outlook while it runs - Outlook
+// keeps its settings in memory and could write the old values back when it
+// closes, and it keeps showing removed signatures until it is restarted.
+var ErrOutlookRunning = errors.New("Outlook is running - close Outlook and run remove again (Thunderbird has been cleaned up)")
+
 func (r *runner) removeOutlook() {
 	if !r.opt.Env.Windows() || r.reg == nil {
+		return
+	}
+	if !r.opt.DryRun && r.opt.OutlookRunning() {
+		r.fail("Outlook", ErrOutlookRunning)
 		return
 	}
 	accts, err := outlook.Accounts(r.reg, true)

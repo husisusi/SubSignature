@@ -140,7 +140,7 @@ type Outlook struct {
 	SignatureName     string   `xml:"signature-name"`     // display name in Outlook, default "SubSignature"
 	SetNew            *bool    `xml:"set-new"`            // set as default for new messages (default true)
 	SetReply          *bool    `xml:"set-reply"`          // set as default for replies/forwards (default true)
-	RoamingSignatures string   `xml:"roaming-signatures"` // keep | disable
+	RoamingSignatures string   `xml:"roaming-signatures"` // disable (default) | keep
 	ExcludeEmails     []string `xml:"exclude-email"`
 }
 
@@ -173,7 +173,7 @@ func Default() *Config {
 		},
 		Signature:   Signature{DuplicatePolicy: "newest", HTMLPolicy: "reject"},
 		Thunderbird: Thunderbird{Profiles: "default"},
-		Outlook:     Outlook{Profiles: "default", SignatureName: "SubSignature", RoamingSignatures: "keep"},
+		Outlook:     Outlook{Profiles: "default", SignatureName: "SubSignature", RoamingSignatures: "disable"},
 		Logging:     Logging{Level: "info"},
 	}
 }

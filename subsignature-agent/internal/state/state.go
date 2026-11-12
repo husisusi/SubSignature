@@ -48,6 +48,10 @@ type OutlookAccount struct {
 	Email   string `json:"email"`
 	SigName string `json:"sig_name"`
 	Dir     string `json:"dir"` // signature folder that holds the files
+	// FileSHA256 is the hash of the .htm file as the agent last wrote or
+	// verified it. A different file means someone else (typically Outlook's
+	// roaming signatures) overwrote it.
+	FileSHA256 string `json:"file_sha256,omitempty"`
 
 	ManagedNew   bool      `json:"managed_new,omitempty"` // the agent has set "New Signature"
 	PrevNew      *RegValue `json:"prev_new,omitempty"`    // value before that (nil = there was none)

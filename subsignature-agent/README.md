@@ -1,4 +1,4 @@
-# SubSignature Agent for Linux and Windows — alpha 0.5.0
+# SubSignature Agent for Linux and Windows — 1.0.0-rc1
 
 A small Go program (standard library only, one file per system) that
 
@@ -18,17 +18,17 @@ administrator rights, and can undo everything with `remove`.
 > **The new Outlook** (`olk.exe`) cannot be configured by a local program: it stores signatures in the mailbox and
 > reads neither files nor the registry. The agent detects it and says so. Background and alternatives: [`docs/WINDOWS.md`](docs/WINDOWS.md).
 
-> **Status 0.5.0:**
-> * New: after each real sync the agent reports to the server per signature whether applying it worked **and which
->   version it applied** (`html_sha256`), so the server's **All Signatures** page can show "up to date" / "out of
->   date" per device ("2/3 up to date"). `status` now shows this installation's **device ID**. Needs SubSignature
->   1.7.0 for the version comparison (1.6.0 accepts the report but ignores the version).
-> * Documentation, comments and all program output are in English.
-> * **Linux/Thunderbird:** in use by the project owner against the real server and a real Thunderbird.
-> * **Windows:** built on Linux and checked with simulated tests (in-memory registry) – **nothing has been run on a real
->   Windows with a real Outlook yet.** Please start with `check` on a test machine. Details and checklist:
+> **Status 1.0.0-rc1 (release candidate):**
+> * **Linux / Thunderbird:** in use by the project owner against the real server and a real Thunderbird.
+> * **Windows:** confirmed by the project owner on a real PC with Thunderbird and classic Outlook from Microsoft 365
+>   (IMAP account): signature files, default signature for new messages and replies, updates after a change on the
+>   server and `remove`. Exchange accounts, `install.ps1` and the autostart have not been run on a real Windows yet –
+>   see "Still to be verified".
+> * **Outlook needs roaming signatures switched off**, otherwise Outlook ignores and overwrites the agent's signature
+>   (also for IMAP). The agent does that by default (`<roaming-signatures>disable</roaming-signatures>`).
+>   **Configurations created by `init` before 0.6.1 say `keep` - change that line to `disable`.**
+> * Changes per version: [`CHANGELOG.md`](CHANGELOG.md). The API usage: [`docs/API.md`](docs/API.md). Windows details:
 >   [`docs/WINDOWS.md`](docs/WINDOWS.md).
-> * The API is described in [`docs/API.md`](docs/API.md).
 
 ## Quick start (Linux)
 
@@ -110,17 +110,18 @@ find Thunderbird profile(s) ──► read identities (e-mail addresses)
 ## Status reporting
 
 After a real sync (not `check`) that finished without being rate-limited or aborted, the
-agent calls `POST /api/v1/status` once per run with the outcome for every address it
-resolved to a signature: `ok`, `warn` (e.g. no matching Outlook account was found) or
+agent calls `POST /api/v1/status` once per run **and mail client** with the outcome for every
+address it resolved to a signature: `ok`, `warn` (e.g. no matching Outlook account was found) or
 `error` (the write itself failed), plus a short message for `warn`/`error`, and the
 `html_sha256` of the version it applied. Nothing about the signature's *content* is sent — only
 that one small status line per signature ID, and a `device_id` that only labels which install
-reported it.
+and mail client reported it (`<device ID> Thunderbird`, `<device ID> Outlook`).
 
 On the server, **All Signatures** compares the reported `html_sha256` with the current version:
 after an admin edits a signature (or its template, or the company details), every device shows
 **out of date** until its next run fetched and applied the new version. With several devices the
-badge counts them, e.g. **2/3 up to date**; a click on the badge lists every device.
+badge counts them, e.g. **2/3 up to date**; a click on the badge lists every device. Thunderbird
+and Outlook on one PC are two devices, so an error in Outlook does not mark Thunderbird as failed.
 
 * The `device_id` is a random value generated once with `crypto/rand` and kept in the local
   state file; it does not reveal the hostname alone (a random suffix is appended), and it is
@@ -131,8 +132,8 @@ badge counts them, e.g. **2/3 up to date**; a click on the badge lists every dev
 * Addresses the server has no matching signature for are never reported — there is nothing
   server-side to attach a status to.
 * Turn it off per install with `<report-status>false</report-status>` in `config.xml`.
-* `subsignature-agent status` prints this installation's device ID, i.e. the name it has in the
-  server's sync-status list.
+* `subsignature-agent status` prints this installation's device ID and, under `Reported as:`, the
+  names its mail clients have in the server's sync-status list.
 
 ## Configuration (XML)
 
@@ -149,7 +150,7 @@ Fully commented in [`internal/config/config.example.xml`](internal/config/config
 | `sync/report-status` | Push a per-signature `ok`/`warn`/`error` status to the server after each real sync (default `true`; `check` never reports regardless). Needs a token with the `status:write` scope. |
 | `signature/template`, `username`, `override`, `duplicate-policy`, `prefer-source`, `html-policy` | Which template/account, what to do with duplicates, HTML check |
 | `thunderbird/enabled`, `profiles`, `profile-path`, `sig-on-reply` … | Thunderbird: on/off, which profiles, reply/forward behaviour |
-| `outlook/enabled`, `profiles`, `signature-name`, `set-new`, `set-reply`, `roaming-signatures` | Windows only, classic Outlook: on/off, name of the signature, whether it becomes the default, roaming signatures |
+| `outlook/enabled`, `profiles`, `signature-name`, `set-new`, `set-reply`, `roaming-signatures` | Windows only, classic Outlook: on/off, name of the signature, whether it becomes the default, roaming signatures (`disable` by default since 0.6.1) |
 | `exclude-email` (under `thunderbird` or `outlook`) | Addresses the agent does not touch **in any mail client** |
 | `logging/level`, `file` | Log (Windows daemon without a setting: `%LOCALAPPDATA%\subsignature-agent\agent.log`) |
 
@@ -233,7 +234,7 @@ neither a "default" marker nor a defined order. The agent therefore chooses itse
 ## Tests
 
 ```bash
-make all         # gofmt, go vet for Linux AND Windows, go test -race (173 test functions, 230 cases), build
+make all         # gofmt, go vet for Linux AND Windows, go test -race (181 test functions, 238 cases), build
 make dist        # Linux amd64/arm64, Windows amd64/arm64
 ```
 
@@ -250,14 +251,16 @@ switches, the new Outlook, Thunderbird and Outlook together. This does **not** c
 Fault injection: in 0.2.0, 16 places were deliberately broken (15 noticed, one without effect). For 0.3.0, 24 places
 of the new logic were added; 23 were noticed at once, for one (name check on deletion) the test had to be tightened first.
 
-## Still to be verified (alpha!)
+## Still to be verified
 
-**Windows** (not yet run on any real Windows) – the checklist is in [`docs/WINDOWS.md`](docs/WINDOWS.md). Most important:
+**Windows** – confirmed on a real PC (Microsoft 365, IMAP): Thunderbird, Outlook signature files, default signature for
+new messages and replies, updates, `remove`. The checklist is in [`docs/WINDOWS.md`](docs/WINDOWS.md). Open:
 
-1. Does `status` find the Outlook accounts, especially Exchange accounts?
-2. Is the signature set for new messages and replies after restarting Outlook?
-3. Umlauts and images in Outlook; Microsoft 365 mailboxes with roaming signatures.
-4. `remove`, `install.ps1`, autostart without a window.
+1. **Exchange accounts** (on-premises and Microsoft 365): the address is read from `Account Name`; does `status` find them?
+2. Outlook 2016/2019/2021 without Microsoft 365, and Outlook 2013 (`REG_BINARY` values).
+3. Umlauts and images in Outlook.
+4. `install.ps1`, `uninstall.ps1`, autostart without a window (`subsignature-agentw.exe run`), `agent.log`.
+5. The server's sync status with Thunderbird and Outlook on one PC (two devices, "2/2 up to date").
 
 **Linux/Thunderbird** is in use by the project owner. Not confirmed individually:
 
@@ -268,7 +271,7 @@ of the new logic were added; 23 were noticed at once, for one (name check on del
 
 Open questions about the API are in [`docs/API.md`](docs/API.md).
 
-## Ideas for the beta
+## Ideas for later versions
 
 **New Outlook:** an Outlook add-in served by the SubSignature server (the only way that works there) ·
 encrypting the token with DPAPI / Credential Manager on Windows, keyring (libsecret) on Linux ·

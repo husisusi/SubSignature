@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  SubSignature Agent - configuration (alpha)
+  SubSignature Agent - configuration
 
   The same file works on Linux and Windows. Sections that do not exist on a system
   (e.g. <outlook> on Linux) are read and validated there and otherwise ignored.
@@ -153,13 +153,16 @@
     <set-reply>true</set-reply>
 
     <!--
-      Roaming signatures ONLY concern mailboxes in Microsoft 365 / Outlook.com: there Outlook stores
-      signatures in the mailbox and may ignore the local default signature.
-        keep    - change nothing (correct for on-premises Exchange, IMAP, POP)
-        disable - switch roaming signatures off for this user so that the local signature applies
-                  (sets DisableRoamingSignatures under HKCU\Software\Microsoft\Office\<version>\Outlook\Setup)
+      Roaming signatures (Outlook from Microsoft 365, since about 2022): while they are on, Outlook manages
+      signatures itself - it can overwrite the files the agent writes, bring deleted ones back and ignore the
+      default signature the agent sets. Observed with an IMAP account too, not only with Microsoft 365 mailboxes.
+        disable - (default since 0.6.1) switch roaming signatures off for this user so that the agent's signature
+                  applies (sets DisableRoamingSignatures and DisableRoamingSignaturesTemporaryToggle under
+                  HKCU\Software\Microsoft\Office\<version>\Outlook\Setup; takes effect after an Outlook restart;
+                  "remove" restores the previous values)
+        keep    - change nothing (only if signatures are meant to roam via the Microsoft 365 mailbox)
     -->
-    <roaming-signatures>keep</roaming-signatures>
+    <roaming-signatures>disable</roaming-signatures>
   </outlook>
 
   <logging>

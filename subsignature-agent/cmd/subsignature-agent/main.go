@@ -1,4 +1,4 @@
-// Command line of the SubSignature agent (alpha): Linux with Thunderbird,
+// Command line of the SubSignature agent: Linux with Thunderbird,
 // Windows with Thunderbird and classic Outlook.
 package main
 

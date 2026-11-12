@@ -50,8 +50,8 @@ type Account struct {
 	Reply    string // ... for replies and forwards
 	HasNew   bool   // the value exists
 	HasReply bool
-	// TextType is the data type this Outlook stores text in
-	// (REG_SZ since Outlook 2016, REG_BINARY in older versions).
+	// TextType is the data type of the account's texts ("Email" / "Account
+	// Name"); only used for Outlook 2013, see DefaultValueType.
 	TextType uint32
 	// Raw values, so that "remove" can restore exactly the previous state.
 	RawNew, RawReply Value
@@ -165,8 +165,60 @@ func SignatureDir(reg Registry, env platform.Env, version string) (string, error
 	return filepath.Join(env.AppData(), "Microsoft", name), nil
 }
 
+// DefaultValueType is the registry type in which Outlook reads the default
+// signature values ("New Signature", "Reply-Forward Signature") of account a.
+//
+// Outlook 2016 and later (16.0, including Microsoft 365) only accept REG_SZ
+// there - even though the account's other texts ("Email", "Account Name")
+// are often REG_BINARY. Field report (IMAP account, Microsoft 365): a
+// REG_BINARY value with the right name was ignored, the signature was listed
+// in Outlook but not selected as the default. Outlook 2013 (15.0) stored
+// these values as REG_BINARY; for it the type of an existing value, otherwise
+// the type of the account's texts, is kept.
+func DefaultValueType(a Account, valueName string) uint32 {
+	if major(a.Version) >= 16 {
+		return RegSZ
+	}
+	if valueName == ValueNew && a.HasNew && (a.RawNew.Type == RegSZ || a.RawNew.Type == RegBinary) {
+		return a.RawNew.Type
+	}
+	if valueName == ValueReply && a.HasReply && (a.RawReply.Type == RegSZ || a.RawReply.Type == RegBinary) {
+		return a.RawReply.Type
+	}
+	if a.TextType == RegBinary {
+		return RegBinary
+	}
+	return RegSZ
+}
+
+// IsDefault reports whether the value valueName of account a already names
+// the signature name in the type Outlook reads (see DefaultValueType).
+func IsDefault(a Account, valueName, name string) bool {
+	cur, has, raw := a.New, a.HasNew, a.RawNew
+	if valueName == ValueReply {
+		cur, has, raw = a.Reply, a.HasReply, a.RawReply
+	}
+	return has && cur == name && raw.Type == DefaultValueType(a, valueName)
+}
+
+// major returns the major number of an Office version such as "16.0" (0 if unreadable).
+func major(version string) int {
+	n := 0
+	for _, c := range version {
+		if c < '0' || c > '9' {
+			break
+		}
+		n = n*10 + int(c-'0')
+		if n > 1000 {
+			return 0
+		}
+	}
+	return n
+}
+
 // SetDefault registers name as the default signature of an account. valueName
-// is ValueNew or ValueReply. Anything else is rejected.
+// is ValueNew or ValueReply. Anything else is rejected. The value is written
+// in the type Outlook reads (DefaultValueType); nothing else is ever written.
 func SetDefault(reg Registry, a Account, valueName, name string) error {
 	if err := checkAccountWrite(a.Key, valueName); err != nil {
 		return err
@@ -174,19 +226,7 @@ func SetDefault(reg Registry, a Account, valueName, name string) error {
 	if !sigNameRe.MatchString(name) {
 		return fmt.Errorf("outlook: invalid signature name %q", name)
 	}
-	// Data type: like the existing value, otherwise the way this Outlook stores text
-	// (REG_SZ since Outlook 2016, REG_BINARY before). Nothing else is ever written.
-	typ := a.TextType
-	if cur, has := a.RawNew, a.HasNew; valueName == ValueNew && has && (cur.Type == RegSZ || cur.Type == RegBinary) {
-		typ = cur.Type
-	}
-	if cur, has := a.RawReply, a.HasReply; valueName == ValueReply && has && (cur.Type == RegSZ || cur.Type == RegBinary) {
-		typ = cur.Type
-	}
-	if typ != RegBinary {
-		typ = RegSZ
-	}
-	return reg.Set(a.Key, valueName, StringValue(typ, name))
+	return reg.Set(a.Key, valueName, StringValue(DefaultValueType(a, valueName), name))
 }
 
 // Restore restores an earlier value (prev == nil: remove the value).
@@ -293,4 +333,35 @@ func RoamingSwitchValue(reg Registry, version, valueName string) *Value {
 		return nil
 	}
 	return &v
+}
+
+// Forced is a default signature that Outlook takes from Common\MailSettings
+// instead of from the account: set by a group policy (Software\Policies\...)
+// or left over from Outlook 2007 / older deployment scripts. While such a
+// value exists, the per-account default the agent sets may be ignored.
+type Forced struct {
+	Version  string
+	ByPolicy bool
+	Value    string // NewSignature or ReplySignature
+	Name     string // the signature name (may be empty = "no signature")
+}
+
+// ForcedDefaults reads NewSignature/ReplySignature from the user branch and
+// the policy branch of Common\MailSettings. Only reads, never writes.
+func ForcedDefaults(reg Registry, version string) []Forced {
+	var out []Forced
+	for _, br := range []struct {
+		key    string
+		policy bool
+	}{
+		{policyKey + `\` + version + `\Common\MailSettings`, true},
+		{officeKey + `\` + version + `\Common\MailSettings`, false},
+	} {
+		for _, vn := range []string{"NewSignature", "ReplySignature"} {
+			if s, _, ok := getString(reg, br.key, vn); ok {
+				out = append(out, Forced{Version: version, ByPolicy: br.policy, Value: vn, Name: s})
+			}
+		}
+	}
+	return out
 }

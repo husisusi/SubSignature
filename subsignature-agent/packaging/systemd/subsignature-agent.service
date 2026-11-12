@@ -8,7 +8,7 @@
 #   journalctl --user -u subsignature-agent -f          # watch the log
 #   systemctl --user kill -s HUP subsignature-agent     # reload the configuration + sync immediately
 #
-# Note: not tested on a real systemd in this alpha version.
+# Note: not yet tested on a real systemd (release candidate 1.0.0-rc1).
 # The agent retries failures itself (retry-interval); Restart= only catches crashes.
 
 [Unit]

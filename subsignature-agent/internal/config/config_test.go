@@ -289,7 +289,7 @@ func TestOutlookSectionDefaultsAndValidation(t *testing.T) {
 		t.Fatal(err)
 	}
 	o := cfg.Outlook
-	if !o.On() || !o.New() || !o.Reply() || o.NoRoam() || o.SignatureName != "SubSignature" || o.Profiles != "default" {
+	if !o.On() || !o.New() || !o.Reply() || !o.NoRoam() || o.SignatureName != "SubSignature" || o.Profiles != "default" {
 		t.Errorf("Vorgaben: %+v", o)
 	}
 	if !cfg.Thunderbird.On() {

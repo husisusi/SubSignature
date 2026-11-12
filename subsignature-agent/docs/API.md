@@ -5,7 +5,8 @@ The basis is the server documentation
 (API v1, since SubSignature 1.4.0; the status report since 1.6.0, the applied version in it since 1.7.0). This document records **what the agent uses from it** and
 **which decisions** it makes where the server documentation leaves things open.
 
-> **Status:** the Linux agent runs against the project owner's real server. The automated tests run against a
+> **Status (1.0.0-rc1):** the agent runs against the project owner's real server on Linux and Windows, including the
+> status report. The automated tests run against a
 > **mock server** (`cmd/mocksubsig`) that mimics the server documentation. That documentation was read for this
 > document but not copied character by character; in case of doubt the documentation in the repository applies.
 > Open points are listed below.
@@ -116,10 +117,10 @@ The server's `html_sha256` value is not used for this decision; it is only repor
 ## Status report
 
 After every **real** sync (`sync`/`run`, never `check`) that was not aborted (no 401/403/429/network abort), the agent
-sends one `POST /api/v1/status` with all addresses that resolved to a signature id:
+sends one `POST /api/v1/status` **per mail client** with all of that client's addresses that resolved to a signature id:
 
 ```json
-{ "device_id": "PC-ANNA-3f9a2b1c", "agent_version": "0.5.0-alpha",
+{ "device_id": "PC-ANNA-3f9a2b1c Outlook", "agent_version": "1.0.0-rc1",
   "items": [ { "signature_id": 2, "status": "ok", "html_sha256": "9f2c…" },
              { "signature_id": 7, "status": "warn", "message": "…", "html_sha256": "1b0e…" } ] }
 ```
@@ -129,9 +130,14 @@ sends one `POST /api/v1/status` with all addresses that resolved to a signature 
 * `html_sha256`: the server's value for the version that was applied. The server compares it with the current version:
   equal = **up to date**, different = **out of date** (the signature, its template or the company details changed since).
   A value that is not 64 hex characters is left out rather than failing the report.
-* `device_id`: generated once (host name + random suffix from `crypto/rand`) and kept in the state file; shown by
-  `subsignature-agent status`. Every installation (and every user profile on a shared PC) is its own device, so All
-  Signatures can show "2/3 up to date". It is a label only, never authentication.
+* `device_id`: the installation's id (host name + random suffix from `crypto/rand`, generated once and kept in the
+  state file) **plus the mail client**: since 0.6.0 Thunderbird and Outlook are reported in separate requests as
+  `<id> Thunderbird` and `<id> Outlook`, so All Signatures shows "2/2 up to date" for both on one PC, and an error in
+  one client does not mark the other as failed. `subsignature-agent status` shows the names (`Reported as:`). Every
+  installation (and every user profile on a shared PC) is its own set of devices. It is a label only, never
+  authentication.
+* Errors: fetching or selecting a signature fails for every client of that address; writing a file or setting fails
+  only for the client concerned.
 * Needs a token with the **`status:write`** scope (separate from `signatures:read`). A 403 or any other failure only
   logs a warning – the signatures themselves are applied regardless.
 * At most 200 items per request; more are split into several requests.
@@ -154,4 +160,5 @@ The first alpha (0.1.0) ran against a **self-designed** contract. Dropped since 
 `Authorization: Bearer`), running without a token. Added: paging, error format, `Retry-After`, `ping`,
 account/template/source selection. In the configuration `<name>` is now `<template>` (the old name is still read, with
 a warning), `duplicate-policy` only knows `newest` and `skip`, `api-path` is the API root `/api/v1`. 0.5.0 added the
-status report (`POST /status`) including the applied `html_sha256`.
+status report (`POST /status`) including the applied `html_sha256`; 0.6.0 reports each mail client as its own device.
+Per-version changes: [`CHANGELOG.md`](../CHANGELOG.md).

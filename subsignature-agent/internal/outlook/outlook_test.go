@@ -430,11 +430,13 @@ func TestMemRegistryBehavesLikeWindows(t *testing.T) {
 	}
 }
 
-func TestSetDefaultKeepsTheTypeOutlookUses(t *testing.T) {
+func TestSetDefaultWritesTheTypeOutlookReads(t *testing.T) {
+	// Outlook 2016+ (16.0): always REG_SZ - also when the account's texts are
+	// REG_BINARY (typical for IMAP) and when an old binary value is present.
 	reg := NewMemRegistry()
 	key := base16 + `\00000002`
-	reg.Put(key, "Email", sz("a@b.de"))
-	reg.Put(key, ValueNew, StringValue(RegBinary, "Old")) // this value is binary although "Email" is text
+	reg.Put(key, "Email", StringValue(RegBinary, "a@b.de"))
+	reg.Put(key, ValueNew, StringValue(RegBinary, "Old"))
 	accts, _ := Accounts(reg, true)
 	if len(accts) != 1 {
 		t.Fatal("account not found")
@@ -443,18 +445,47 @@ func TestSetDefaultKeepsTheTypeOutlookUses(t *testing.T) {
 		if err := SetDefault(reg, accts[0], vn, "SubSignature a@b.de"); err != nil {
 			t.Fatal(err)
 		}
+		if v, _ := reg.Get(key, vn); v.Type != RegSZ {
+			t.Errorf("%s: type %d, Outlook 2016+ only reads REG_SZ", vn, v.Type)
+		}
 	}
-	if v, _ := reg.Get(key, ValueNew); v.Type != RegBinary {
-		t.Errorf("New: type %d, expected the type of the existing value (REG_BINARY)", v.Type)
+
+	// Outlook 2013 (15.0): the type of an existing value, otherwise the account's text type.
+	key15 := `Software\Microsoft\Office\15.0\Outlook\Profiles\Outlook\` + accountsGUID + `\00000002`
+	reg15 := NewMemRegistry()
+	reg15.Put(key15, "Email", sz("a@b.de"))
+	reg15.Put(key15, ValueNew, StringValue(RegBinary, "Old"))
+	accts, _ = Accounts(reg15, true)
+	for _, vn := range []string{ValueNew, ValueReply} {
+		if err := SetDefault(reg15, accts[0], vn, "SubSignature a@b.de"); err != nil {
+			t.Fatal(err)
+		}
 	}
-	if v, _ := reg.Get(key, ValueReply); v.Type != RegSZ {
-		t.Errorf("Reply: type %d, expected REG_SZ like the other texts of the account", v.Type)
+	if v, _ := reg15.Get(key15, ValueNew); v.Type != RegBinary {
+		t.Errorf("15.0 New: type %d, expected the type of the existing value (REG_BINARY)", v.Type)
+	}
+	if v, _ := reg15.Get(key15, ValueReply); v.Type != RegSZ {
+		t.Errorf("15.0 Reply: type %d, expected REG_SZ like the account's texts", v.Type)
 	}
 	// A previous value of an unexpected type (e.g. DWORD) is never adopted.
-	reg.Put(key, ValueNew, DWORDValue(5))
-	accts, _ = Accounts(reg, true)
-	SetDefault(reg, accts[0], ValueNew, "SubSignature a@b.de")
-	if v, _ := reg.Get(key, ValueNew); v.Type != RegSZ {
-		t.Errorf("Typ %d", v.Type)
+	reg15.Put(key15, ValueNew, DWORDValue(5))
+	accts, _ = Accounts(reg15, true)
+	SetDefault(reg15, accts[0], ValueNew, "SubSignature a@b.de")
+	if v, _ := reg15.Get(key15, ValueNew); v.Type != RegSZ {
+		t.Errorf("type %d", v.Type)
+	}
+}
+
+func TestIsDefaultChecksTheType(t *testing.T) {
+	a := Account{Version: "16.0", New: "S", HasNew: true, RawNew: StringValue(RegBinary, "S")}
+	if IsDefault(a, ValueNew, "S") {
+		t.Error("REG_BINARY in Outlook 2016+ must not count as set")
+	}
+	a.RawNew = StringValue(RegSZ, "S")
+	if !IsDefault(a, ValueNew, "S") || IsDefault(a, ValueNew, "T") || IsDefault(a, ValueReply, "S") {
+		t.Error("IsDefault wrong")
+	}
+	if major("16.0") != 16 || major("15.0") != 15 || major("x") != 0 {
+		t.Error("major wrong")
 	}
 }

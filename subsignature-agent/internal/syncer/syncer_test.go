@@ -710,7 +710,8 @@ func TestStatus(t *testing.T) {
 		t.Error("the orphaned identity must not appear")
 	}
 	// The device id the server shows for this installation is printed too.
-	if !strings.Contains(all, "Device ID:     "+e.deviceID(t)) || !strings.Contains(all, "Status report: on") {
+	if !strings.Contains(all, "Device ID:     "+e.deviceID(t)) || !strings.Contains(all, "Status report: on") ||
+		!strings.Contains(all, `Reported as:   "`+e.deviceID(t)+` Thunderbird"`) {
 		t.Errorf("device id / status report line missing:\n%s", all)
 	}
 }
@@ -1094,6 +1095,10 @@ func TestReportStatusSentAfterSync(t *testing.T) {
 	if !deviceIDPatternForTest.MatchString(rep.DeviceID) {
 		t.Errorf("device_id %q does not look valid", rep.DeviceID)
 	}
+	// Thunderbird is reported as its own device: "<installation id> Thunderbird".
+	if want := e.deviceID(t) + " Thunderbird"; rep.DeviceID != want {
+		t.Errorf("device_id = %q, expected %q", rep.DeviceID, want)
+	}
 	if rep.AgentVersion == "" {
 		t.Error("agent_version is empty")
 	}
@@ -1143,8 +1148,8 @@ func TestReportStatusSentAfterSync(t *testing.T) {
 	if len(reports) != 2 {
 		t.Fatalf("got %d status reports after the second run, expected 2", len(reports))
 	}
-	if reports[1].DeviceID != id1 {
-		t.Errorf("device_id changed between runs: %q -> %q", id1, reports[1].DeviceID)
+	if reports[1].DeviceID != id1+" Thunderbird" {
+		t.Errorf("device_id changed between runs: %q -> %q", id1+" Thunderbird", reports[1].DeviceID)
 	}
 	if id2 := e.deviceID(t); id2 != id1 {
 		t.Errorf("persisted device id changed: %q -> %q", id1, id2)
@@ -1217,5 +1222,18 @@ func TestReportStatusForbiddenIsNotFatal(t *testing.T) {
 	}
 	if !found {
 		t.Errorf("expected a note about the failed status report, got %v", rep.Notes)
+	}
+}
+
+func TestClientDeviceIDStaysWithinTheServerLimit(t *testing.T) {
+	if got := clientDeviceID("pc-1-abcd", clientOutlook); got != "pc-1-abcd Outlook" {
+		t.Errorf("got %q", got)
+	}
+	long := strings.Repeat("h", 61) + "-0123abcd" // the longest id EnsureDeviceID creates (70)
+	for _, c := range []string{clientThunderbird, clientOutlook} {
+		got := clientDeviceID(long, c)
+		if len(got) > 80 || !strings.HasSuffix(got, " "+c) || !deviceIDPatternForTest.MatchString(got) {
+			t.Errorf("%q (len %d)", got, len(got))
+		}
 	}
 }

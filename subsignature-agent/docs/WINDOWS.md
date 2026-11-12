@@ -2,11 +2,11 @@
 
 This document describes what the agent does on Windows, where it writes and what it deliberately cannot do.
 
-> **Status 0.5.0-alpha:** the Windows programs are **built** on Linux (amd64, arm64) and statically checked. The logic
-> (finding accounts, creating files, setting and reverting registry values) runs in the tests against an in-memory
-> registry. **Nothing has been run on a real Windows with a real Outlook yet.** The thin part that really talks to
-> Windows (`internal/outlook/registry_windows.go`, the lock file, `install.ps1`) is therefore untested. Please start
-> with `check` on a test machine.
+> **Status 1.0.0-rc1:** confirmed by the project owner on a real PC with Thunderbird and classic Outlook from
+> Microsoft 365 (IMAP account): signature files, default signature for new messages and replies, updates after a change
+> on the server and `remove` - with roaming signatures switched off (the default, see "Roaming signatures"). Built on
+> Linux (amd64, arm64) and additionally tested there against an in-memory registry. Not yet run on a real Windows:
+> Exchange accounts, Outlook versions without Microsoft 365, `install.ps1`/`uninstall.ps1` and the autostart.
 
 ## What is supported
 
@@ -51,25 +51,42 @@ The agent reads the address there (value `Email`, for Exchange accounts `Account
 
 * It writes **only** into such account keys and **only** these two values; keys are never created.
 * Without an existing signature file nothing is registered.
-* The data type stays the way Outlook uses it (`REG_SZ` since Outlook 2016, `REG_BINARY` in Outlook 2013).
+* Data type: **`REG_SZ` for Outlook 2016 and later** (16.0, including Microsoft 365) - always, even though the account's
+  other values (`Email`, `Account Name`) are often `REG_BINARY`. Outlook 2016+ ignores a binary value here: the
+  signature is then listed in Outlook but not selected (field report, 0.5.0, IMAP). For Outlook 2013 (15.0) the type of
+  an existing value is kept, otherwise the type of the account's texts (`REG_BINARY` there). A value with the right name
+  but the wrong type is rewritten; `status` marks it.
 * Before its first change the agent remembers the previous value (in `%LOCALAPPDATA%\subsignature-agent\state.json`).
 * Outlook reads these values at start. A new default signature therefore applies after the next Outlook start.
+* **While Outlook runs** the agent still writes, but says so (`sync` note, `status` line "running"): Outlook keeps its
+  settings in memory and may write its old values back when it closes. The next run then sets them again; the run at
+  logon (`run-on-start`, before Outlook is started) is the one that reliably sticks.
+* A `NewSignature`/`ReplySignature` value under `...\Common\MailSettings` (group policy or a leftover from Outlook 2007
+  and old deployment scripts) can override the per-account default. The agent never writes there, but reports such a
+  value in `sync` and `status` (`WARNING: NewSignature fixed to ...`).
 * `<set-new>`/`<set-reply>` set to `false`: the signature is merely available, the user chooses.
 
 As with Thunderbird: on every sync the agent restores the server's state. Whoever picks a different default signature
 in Outlook gets the central one back on the next sync. An address can be excluded with `<exclude-email>`.
 
-### Roaming signatures (Microsoft 365 / Outlook.com only)
+### Roaming signatures
 
-For mailboxes in Microsoft 365 or Outlook.com, Outlook (from build 2303) stores signatures in the mailbox. Local
-signatures then appear under "Signatures on this device", and Outlook may ignore the local default signature.
-On-premises Exchange, IMAP and POP are **not** affected.
+Outlook from Microsoft 365 (from about build 2303) can store signatures in the mailbox ("roaming signatures"). While
+the feature is on, Outlook manages the signatures itself: it can overwrite the files the agent writes, bring deleted
+ones back, and ignore the default signature set in the registry. Earlier versions of this document said IMAP and POP
+were not affected; a field report (0.6.0, Microsoft 365, IMAP account) showed exactly these three symptoms. Popular
+deployment tools switch the feature off by default for the same reason.
 
-* `<roaming-signatures>keep</roaming-signatures>` (default): the agent changes nothing and prints a note.
-* `<roaming-signatures>disable</roaming-signatures>`: the agent sets `DisableRoamingSignatures = 1` (documented by
-  Microsoft) and `DisableRoamingSignaturesTemporaryToggle = 1` (older builds) for the user under
-  `HKCU\Software\Microsoft\Office\<version>\Outlook\Setup`. If this is already set by group policy, it does nothing.
-  It never writes the policy branch.
+* `<roaming-signatures>disable</roaming-signatures>` (**default since 0.6.1**): the agent sets
+  `DisableRoamingSignatures = 1` (documented by Microsoft) and `DisableRoamingSignaturesTemporaryToggle = 1` (older
+  builds) for the user under `HKCU\Software\Microsoft\Office\<version>\Outlook\Setup` - only for Office versions where
+  its signature file is actually in place. If this is already set by group policy, it does nothing. It never writes
+  the policy branch; `remove` restores the previous values. Takes effect after an Outlook restart.
+* `<roaming-signatures>keep</roaming-signatures>`: change nothing (only if signatures are meant to roam via the
+  mailbox) - the agent prints a note on every sync.
+* **Configurations created with `init` before 0.6.1 contain `keep`.** Change it to `disable`.
+* If something else overwrites the agent's `.htm` file, the next sync rewrites it and says so; `status` shows
+  `CHANGED OUTSIDE THE AGENT` until then.
 
 ## The new Outlook
 
@@ -88,7 +105,9 @@ Ways that actually work for the new Outlook lie outside a local agent:
 
 ## Undo: `subsignature-agent remove`
 
-`remove check` only shows, `remove` executes:
+`remove check` only shows, `remove` executes. **Outlook must be closed**: while it runs, `remove` cleans up
+Thunderbird, leaves Outlook untouched and ends with an error ("Outlook is running - close Outlook and run remove
+again"); `uninstall.ps1` then does not uninstall either, so `remove` can simply be run again.
 
 * **Outlook:** default signatures that still point to the agent's signature are reset to the value from before the
   first change (or removed if there was none). Whatever the user has chosen in the meantime stays. The three files per
@@ -151,13 +170,14 @@ from `config.xml`. It re-reads the configuration before every sync.
 
 ## To verify on a real Windows
 
-1. Does `status` find the Outlook accounts? Especially **Exchange accounts**: the address is read from `Account Name`;
-   if the account has been renamed, the agent does not recognize it.
-2. Does the signature appear in Outlook under File → Options → Mail → Signatures, and is it set for new messages and
-   replies after restarting Outlook?
+Confirmed (Microsoft 365, IMAP, 1.0.0-rc1): `status` finds the account; the signature appears under File → Options →
+Mail → Signatures and is set for new messages and replies after an Outlook restart; updates from the server arrive;
+`remove` takes it out again; Thunderbird (installer version) gets its signature. Still open:
+
+1. **Exchange accounts** (on-premises and Microsoft 365): the address is read from `Account Name`; if the account has
+   been renamed, the agent does not recognize it.
+2. Outlook 2016/2019/2021 without Microsoft 365, and Outlook 2013 (`REG_BINARY` values).
 3. Umlauts, images (the API delivers absolute image URLs) and the look in Outlook.
-4. Microsoft 365 mailbox: behaviour with `roaming-signatures` `keep` and `disable`.
-5. `remove`: is everything as before afterwards?
-6. Thunderbird on Windows (installer and Store version): signature in the compose window.
-7. `install.ps1`, autostart without a window, `agent.log`.
-8. Does a virus scanner or SmartScreen flag the unsigned `.exe`?
+4. Thunderbird from the Microsoft Store.
+5. `install.ps1`, `uninstall.ps1`, autostart without a window, `agent.log`.
+6. Does a virus scanner or SmartScreen flag the unsigned `.exe`?
