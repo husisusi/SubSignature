@@ -1,4 +1,4 @@
-# SubSignature Agent for Linux and Windows — 1.0.0-rc1
+# SubSignature Agent for Linux and Windows — 1.0.0-rc2
 
 A small Go program (standard library only, one file per system) that
 
@@ -18,7 +18,7 @@ administrator rights, and can undo everything with `remove`.
 > **The new Outlook** (`olk.exe`) cannot be configured by a local program: it stores signatures in the mailbox and
 > reads neither files nor the registry. The agent detects it and says so. Background and alternatives: [`docs/WINDOWS.md`](docs/WINDOWS.md).
 
-> **Status 1.0.0-rc1 (release candidate):**
+> **Status 1.0.0-rc2 (release candidate):**
 > * **Linux / Thunderbird:** in use by the project owner against the real server and a real Thunderbird.
 > * **Windows:** confirmed by the project owner on a real PC with Thunderbird and classic Outlook from Microsoft 365
 >   (IMAP account): signature files, default signature for new messages and replies, updates after a change on the
@@ -134,6 +134,15 @@ and Outlook on one PC are two devices, so an error in Outlook does not mark Thun
 * Turn it off per install with `<report-status>false</report-status>` in `config.xml`.
 * `subsignature-agent status` prints this installation's device ID and, under `Reported as:`, the
   names its mail clients have in the server's sync-status list.
+
+### Device name in the server's API log
+
+Since 1.0.0-rc2 the agent sends the installation's device ID (without the mail-client suffix) in
+the header `X-SubSignature-Device` with **every** request, also when status reporting is off.
+SubSignature 1.8.0 and newer show it under **System Logs -> API Requests**, so the administrator
+can tell which PC fetched signatures. It is a label only, like `device_id`: never authentication.
+A real `sync` creates the ID on its first run; `check` and `ping` send it only if it already
+exists. Older servers ignore the header.
 
 ## Configuration (XML)
 
@@ -286,8 +295,8 @@ signature again when the account or signature is gone on the server · storing a
   types); Slipstick and Petri on the account values `New Signature` / `Reply-Forward Signature` and the value
   `Signatures` under `Common\General`; older Microsoft forum posts on `REG_BINARY` in Outlook 2013.
 * New Outlook: Microsoft Q&A (signatures live in the mailbox, no Graph interface), the Microsoft sample
-  "Set your signature using Outlook event-based activation" (`setSignatureAsync`), vendor documentation (Exclaimer,
-  CI-Solution): agents that write local files have no effect in the new Outlook.
+  "Set your signature using Outlook event-based activation" (`setSignatureAsync`): agents that write local files have
+  no effect in the new Outlook.
 * Thunderbird in the Microsoft Store: Mozilla Bugzilla 1878276 and the Mozilla forum (profile under `%LOCALAPPDATA%\Packages\MozillaThunderbird.…`).
 * SubSignature API documentation `docs/API.md` (API v1, SubSignature 1.6.0): endpoints, fields, errors, limits and the
   recommendations for agents (query by e-mail, paging, change detection, token handling, running as the logged-in user,

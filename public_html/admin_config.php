@@ -85,6 +85,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_config'])) {
     }
     setSetting($db, 'status_device_retention_days', (string)$status_device_retention_days);
 
+    // API request log (System Logs -> API Requests): what is logged and for how long.
+    $api_log_mode = (string)($_POST['api_log_mode'] ?? 'all');
+    if (!in_array($api_log_mode, ['all', 'errors', 'off'], true)) {
+        $api_log_mode = 'all';
+    }
+    setSetting($db, 'api_log_mode', $api_log_mode);
+    $api_log_retention_days = (int)($_POST['api_log_retention_days'] ?? 30);
+    if ($api_log_retention_days < 1 || $api_log_retention_days > 365) {
+        $problems[] = t('The API log retention must be between 1 and 365 days.');
+        $api_log_retention_days = 30;
+    }
+    setSetting($db, 'api_log_retention_days', (string)$api_log_retention_days);
+
+    // Hosts whose template images the API may fetch and deliver embedded
+    // (Base64). Only plain host names are kept; anything else is reported.
+    $image_hosts_raw = cleanMultilineText($_POST['image_embed_hosts'] ?? '', 3000);
+    $image_hosts = parseImageEmbedHosts($image_hosts_raw);
+    $entered = array_filter(preg_split('/[\s,;]+/', strtolower($image_hosts_raw)) ?: [], 'strlen');
+    $dropped = array_diff(array_unique($entered), $image_hosts);
+    if ($dropped) {
+        $problems[] = t('Ignored image hosts (enter host names only, e.g. www.example.com): {hosts}', ['hosts' => implode(', ', array_slice($dropped, 0, 10))]) . '.';
+    }
+    setSetting($db, 'image_embed_hosts', implode("\n", $image_hosts));
+
     // Company-wide values for the {{COMPANY}}, {{WEBSITE}}, {{ADDRESS}}, {{DISCLAIMER}} placeholders
     $company_website = cleanText($_POST['company_website'] ?? '', 200);
     if ($company_website !== '' && !preg_match('#^https?://[^\s<>"\']+$#i', $company_website)) {
@@ -130,7 +154,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_config'])) {
         setSetting($db, 'smtp_pass', encryptSecret($_POST['smtp_pass']));
     }
 
-    logSecurityEventToDB($db, 'CONFIG_CHANGED', (int)$_SESSION['user_id'], 'System / SMTP settings saved');
+    logSecurityEventToDB($db, 'CONFIG_CHANGED', (int)$_SESSION['user_id'], 'System / SMTP settings saved; image hosts: ' . ($image_hosts ? implode(', ', $image_hosts) : '-'));
 
     if ($problems) {
         setFlash('error', implode(' ', $problems) . ' ' . t('Other settings were saved.'));
@@ -155,6 +179,9 @@ $allow_registration = getSetting($db, 'allow_registration', '1') === '1';
 $default_language = getSetting($db, 'default_language', 'en');
 $status_freshness_hours = (int)getSetting($db, 'status_freshness_hours', '6');
 $status_device_retention_days = statusDeviceRetentionDays($db);
+$api_log_mode = apiLogMode($db);
+$api_log_retention_days = apiLogRetentionDays($db);
+$image_embed_hosts = imageEmbedHosts($db);
 $company = companyFields();
 $health = systemHealthChecks();
 ?>
@@ -230,18 +257,9 @@ $health = systemHealthChecks();
             <p><?= et('Manage settings and integrations.') ?></p>
         </header>
 
+        <?= flashAlerts($message, $error) ?>
         <?php if (!empty($debug_log)): ?>
-            <div class="alert alert-<?php echo $error ? 'error' : 'success'; ?>">
-                <strong><?= et('SMTP Debug Log') ?></strong>
-                <div class="debug-console"><?php echo e($debug_log); ?></div>
-            </div>
-        <?php endif; ?>
-
-        <?php if ($message && empty($debug_log)): ?>
-            <div class="alert alert-success"><i class="fas fa-check-circle"></i> <?php echo e($message); ?></div>
-        <?php endif; ?>
-        <?php if ($error && empty($debug_log)): ?>
-            <div class="alert alert-error"><i class="fas fa-exclamation-circle"></i> <?php echo e($error); ?></div>
+            <?= alertBoxHtml($error ? 'error' : 'info', '<strong>' . et('SMTP Debug Log') . '</strong><div class="debug-console">' . e($debug_log) . '</div>') ?>
         <?php endif; ?>
 
         <form method="POST" action="admin_config.php">
@@ -306,6 +324,28 @@ $health = systemHealthChecks();
                             <input type="number" name="status_device_retention_days" class="form-input" style="width:80px;" min="1" max="365" value="<?php echo (int)$status_device_retention_days; ?>">
                             <span style="color:var(--text-muted); font-size:0.85rem;"><?= et('days') ?></span>
                         </div>
+                    </div>
+                    <div class="config-item">
+                        <div>
+                            <h4 style="margin:0; font-size:0.95rem;"><i class="fas fa-plug"></i> <?= et('API request log') ?></h4>
+                            <p style="margin:0; color:var(--text-muted); font-size:0.8rem;"><?= et('Which requests of the clients (desktop agent, Domino agent, scripts) appear under System Logs -> API Requests, and how many days they are kept.') ?></p>
+                        </div>
+                        <div style="display:flex; align-items:center; gap:0.4rem; flex-wrap:wrap; justify-content:flex-end;">
+                            <select name="api_log_mode" class="form-input" style="width:auto;">
+                                <option value="all" <?php echo $api_log_mode === 'all' ? 'selected' : ''; ?>><?= et('All requests') ?></option>
+                                <option value="errors" <?php echo $api_log_mode === 'errors' ? 'selected' : ''; ?>><?= et('Only errors') ?></option>
+                                <option value="off" <?php echo $api_log_mode === 'off' ? 'selected' : ''; ?>><?= et('Off') ?></option>
+                            </select>
+                            <input type="number" name="api_log_retention_days" class="form-input" style="width:80px;" min="1" max="365" value="<?php echo (int)$api_log_retention_days; ?>">
+                            <span style="color:var(--text-muted); font-size:0.85rem;"><?= et('days') ?></span>
+                        </div>
+                    </div>
+                    <div class="config-item" style="flex-direction:column; align-items:stretch; gap:0.6rem;">
+                        <div>
+                            <h4 style="margin:0; font-size:0.95rem;"><i class="fas fa-images"></i> <?= et('Image hosts for embedding') ?></h4>
+                            <p style="margin:0; color:var(--text-muted); font-size:0.8rem;"><?= et('Clients that cannot load images themselves (e.g. HCL Notes/Domino) can receive the images of a signature embedded through the API. Images from Manage Images are always allowed; images on other servers only from the hosts listed here (one host name per line, https only). Empty = none.') ?></p>
+                        </div>
+                        <textarea name="image_embed_hosts" class="form-input" rows="3" spellcheck="false" placeholder="www.example.com" style="font-family:monospace; font-size:0.85rem;"><?php echo e(implode("\n", $image_embed_hosts)); ?></textarea>
                     </div>
                 </section>
 

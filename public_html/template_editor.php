@@ -160,6 +160,7 @@ foreach (array_merge(listSignatureTemplates(), is_file($templates_dir . '/email_
     <?= i18nHead() ?>
     
     <script src="<?= assetUrl('js/theme.js') ?>"></script>
+    <script src="<?= assetUrl('js/alerts.js') ?>"></script>
     <link rel="stylesheet" href="<?= assetUrl('css/theme.css') ?>">
     <link rel="stylesheet" href="<?= assetUrl('css/style.css') ?>">
     <link rel="stylesheet" href="<?= assetUrl('css/all.min.css') ?>">    
@@ -180,9 +181,6 @@ foreach (array_merge(listSignatureTemplates(), is_file($templates_dir . '/email_
         
         .preview-wrapper { background: var(--bg-white); border: 1px solid var(--border); border-radius: 8px; padding: 2rem; margin-top: 1rem; box-shadow: inset 0 0 10px rgba(0,0,0,0.02); overflow-x: auto; }
         
-        .alert { padding: 1rem; border-radius: 8px; margin-bottom: 1.5rem; display: flex; gap: 0.75rem; align-items: center; font-size: 0.95rem; }
-        .alert-success { background: var(--success-bg); color: var(--success-text); border: 1px solid var(--success-border); }
-        .alert-error { background: var(--danger-bg); color: var(--danger-text); border: 1px solid var(--danger-border); }
 
         /* COMPACT TOOLBAR GRID */
         .editor-toolbar-grid {
@@ -229,12 +227,7 @@ foreach (array_merge(listSignatureTemplates(), is_file($templates_dir . '/email_
             <p><?= et('Design and manage HTML email signature templates.') ?></p>
         </header>
 
-        <?php if ($message): ?>
-            <div class="alert alert-success"><i class="fas fa-check-circle"></i> <?php echo e($message); ?></div>
-        <?php endif; ?>
-        <?php if ($error): ?>
-            <div class="alert alert-error"><i class="fas fa-exclamation-circle"></i> <?php echo e($error); ?></div>
-        <?php endif; ?>
+        <?= flashAlerts($message, $error) ?>
 
         <div class="form-grid" style="grid-template-columns: 2fr 1fr; align-items: start;">
             <div style="grid-column: span 2;"> 
@@ -352,12 +345,15 @@ foreach (array_merge(listSignatureTemplates(), is_file($templates_dir . '/email_
                 // Editor UI language (Jodit falls back to English if it has no pack).
                 language: <?= tj(['zh' => 'zh_cn', 'pt' => 'pt_br'][currentLang()] ?? currentLang()) ?>,
                 
-                // --- CONFIG FOR LOCAL ACE EDITOR ---
+                // Everything is loaded from this server, never from a CDN:
+                // Jodit's defaults would fetch Ace and js-beautify from
+                // cdnjs and fonts from Google, so these options pin them to
+                // the bundled copies or switch the feature off.
                 useAceEditor: true,
                 sourceEditor: 'ace',
-                // Point to local Ace file
-                sourceEditorCDNUrlsJS: ['js/ace/ace.js'], 
-                // -----------------------------------
+                sourceEditorCDNUrlsJS: [<?= json_encode(assetUrl('js/ace/ace.js'), JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>],
+                beautifyHTMLCDNUrlsJS: [],
+                googleFonts: { url: '' },
 
                 sourceEditorNativeOptions: {
                     theme: isDarkTheme() ? 'ace/theme/tomorrow_night' : 'ace/theme/chrome',
@@ -452,7 +448,7 @@ foreach (array_merge(listSignatureTemplates(), is_file($templates_dir . '/email_
                 
                 updatePreview();
             })
-            .catch(err => alert(<?= tj('Error loading template: {error}') ?>.replace('{error}', err)));
+            .catch(err => SubSigAlert.show('error', <?= tj('Error loading template: {error}') ?>.replace('{error}', err)));
     }
     
     // Resets content to a hardcoded simple fallback
@@ -492,7 +488,7 @@ foreach (array_merge(listSignatureTemplates(), is_file($templates_dir . '/email_
     document.getElementById('editorForm').addEventListener('submit', function(e) {
         if(!document.getElementById('template_name').value.trim()) {
             e.preventDefault();
-            alert(<?= tj('Template Name is required') ?>);
+            SubSigAlert.show('error', <?= tj('Template Name is required') ?>);
         }
     });
     </script>

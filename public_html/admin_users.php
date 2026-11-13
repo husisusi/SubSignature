@@ -211,12 +211,7 @@ $technician_users = array_filter($users, function ($u) { return $u['role'] === R
             </a>
         </div>
 
-        <?php if ($message): ?>
-            <div class="alert alert-success" style="padding: 1rem; background: var(--success-bg); color: var(--success-text); border-radius: 8px; margin-bottom: 1.5rem;"><i class="fas fa-check-circle"></i> <?php echo e($message); ?></div>
-        <?php endif; ?>
-        <?php if ($error): ?>
-            <div class="alert alert-error" style="padding: 1rem; background: var(--danger-bg); color: var(--danger-text); border-radius: 8px; margin-bottom: 1.5rem;"><i class="fas fa-exclamation-circle"></i> <?php echo e($error); ?></div>
-        <?php endif; ?>
+        <?= flashAlerts($message, $error) ?>
 
         <div class="stats-grid">
             <div class="stat-card">

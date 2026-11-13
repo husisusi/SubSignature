@@ -130,12 +130,7 @@ $api_url = $scheme . '://' . $host . $basePath . '/api/v1/';
             <p><?= et('Access for the SubSignature desktop agent (Outlook / Thunderbird): reading signatures and/or reporting sync status.') ?></p>
         </header>
 
-        <?php if ($message): ?>
-            <div class="alert alert-success"><i class="fas fa-check-circle"></i> <?php echo e($message); ?></div>
-        <?php endif; ?>
-        <?php if ($error): ?>
-            <div class="alert alert-error"><i class="fas fa-exclamation-circle"></i> <?php echo e($error); ?></div>
-        <?php endif; ?>
+        <?= flashAlerts($message, $error) ?>
 
         <?php if ($new_token !== ''): ?>
         <section class="card" style="margin-bottom:1.5rem;">

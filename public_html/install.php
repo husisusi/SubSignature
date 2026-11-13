@@ -30,7 +30,7 @@ function checkWritable($path)
 }
 
 $requirements = [
-    'PHP Version >= 7.4'           => version_compare(PHP_VERSION, '7.4.0', '>='),
+    'PHP Version >= 8.0'           => version_compare(PHP_VERSION, '8.0.0', '>='),
     'SQLite3 Extension'            => extension_loaded('sqlite3'),
     'MBString Extension'           => extension_loaded('mbstring'),
     'ZIP Extension'                => extension_loaded('zip'),
@@ -132,6 +132,7 @@ if ($allRequirementsMet && $_SERVER['REQUEST_METHOD'] === 'POST') {
     <?= i18nHead() ?>
     <script src="<?= 'js/theme.js?v=' . (int)@filemtime(__DIR__ . '/js/theme.js') ?>"></script>
     <link rel="stylesheet" href="<?= 'css/theme.css?v=' . (int)@filemtime(__DIR__ . '/css/theme.css') ?>">
+    <link rel="stylesheet" href="<?= 'css/all.min.css?v=' . (int)@filemtime(__DIR__ . '/css/all.min.css') ?>">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><?= et('Installation') ?> - SubSignature</title>
     
@@ -179,8 +180,6 @@ if ($allRequirementsMet && $_SERVER['REQUEST_METHOD'] === 'POST') {
         .btn:hover:not(:disabled) { background: #3b5bdb; transform: translateY(-1px); }
         .btn:disabled { background: var(--border-strong); cursor: not-allowed; }
         
-        .alert { padding: 12px; border-radius: 8px; margin-bottom: 20px; font-size: 0.9rem; }
-        .alert-error { background: var(--danger-bg); color: var(--danger-text); border: 1px solid var(--danger-border); }
         
         /* Success Animation Styles */
         .success-container { text-align: center; padding: 20px 0; }
@@ -262,10 +261,7 @@ if ($allRequirementsMet && $_SERVER['REQUEST_METHOD'] === 'POST') {
                     </div>
                     
                     <?php if ($error): ?>
-                        <div class="alert alert-error">
-                            <svg class="icon" viewBox="0 0 24 24" style="margin-right:5px"><path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/></svg>
-                            <?php echo nl2br(e($error)); ?>
-                        </div>
+                        <?= alertBox('error', (string)$error) ?>
                     <?php endif; ?>
 
                     <div class="input-group">
@@ -296,10 +292,7 @@ if ($allRequirementsMet && $_SERVER['REQUEST_METHOD'] === 'POST') {
                 </div>
             </form>
         <?php else: ?>
-            <div class="alert alert-error">
-                <strong><?= et('Installation Blocked:') ?></strong><br>
-                <?= et('Please resolve the system requirements marked as FAIL above before proceeding.') ?>
-            </div>
+            <?= alertBoxHtml('error', '<strong>' . et('Installation Blocked:') . '</strong><br>' . et('Please resolve the system requirements marked as FAIL above before proceeding.')) ?>
             <button class="btn" onclick="location.reload()"><?= et('Check Again') ?></button>
         <?php endif; ?>
     <?php endif; ?>

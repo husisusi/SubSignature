@@ -1,56 +1,125 @@
 <h1>
   <img src="https://raw.githubusercontent.com/husisusi/SubSignature/main/public_html/img/subsig_logo.png"
-       alt="SubSignature Logo"
+       alt="SubSignature logo - self-hosted email signature management"
        height="100"
        style="vertical-align: middle;">
   SubSignature
 </h1>
 
+**Free, open-source and self-hosted email signature management for Outlook and Thunderbird -
+with a desktop client for Windows and Linux.**
+
 ![PHP](https://img.shields.io/badge/PHP-8.0%2B%20%7C%208.5-777BB4?style=flat-square&logo=php&logoColor=white)
 ![SQLite](https://img.shields.io/badge/SQLite-Database-003B57?style=flat-square&logo=sqlite&logoColor=white)
 ![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)
 
-SubSignature is a lightweight, self-hosted, central and free email signature management and free email signature generator built with PHP and SQLite. It helps organizations manage and standardize email signatures without complex database setups or paid cloud services.
+SubSignature is a lightweight, self-hosted, central and free **email signature manager** and
+**email signature generator** built with PHP and SQLite. Administrators design HTML signature
+templates once; every employee gets a consistent, up-to-date signature - created in the browser,
+imported from CSV or **LDAP / Active Directory**, sent by email, or installed automatically in
+**Outlook** and **Thunderbird** by the SubSignature desktop agent for **Windows and Linux**. No
+cloud service, no subscription, no database server.
 
-The focus is privacy and security. The application runs entirely on your server: no CDNs, no external fonts, no telemetry. All assets are hosted locally.
+**Privacy and security first:** the application runs entirely on your own server. No CDNs, no
+external fonts, no tracking, no telemetry - every script, style sheet and icon font is hosted
+locally, and nothing is sent to third parties.
 
-## Screenshots
+## Contents
 
-**Generator Interface**
-![Generator Interface](https://raw.githubusercontent.com/husisusi/SubSignature/main/public_html/img/screenshots/SubSignature_screenshot_generator.png)
+* [Why SubSignature?](#why-subsignature)
+* [Features](#features)
+* [Screenshots](#screenshots)
+* [Requirements](#requirements) and [Installation](#installation)
+* [LDAP / Active Directory import](#ldap--active-directory-import)
+* [All Signatures overview](#all-signatures-overview)
+* [API for the desktop agent](#api-for-the-desktop-agent)
+* [Languages](#languages) - [Roles](#roles) - [Security](#security)
+* [FAQ](#faq)
 
-**User Management**
-![User Management](https://raw.githubusercontent.com/husisusi/SubSignature/main/public_html/img/screenshots/SubSignature_screenshot_user.png)
+## Why SubSignature?
 
-**Template Editor**
-![Template Editor](https://raw.githubusercontent.com/husisusi/SubSignature/main/public_html/img/screenshots/SubSignature_screenshot_editor.png)
-
-**Import CSV**
-![Import Function](https://raw.githubusercontent.com/husisusi/SubSignature/main/public_html/img/screenshots/SubSignature_screenshot_import.png)
+* **One signature standard for the whole company.** Central HTML templates with placeholders,
+  company-wide details (company name, website, address, legal disclaimer) maintained in one place.
+* **Signatures arrive where people write email.** The desktop agent installs and updates them in
+  Outlook (classic, Windows) and Thunderbird (Windows and Linux) and reports back which device
+  is up to date.
+* **Self-hosted and free.** MIT licensed, runs on any PHP web server with SQLite - a free
+  alternative to paid cloud signature services.
+* **Secure by default.** CSRF protection, strict Content-Security-Policy, hardened sessions,
+  roles, audit and API logs, encrypted secrets.
 
 ## Features
 
-* **Signature generator** with live preview and multiple, editable HTML templates (placeholders: `{{NAME}}`, `{{ROLE}}`, `{{EMAIL}}`, `{{PHONE}}`, `{{PHONE_CLEAN}}`).
+* **Central email signature management:** all signatures of all users in one overview
+  (*All Signatures*) with search, filters (user, template, tag, source), bulk actions (send,
+  delete, change template, tags), inline editing and a **sync-status badge** per signature: up
+  to date or out of date, counted per device ("2/3 up to date"). See
+  [All Signatures](#all-signatures-overview).
+* **Desktop client for Windows and Linux:** the SubSignature agent (a single Go binary, see
+  `subsignature-agent/`) fetches the signatures over the API, installs them in **Outlook** and
+  **Thunderbird**, sets them as default for new mails and replies, keeps them up to date and
+  reports the result back. See [API](#api-for-the-desktop-agent).
+* **Email signature generator** with live preview and multiple, editable HTML templates
+  (placeholders: `{{NAME}}`, `{{ROLE}}`, `{{EMAIL}}`, `{{PHONE}}`, `{{PHONE_CLEAN}}`).
 * **Template editor** (WYSIWYG + code editor), image manager, template backup (ZIP).
-* **Signature rollout:** administrators and technicians can send signatures to users by email (SMTP).
-* **User management** with three roles (**administrator / technician / user**), activation, optional self-registration. See [Roles](#roles).
-* **All Signatures overview** (sidebar): search, filter by user, **template**, **tag** and **source** (manual / CSV / LDAP), sort, bulk actions (delete, send, change template, add or remove tags), **inline edit** of a single signature, and a **sync-status badge** per signature: up to date or out of date, counted per device ("2/3 up to date"). See [All Signatures](#all-signatures-overview).
-* **CSV import / export** of signatures (delimiter `,` or `;`, formula-injection safe export); administrators and technicians can put a **tag** on every imported signature.
-* **LDAP / Active Directory import** of signatures from directory data with selection in a preview, target user and template (import only, no accounts are created, no LDAP login). See [LDAP import](#ldap--active-directory-import).
-* **API with bearer tokens** for the desktop agent (Windows + Linux, already built): reads signatures for Outlook and Thunderbird, and reports back per-signature sync status. Fine-grained token scopes (`signatures:read`, `status:write`). See [API](#api-for-the-desktop-agent).
-* **18 languages** (English, Deutsch, Español, Français, Italiano, Português, Nederlands, Polski, Türkçe, Русский, Українська, العربية (RTL), हिन्दी, Bahasa Indonesia, 中文, 日本語, 한국어, Bosanski): one JSON file per language in `public_html/lang/`, automatic detection from the browser, switcher in the sidebar and on the login page, per-user choice, system-wide default. See [Languages](#languages).
-* **Company-wide placeholders** `{{COMPANY}}`, `{{WEBSITE}}`, `{{ADDRESS}}`, `{{DISCLAIMER}}`: maintained once in Admin -> Configuration and filled into every signature.
-* **System status** panel (Admin -> Configuration): PHP version and extensions, writable directories, data directory outside the web root, secret key, installer leftovers.
-* **Light, dark and system theme:** switch in the sidebar (or top right on the login page); the choice is remembered per browser, "system" follows the operating system. Signature previews always stay on white. Static files are versioned automatically (`?v=<mtime>`), so a new release shows up without clearing the browser cache.
-* **Security by default:** CSRF protection, strict CSP, hardened sessions, brute-force protection, encrypted secrets, audit log. See [Security](#security).
+* **Company-wide placeholders** `{{COMPANY}}`, `{{WEBSITE}}`, `{{ADDRESS}}`, `{{DISCLAIMER}}`:
+  maintained once in Admin -> Configuration and filled into every signature.
+* **LDAP / Active Directory import** of signatures from directory data with selection in a
+  preview, target user and template (import only, no accounts are created, no LDAP login). See
+  [LDAP import](#ldap--active-directory-import).
+* **CSV import / export** of signatures (delimiter `,` or `;`, formula-injection safe export);
+  administrators and technicians can put a **tag** on every imported signature.
+* **Signature rollout by email:** administrators and technicians send signatures to users (SMTP).
+* **API with bearer tokens** and fine-grained scopes (`signatures:read`, `status:write`) for the
+  desktop agent and your own scripts; optionally with the signature's images Base64-encoded for
+  clients that cannot download images themselves.
+* **System Logs:** security events, email log, login attempts and - new in 1.8.0 - **API
+  requests** of all clients (with the device name the desktop agent sends), the exact reason of
+  refused requests (unknown, revoked or expired token) and an overview of the clients of the last
+  24 hours.
+* **User management** with three roles (**administrator / technician / user**), activation,
+  optional self-registration. See [Roles](#roles).
+* **18 languages** (English, Deutsch, Español, Français, Italiano, Português, Nederlands, Polski,
+  Türkçe, Русский, Українська, العربية (RTL), हिन्दी, Bahasa Indonesia, 中文, 日本語, 한국어,
+  Bosanski): one JSON file per language in `public_html/lang/`, automatic detection from the
+  browser, switcher in the sidebar and on the login page, per-user choice, system-wide default.
+  See [Languages](#languages).
+* **Consistent messages:** green for success, red for errors, yellow for warnings - the same on
+  every page, in light and dark mode.
+* **System status** panel (Admin -> Configuration): PHP version and extensions, writable
+  directories, data directory outside the web root, secret key, installer leftovers.
+* **Light, dark and system theme:** switch in the sidebar (or top right on the login page); the
+  choice is remembered per browser, "system" follows the operating system. Signature previews
+  always stay on white. Static files are versioned automatically (`?v=<mtime>`), so a new
+  release shows up without clearing the browser cache.
+* **Security by default:** CSRF protection, strict CSP, hardened sessions, brute-force
+  protection, encrypted secrets, audit log. See [Security](#security).
 * **Self-hosted, SQLite:** no MySQL/PostgreSQL required.
+
+## Screenshots
+
+**Email signature generator with live preview**
+![SubSignature email signature generator with live preview](https://raw.githubusercontent.com/husisusi/SubSignature/main/public_html/img/screenshots/SubSignature_screenshot_generator.png)
+
+**User management with roles**
+![SubSignature user management with administrator, technician and user roles](https://raw.githubusercontent.com/husisusi/SubSignature/main/public_html/img/screenshots/SubSignature_screenshot_user.png)
+
+**HTML signature template editor**
+![SubSignature HTML email signature template editor](https://raw.githubusercontent.com/husisusi/SubSignature/main/public_html/img/screenshots/SubSignature_screenshot_editor.png)
+
+**CSV import of signatures**
+![SubSignature CSV import of email signatures](https://raw.githubusercontent.com/husisusi/SubSignature/main/public_html/img/screenshots/SubSignature_screenshot_import.png)
 
 ## Requirements
 
-* PHP 7.4 or newer (tested with 8.x), with the extensions `sqlite3`, `mbstring`, `fileinfo`, `zip`, and `openssl` or `sodium`.
-* Optional: the `ldap` extension for the LDAP import (`apt install php-ldap`).
-* Apache 2.4 with `mod_rewrite` and `mod_headers` (the shipped `.htaccess` is written for it). Nginx works with equivalent rules, see [Hardening](#hardening-checklist).
+* PHP 8.0 or newer (tested with 8.x), with the extensions `sqlite3`, `mbstring`, `fileinfo`,
+  `zip`, and `openssl` or `sodium`.
+* Optional: the `ldap` extension for the LDAP import (`apt install php-ldap`), and the `curl`
+  extension to deliver template images from other servers embedded through the API.
+* Apache 2.4 with `mod_rewrite` and `mod_headers` (the shipped `.htaccess` is written for it).
+  Nginx works with equivalent rules, see [Hardening](#hardening-checklist).
 * HTTPS (strongly recommended; required for the API).
+* For the desktop agent: Windows 10/11 or Linux, with Outlook (classic) and/or Thunderbird.
 
 ## Installation
 
@@ -164,6 +233,8 @@ A **Go** agent for **Windows and Linux** (already built, see `subsignature-agent
 * `GET /api/v1/signatures` returns rendered, sanitized HTML plus the raw fields, a plain-text variant and a hash for change detection; filters `username`, `email`, `updated_since`, paging.
 * `POST /api/v1/status` lets the agent report per signature `ok`/`warn`/`error` plus the version it applied (`html_sha256`), per device (feeding the sync-status badge above) - a narrow write that can only store status rows, never signature content, and needs its own scope so a read-only token cannot be used to fake a status report.
 * HTTPS only, rate limited (separate limits for reading and for status reports), no session or cookie involved.
+* `GET /api/v1/signatures?images=meta|inline` and `GET /api/v1/images/{sha256}` deliver the images of a signature Base64-encoded, for clients that cannot download images themselves (e.g. HCL Notes/Domino). Images from **Manage Images** are always available; images on other servers only from hosts that the administrator lists under **Admin -> Configuration -> Image hosts for embedding** (https only, private and reserved addresses are refused).
+* Every request is visible under **System Logs -> API Requests** (since 1.8.0): result, endpoint, token, client, IP and duration - and for refused requests the exact reason (no token, unknown, revoked or expired token). The token itself is never stored. Configurable under **Admin -> Configuration** (all requests / only errors / off, 1-365 days).
 
 Full documentation with implementation notes for the agent: [docs/API.md](docs/API.md).
 
@@ -186,7 +257,7 @@ Each language is a single file `public_html/lang/<code>.json` (`en`, `de`, `es`,
 | API tokens | yes | yes | no |
 | **Users** (create, roles, passwords, activate, delete, other profiles) | yes | **no** | no |
 | **System Configuration** (SMTP, company details, security settings, status) | yes | **no** | no |
-| **System Logs** (audit log, mail log) | yes | **no** | no |
+| **System Logs** (audit log, mail log, login attempts, API requests) | yes | **no** | no |
 
 * **Administrator:** everything. Creates users and assigns roles; the last active administrator can never be demoted, deactivated or deleted.
 * **Technician:** runs the day-to-day tooling (templates, images, LDAP import, API tokens, rollout, all signatures) but cannot see or change users, roles, passwords, the system configuration or the logs. The role is assigned by an administrator under *Users -> Change role* or when creating a user; self-registration always creates a normal user.
@@ -207,7 +278,8 @@ An overview of the protections and the results of the security review is in [doc
 * All output is escaped; template HTML is sanitized on the server (tokenizer based, attributes are rebuilt, URL schemes are allow-listed) and in the browser.
 * SMTP and LDAP passwords are encrypted at rest (libsodium or AES-GCM).
 * CSV export neutralizes spreadsheet formulas; CSV import is size- and row-limited.
-* Audit log of security-relevant events with retention.
+* Audit log of security-relevant events and a log of all API requests, both with retention.
+* No external requests: no CDNs, external fonts, analytics or telemetry; all assets are hosted locally and the CSP only allows the application's own scripts, styles and fonts.
 
 ### Hardening checklist
 
@@ -227,14 +299,52 @@ An overview of the protections and the results of the security review is in [doc
 * **Font Awesome Free** (Icons CC BY 4.0, Fonts SIL OFL 1.1, Code MIT): UI icons, hosted locally.
 * **PHPMailer** (LGPL-2.1): sending e-mails via SMTP.
 
+## FAQ
+
+**How do I deploy email signatures to Outlook centrally?**
+Create the signatures in SubSignature (by hand, CSV or LDAP / Active Directory import), create an
+API token, and install the SubSignature agent on the Windows clients. The agent writes the
+signature into the Outlook profile, sets it as the default for new messages and replies, and
+updates it automatically whenever you change the signature, its template or the company details.
+
+**Does SubSignature work with Thunderbird?**
+Yes. The same agent installs signatures in Thunderbird on **Windows and Linux** (per identity,
+matched by email address).
+
+**What about the new Outlook and Outlook on the web (Microsoft 365)?**
+The agent supports classic Outlook for Windows. The new Outlook and Outlook on the web keep
+signatures in the cloud, and Microsoft offers no supported API to write them yet; users can paste
+the generated signature there, or receive it by email from the rollout function.
+
+**Is SubSignature free?**
+Yes. It is open source under the MIT license, with no paid tier and no usage limits.
+
+**Do I need a database server?**
+No. SubSignature uses SQLite: a single file in the `private_data/` directory.
+
+**Can I import signatures from Active Directory or LDAP?**
+Yes, with a preview in which you choose the entries, the target user, the template and an optional
+tag. The import only creates signatures; it never creates accounts or allows LDAP logins.
+
+**Does SubSignature send data to third parties?**
+No. There are no CDNs, external fonts, analytics or telemetry; all assets are served by your own
+server. The only third-party requests a browser makes are images that one of your templates
+deliberately references by URL.
+
+**Which languages are available?**
+18 interface languages, including right-to-left Arabic. See [Languages](#languages).
+
 ## Roadmap
 
 * macOS support for the desktop agent (currently Windows and Linux; see `subsignature-agent/`).
+* HCL Notes / Domino: server-side agent that writes the signatures into the mail files (in
+  development).
 * Optional LDAP import scheduling (cron/CLI).
 
 ## Contributing
 
-Contributions are welcome! If you find a bug, please open an issue. If you find this project useful, please give it a **star** ⭐.
+Contributions are welcome! If you find a bug, please open an issue. If you find this project
+useful, please give it a **star** ⭐ - it helps others find it.
 
 ## License
 

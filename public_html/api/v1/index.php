@@ -7,9 +7,14 @@
  *
  * Endpoints:
  *   GET  /api/v1/                   service info (needs a valid token)
- *   GET  /api/v1/signatures         list, filters: username, email, updated_since, limit, offset
- *   GET  /api/v1/signatures/{id}    one signature
+ *   GET  /api/v1/signatures         list, filters: username, email, updated_since, limit, offset;
+ *                                   images=meta|inline adds the signature's images (Base64 for inline)
+ *   GET  /api/v1/signatures/{id}    one signature (same images option)
+ *   GET  /api/v1/images/{sha256}    one image of a signature, Base64-encoded
  *   POST /api/v1/status             agent reports sync status for signatures it applied
+ *
+ * Optional request header X-SubSignature-Device: the client's device name,
+ * shown in System Logs -> API Requests (informational only).
  *
  * The GET endpoints are read-only and need the "signatures:read" scope.
  * POST /status is a narrow write: it can only store per-device sync-status
@@ -21,6 +26,17 @@
  * Details: docs/API.md
  */
 require_once __DIR__ . '/../../includes/bootstrap.php';
+
+// Request context for the API log (System Logs -> API Requests). Filled in
+// step by step below and written once, by apiRespond(), for every response.
+$apiStart = microtime(true);
+$apiLog = [
+    'token_id'    => null,
+    'token_label' => '',
+    'result'      => null,   // internal outcome; defaults to the error code / "ok"
+    'items'       => null,   // signatures returned or status rows stored
+    'device_id'   => '',
+];
 
 // ---------------------------------------------------------------------
 // Response helpers
@@ -36,6 +52,7 @@ if (isHttpsRequest()) {
 
 function apiRespond(int $status, array $payload, array $headers = []): void
 {
+    apiWriteLog($status, (string)($payload['error']['code'] ?? 'ok'));
     http_response_code($status);
     foreach ($headers as $h) {
         header($h);
@@ -47,6 +64,51 @@ function apiRespond(int $status, array $payload, array $headers = []): void
 function apiError(int $status, string $code, string $message, array $headers = []): void
 {
     apiRespond($status, ['error' => ['code' => $code, 'message' => $message]], $headers);
+}
+
+/**
+ * Endpoint for the log: path plus the known query parameters (values
+ * shortened), never anything else from the URL.
+ */
+function apiLogEndpoint(): string
+{
+    global $path;
+    $p = isset($path) ? (string)$path : trim((string)parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH), '/');
+    $p = '/' . substr((string)preg_replace('#[^A-Za-z0-9/_.\-]#', '', $p), 0, 100);
+    $query = [];
+    foreach (['username', 'email', 'updated_since', 'limit', 'offset', 'images'] as $key) {
+        if (isset($_GET[$key]) && is_string($_GET[$key]) && $_GET[$key] !== '') {
+            $query[] = $key . '=' . cleanText($_GET[$key], 64);
+        }
+    }
+    return $query ? $p . '?' . implode('&', $query) : $p;
+}
+
+/**
+ * Writes the API log row for the response that is about to be sent.
+ */
+function apiWriteLog(int $status, string $code): void
+{
+    global $db, $apiLog, $apiStart;
+    if (!($db instanceof SQLite3)) {
+        return;
+    }
+    $method = strtoupper((string)($_SERVER['REQUEST_METHOD'] ?? 'GET'));
+    if (!preg_match('/^[A-Z]{1,10}$/', $method)) {
+        $method = 'OTHER';
+    }
+    logApiRequest($db, [
+        'token_id'    => $apiLog['token_id'],
+        'token_label' => $apiLog['token_label'],
+        'method'      => $method,
+        'endpoint'    => apiLogEndpoint(),
+        'http_status' => $status,
+        'result'      => $apiLog['result'] ?? $code,
+        'items'       => $apiLog['items'],
+        'device_id'   => $apiLog['device_id'],
+        'client'      => (string)($_SERVER['HTTP_USER_AGENT'] ?? ''),
+        'duration_ms' => (int)round((microtime(true) - $apiStart) * 1000),
+    ]);
 }
 
 // ---------------------------------------------------------------------
@@ -70,7 +132,8 @@ if ($base !== '' && strpos($path, $base) === 0) {
 $path = trim((string)preg_replace('#^/?index\.php#', '', $path), '/');
 
 if ($method === 'GET') {
-    $isKnownGet = ($path === '' || $path === 'signatures' || preg_match('#^signatures/\d{1,10}$#', $path) === 1);
+    $isKnownGet = ($path === '' || $path === 'signatures' || preg_match('#^signatures/\d{1,10}$#', $path) === 1
+                   || preg_match('#^images/[a-f0-9]{64}$#', $path) === 1);
     if (!$isKnownGet) {
         apiError(404, 'not_found', 'Unknown endpoint.');
     }
@@ -109,7 +172,21 @@ $valid = $tokenRow !== null
     && empty($tokenRow['revoked_at'])
     && (empty($tokenRow['expires_at']) || strtotime($tokenRow['expires_at'] . ' UTC') > time());
 
+if ($tokenRow !== null) {
+    $apiLog['token_id'] = (int)$tokenRow['id'];
+    $apiLog['token_label'] = (string)$tokenRow['label'];
+}
 if (!$valid) {
+    // The client only learns "unauthorized"; the log keeps the exact reason.
+    if ($token === '') {
+        $apiLog['result'] = 'token_missing';
+    } elseif ($tokenRow === null) {
+        $apiLog['result'] = 'token_unknown';
+    } elseif (!empty($tokenRow['revoked_at'])) {
+        $apiLog['result'] = 'token_revoked';
+    } else {
+        $apiLog['result'] = 'token_expired';
+    }
     rateLimitHit('api_auth_fail', 300);
     apiError(401, 'unauthorized', 'Missing, invalid, expired or revoked token.', ['WWW-Authenticate: Bearer realm="SubSignature"']);
 }
@@ -124,6 +201,14 @@ $rlAction = ($requiredScope === 'status:write') ? 'api_status' : 'api_req';
 $rlLimit  = ($requiredScope === 'status:write') ? 120 : 600;
 if (!checkRateLimit($rlAction, $rlLimit, 60, 'token:' . $tokenRow['id'])) {
     apiError(429, 'rate_limited', 'Rate limit exceeded (' . $rlLimit . ' requests per minute).', ['Retry-After: 60']);
+}
+
+// Optional device name of the client (e.g. "PC-042-1a2b3c4d" from the desktop
+// agent). Informational only - never used for any decision; status reports
+// carry their own device_id, which takes precedence in the log.
+$deviceHeader = cleanText($_SERVER['HTTP_X_SUBSIGNATURE_DEVICE'] ?? '', 80);
+if ($deviceHeader !== '' && preg_match('/^[A-Za-z0-9][A-Za-z0-9 ._\-@]{0,79}$/', $deviceHeader)) {
+    $apiLog['device_id'] = $deviceHeader;
 }
 
 // Bookkeeping (best effort, never fails the request).
@@ -165,6 +250,55 @@ function apiSignature(array $row): array
     ];
 }
 
+/**
+ * Reads the images option (?images=meta|inline); '' when not requested.
+ */
+function apiImagesMode(): string
+{
+    $mode = $_GET['images'] ?? '';
+    if (!is_string($mode) || !in_array($mode, ['', 'meta', 'inline'], true)) {
+        apiError(400, 'bad_request', 'images must be "meta" or "inline".');
+    }
+    return $mode;
+}
+
+/**
+ * Host name of this server as the client addressed it (without port), and
+ * the URL path of the installation, for recognising its own image URLs.
+ */
+function apiSelfHost(): string
+{
+    return (string)preg_replace('/:\d+$/', '', strtolower((string)($_SERVER['HTTP_HOST'] ?? '')));
+}
+
+function apiBasePath(): string
+{
+    $script = str_replace('\\', '/', (string)($_SERVER['SCRIPT_NAME'] ?? '/api/v1/index.php'));
+    $base = rtrim(dirname(dirname(dirname($script))), '/');
+    return $base === '' ? '/' : $base;
+}
+
+/**
+ * Adds "images" to an API signature and collects the image data (keyed by
+ * SHA-256) for the response's "image_data" object when $inline is set.
+ */
+function apiAttachImages(SQLite3 $db, array &$item, bool $inline, array &$imageData, int &$budget): void
+{
+    static $hosts = null;
+    if ($hosts === null) {
+        $hosts = imageEmbedHosts($db);
+    }
+    $list = [];
+    foreach (signatureImages($db, $item['html'], apiSelfHost(), apiBasePath(), $hosts, $budget) as $img) {
+        if ($inline && $img['status'] === 'ok' && !isset($imageData[$img['sha256']])) {
+            $imageData[$img['sha256']] = base64_encode($img['bytes']);
+        }
+        unset($img['bytes']);
+        $list[] = $img;
+    }
+    $item['images'] = $list;
+}
+
 const API_SELECT = 'SELECT s.id, s.name, s.role, s.email, s.phone, s.template, s.source, s.created_at, s.updated_at, u.username
                     FROM user_signatures s JOIN users u ON u.id = s.user_id
                     WHERE u.is_active = 1';
@@ -202,6 +336,7 @@ if ($method === 'GET' && $path === 'signatures') {
         $binds[] = gmdate('Y-m-d H:i:s', $ts);
     }
 
+    $imagesMode = apiImagesMode();
     $limit = min(500, max(1, (int)($_GET['limit'] ?? 100)));
     $offset = max(0, (int)($_GET['offset'] ?? 0));
     $sql .= ' ORDER BY s.id LIMIT ' . $limit . ' OFFSET ' . $offset;
@@ -212,20 +347,63 @@ if ($method === 'GET' && $path === 'signatures') {
     }
     $res = $stmt->execute();
     $items = [];
+    $imageData = [];
+    $budget = IMAGE_FETCH_BUDGET;
     while ($row = $res->fetchArray(SQLITE3_ASSOC)) {
-        $items[] = apiSignature($row);
+        $item = apiSignature($row);
+        if ($imagesMode !== '') {
+            apiAttachImages($db, $item, $imagesMode === 'inline', $imageData, $budget);
+        }
+        $items[] = $item;
     }
-    apiRespond(200, ['count' => count($items), 'limit' => $limit, 'offset' => $offset, 'items' => $items]);
+    $apiLog['items'] = count($items);
+    $response = ['count' => count($items), 'limit' => $limit, 'offset' => $offset, 'items' => $items];
+    if ($imagesMode === 'inline') {
+        // Each image once per response, even if many signatures use it.
+        $response['image_data'] = (object)$imageData;
+    }
+    apiRespond(200, $response);
 }
 
 if ($method === 'GET' && preg_match('#^signatures/(\d{1,10})$#', $path, $m)) {
+    $imagesMode = apiImagesMode();
     $stmt = $db->prepare(API_SELECT . ' AND s.id = ?');
     $stmt->bindValue(1, (int)$m[1], SQLITE3_INTEGER);
     $row = $stmt->execute()->fetchArray(SQLITE3_ASSOC);
     if (!$row) {
         apiError(404, 'not_found', 'Signature not found.');
     }
-    apiRespond(200, apiSignature($row));
+    $apiLog['items'] = 1;
+    $item = apiSignature($row);
+    if ($imagesMode !== '') {
+        $imageData = [];
+        $budget = IMAGE_FETCH_BUDGET;
+        apiAttachImages($db, $item, $imagesMode === 'inline', $imageData, $budget);
+        if ($imagesMode === 'inline') {
+            $item['image_data'] = (object)$imageData;
+        }
+    }
+    apiRespond(200, $item);
+}
+
+// ---------------------------------------------------------------------
+// GET /images/{sha256} - one image, Base64-encoded. Only images that a
+// signature referenced (and that passed the checks) are in the cache.
+// ---------------------------------------------------------------------
+if ($method === 'GET' && preg_match('#^images/([a-f0-9]{64})$#', $path, $m)) {
+    $stmt = $db->prepare("SELECT sha256, content_type, size, data FROM image_cache WHERE sha256 = ? AND status = 'ok' LIMIT 1");
+    $stmt->bindValue(1, $m[1], SQLITE3_TEXT);
+    $img = $stmt->execute()->fetchArray(SQLITE3_ASSOC);
+    if (!$img) {
+        apiError(404, 'not_found', 'Image not found. Request the signature with images=meta first.');
+    }
+    $apiLog['items'] = 1;
+    apiRespond(200, [
+        'sha256'       => $img['sha256'],
+        'content_type' => $img['content_type'],
+        'size'         => (int)$img['size'],
+        'data'         => base64_encode((string)$img['data']),
+    ]);
 }
 
 // ---------------------------------------------------------------------
@@ -247,6 +425,7 @@ if ($method === 'POST' && $path === 'status') {
     if ($deviceId === '' || !preg_match('/^[A-Za-z0-9][A-Za-z0-9 ._\-@]{0,79}$/', $deviceId)) {
         apiError(400, 'bad_request', 'device_id is required (1-80 characters, letters/digits/space . _ - @).');
     }
+    $apiLog['device_id'] = $deviceId;
     $agentVersion = cleanText($body['agent_version'] ?? '', 40);
     if ($agentVersion !== '' && !preg_match('/^[A-Za-z0-9][A-Za-z0-9 ._+\-]{0,39}$/', $agentVersion)) {
         apiError(400, 'bad_request', 'agent_version must be at most 40 characters (letters/digits/space . _ + -).');
@@ -330,6 +509,7 @@ if ($method === 'POST' && $path === 'status') {
         apiError(500, 'internal_error', 'Could not store the status report.');
     }
 
+    $apiLog['items'] = $updated;
     apiRespond(200, ['received' => count($clean), 'updated' => $updated]);
 }
 

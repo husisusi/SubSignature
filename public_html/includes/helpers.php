@@ -24,6 +24,57 @@ function e($value): string
 }
 
 /**
+ * Renders one status message box: green "success", red "error", yellow
+ * "warning" or blue "info". Every page uses this helper (and js/alerts.js for
+ * messages created in the browser), so messages look the same everywhere.
+ *
+ * $text is plain text: it is escaped here and line breaks are kept.
+ * Use alertBoxHtml() only for markup that is already escaped.
+ */
+function alertBox(string $type, string $text): string
+{
+    return alertBoxHtml($type, nl2br(e($text), false));
+}
+
+/**
+ * Like alertBox(), but $html is inserted as is: the caller must have escaped
+ * every dynamic part of it.
+ */
+function alertBoxHtml(string $type, string $html): string
+{
+    $icons = [
+        'success' => 'check-circle',
+        'error'   => 'exclamation-circle',
+        'warning' => 'exclamation-triangle',
+        'info'    => 'info-circle',
+    ];
+    if (!isset($icons[$type])) {
+        $type = 'info';
+    }
+    // Errors and warnings are announced immediately by screen readers.
+    $role = ($type === 'error' || $type === 'warning') ? 'alert' : 'status';
+    return '<div class="alert alert-' . $type . '" role="' . $role . '">'
+         . '<i class="fas fa-' . $icons[$type] . '" aria-hidden="true"></i>'
+         . '<div class="alert-text">' . $html . '</div></div>';
+}
+
+/**
+ * The usual pair of flash messages of a page: success first, then error.
+ * Empty messages are skipped.
+ */
+function flashAlerts(?string $success, ?string $error): string
+{
+    $out = '';
+    if ((string)$success !== '') {
+        $out .= alertBox('success', (string)$success);
+    }
+    if ((string)$error !== '') {
+        $out .= alertBox('error', (string)$error);
+    }
+    return $out;
+}
+
+/**
  * Returns a versioned URL for a static asset (CSS/JS) relative to the web
  * root, e.g. "css/style.css?v=1731150000".
  *
@@ -761,6 +812,8 @@ function pruneOldLogs($db): void
     $stmt->execute();
 
     pruneDeviceStatus($db);
+    pruneApiLog($db);
+    pruneImageCache($db);
 
     // Remove abandoned temporary files (LDAP previews etc.) older than 2 hours.
     foreach (glob(TMP_DIR . '/*.json') ?: [] as $file) {
@@ -787,12 +840,15 @@ function systemHealthChecks(): array
         $rows[] = ['label' => $label, 'status' => $status, 'detail' => $detail];
     };
 
-    $add(t('PHP version'), version_compare(PHP_VERSION, '7.4.0', '>=') ? 'ok' : 'fail', PHP_VERSION);
+    // 8.0+ is supported; 7.4 still runs but no longer gets security fixes.
+    $add(t('PHP version'), version_compare(PHP_VERSION, '8.0.0', '>=') ? 'ok' : (version_compare(PHP_VERSION, '7.4.0', '>=') ? 'warn' : 'fail'), PHP_VERSION);
     foreach (['sqlite3' => true, 'mbstring' => true, 'zip' => true, 'json' => true, 'ldap' => false] as $ext => $required) {
         $loaded = extension_loaded($ext);
         $add(t('PHP extension: {name}', ['name' => $ext]), $loaded ? 'ok' : ($required ? 'fail' : 'warn'),
             $loaded ? t('loaded') : ($required ? t('missing') : t('missing (optional, needed for the LDAP import)')));
     }
+    $add(t('PHP extension: {name}', ['name' => 'curl']), extension_loaded('curl') ? 'ok' : 'warn',
+        extension_loaded('curl') ? t('loaded') : t('missing (optional, needed to embed images from other hosts)'));
     $add(t('Password encryption'), function_exists('sodium_crypto_secretbox') ? 'ok' : (extension_loaded('openssl') ? 'ok' : 'fail'),
         function_exists('sodium_crypto_secretbox') ? 'libsodium' : 'OpenSSL AES-256-GCM');
 
@@ -1044,4 +1100,133 @@ function normalizeTagName($name): string
         return '';
     }
     return preg_match('/^[\p{L}\p{N}][\p{L}\p{N} ._\-\/&]*$/u', $name) === 1 ? $name : '';
+}
+
+// ---------------------------------------------------------------------
+// API REQUEST LOG (System Logs -> API Requests)
+// ---------------------------------------------------------------------
+
+/** Upper bound of stored API log rows; the oldest are removed beyond it. */
+const API_LOG_MAX_ROWS = 200000;
+
+/**
+ * What the API log records: "all" requests, only "errors" (HTTP status
+ * 400 and above) or nothing ("off"). Setting under Admin -> Configuration.
+ */
+function apiLogMode(SQLite3 $db): string
+{
+    $mode = getSetting($db, 'api_log_mode', 'all');
+    return in_array($mode, ['all', 'errors', 'off'], true) ? $mode : 'all';
+}
+
+/**
+ * Days an API log row is kept (1-365, default 30).
+ */
+function apiLogRetentionDays(SQLite3 $db): int
+{
+    $days = (int)getSetting($db, 'api_log_retention_days', '30');
+    return ($days >= 1 && $days <= 365) ? $days : 30;
+}
+
+/**
+ * Writes one API request to the log. Best effort: never throws and never
+ * stores the token itself.
+ *
+ * $entry: token_id, token_label, method, endpoint, http_status, result,
+ * items, device_id, client, duration_ms.
+ */
+function logApiRequest(SQLite3 $db, array $entry): void
+{
+    try {
+        $status = (int)($entry['http_status'] ?? 0);
+        $mode = apiLogMode($db);
+        if ($mode === 'off' || ($mode === 'errors' && $status < 400)) {
+            return;
+        }
+        $ip = getClientIp();
+        $result = cleanText((string)($entry['result'] ?? ''), 40);
+
+        // A blocked or throttled client may keep sending requests: record
+        // such a refusal at most once per minute per address and reason, so
+        // the log cannot be flooded.
+        if ($status === 429) {
+            $chk = $db->prepare("SELECT 1 FROM api_request_log
+                                  WHERE created_at >= datetime('now', '-60 seconds')
+                                    AND ip_address = ? AND result = ? LIMIT 1");
+            $chk->bindValue(1, $ip, SQLITE3_TEXT);
+            $chk->bindValue(2, $result, SQLITE3_TEXT);
+            if ($chk->execute()->fetchArray(SQLITE3_NUM)) {
+                return;
+            }
+        }
+
+        $tokenId = $entry['token_id'] ?? null;
+        $items = $entry['items'] ?? null;
+        $stmt = $db->prepare('INSERT INTO api_request_log
+            (token_id, token_label, method, endpoint, http_status, result, items, device_id, client, ip_address, duration_ms)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+        $stmt->bindValue(1, $tokenId, $tokenId === null ? SQLITE3_NULL : SQLITE3_INTEGER);
+        $stmt->bindValue(2, cleanText((string)($entry['token_label'] ?? ''), 100), SQLITE3_TEXT);
+        $stmt->bindValue(3, cleanText((string)($entry['method'] ?? ''), 10), SQLITE3_TEXT);
+        $stmt->bindValue(4, cleanText((string)($entry['endpoint'] ?? ''), 255), SQLITE3_TEXT);
+        $stmt->bindValue(5, $status, SQLITE3_INTEGER);
+        $stmt->bindValue(6, $result, SQLITE3_TEXT);
+        $stmt->bindValue(7, $items, $items === null ? SQLITE3_NULL : SQLITE3_INTEGER);
+        $stmt->bindValue(8, cleanText((string)($entry['device_id'] ?? ''), 80), SQLITE3_TEXT);
+        $stmt->bindValue(9, cleanText((string)($entry['client'] ?? ''), 120), SQLITE3_TEXT);
+        $stmt->bindValue(10, $ip, SQLITE3_TEXT);
+        $stmt->bindValue(11, max(0, (int)($entry['duration_ms'] ?? 0)), SQLITE3_INTEGER);
+        $stmt->execute();
+
+        // Keep the tables bounded without a cron job (about 1 % of requests).
+        if (random_int(1, 100) === 1) {
+            pruneApiLog($db);
+            pruneImageCache($db);
+        }
+    } catch (Throwable $e) {
+        error_log('API log error: ' . $e->getMessage());
+    }
+}
+
+/**
+ * Deletes API log rows older than the retention window and keeps at most
+ * API_LOG_MAX_ROWS rows.
+ */
+function pruneApiLog(SQLite3 $db): void
+{
+    try {
+        $stmt = $db->prepare("DELETE FROM api_request_log WHERE created_at < datetime('now', ?)");
+        $stmt->bindValue(1, '-' . apiLogRetentionDays($db) . ' days', SQLITE3_TEXT);
+        $stmt->execute();
+        $maxId = (int)$db->querySingle('SELECT MAX(id) FROM api_request_log');
+        if ($maxId > API_LOG_MAX_ROWS) {
+            $db->exec('DELETE FROM api_request_log WHERE id <= ' . ($maxId - API_LOG_MAX_ROWS));
+        }
+    } catch (Exception $e) {
+        error_log('Pruning the API log failed: ' . $e->getMessage());
+    }
+}
+
+/**
+ * Human-readable, translated description of an API log result code.
+ */
+function apiResultLabel(string $result): string
+{
+    $labels = [
+        'ok'                 => t('OK'),
+        'token_missing'      => t('No token sent'),
+        'token_unknown'      => t('Unknown token'),
+        'token_revoked'      => t('Token revoked'),
+        'token_expired'      => t('Token expired'),
+        'forbidden'          => t('Missing permission'),
+        'rate_limited'       => t('Rate limit reached'),
+        'too_many_attempts'  => t('Blocked: too many invalid tokens'),
+        'https_required'     => t('HTTPS required'),
+        'bad_request'        => t('Invalid request'),
+        'not_found'          => t('Not found'),
+        'method_not_allowed' => t('Method not allowed'),
+        'payload_too_large'  => t('Request too large'),
+        'internal_error'     => t('Server error'),
+    ];
+    return $labels[$result] ?? $result;
 }

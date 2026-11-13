@@ -249,9 +249,6 @@ $presetsJson = json_encode(LdapConfig::PRESETS, JSON_HEX_TAG | JSON_HEX_AMP | JS
         .tag-skip { background: var(--danger-bg); color: var(--danger-text); }
         .plan-toolbar { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; margin: 1rem 0 0.75rem; }
         .btn-sm { padding: 0.4rem 0.8rem; font-size: 0.82rem; }
-        .alert { padding: 1rem 1.25rem; border-radius: 10px; margin-bottom: 1.5rem; display: flex; gap: 0.75rem; align-items: center; }
-        .alert-success { background: var(--success-bg); color: var(--success-text); border: 1px solid var(--success-border); }
-        .alert-error { background: var(--danger-bg); color: var(--danger-text); border: 1px solid var(--danger-border); }
         .import-success { background: var(--success-bg); border: 1px solid var(--success-border); border-radius: 12px; padding: 1.25rem 1.5rem; margin-bottom: 1.5rem; }
         .import-success h3 { color: var(--success-text); font-size: 1.15rem; display: flex; gap: 0.6rem; align-items: center; margin: 0 0 1rem; }
         .import-success .stat-box { background: var(--bg-white); }
@@ -303,12 +300,7 @@ $presetsJson = json_encode(LdapConfig::PRESETS, JSON_HEX_TAG | JSON_HEX_AMP | JS
                 <p><a href="all_signatures.php?source=ldap"><i class="fas fa-list-ul"></i> <?= et('View Signatures') ?></a></p>
             </div>
         <?php endif; ?>
-        <?php if ($message): ?>
-            <div class="alert alert-success"><i class="fas fa-check-circle"></i> <?php echo e($message); ?></div>
-        <?php endif; ?>
-        <?php if ($error): ?>
-            <div class="alert alert-error"><i class="fas fa-exclamation-circle"></i> <?php echo e($error); ?></div>
-        <?php endif; ?>
+        <?= flashAlerts($message, $error) ?>
         <?php if (!$ldap_available): ?>
             <div class="warn-box"><i class="fas fa-exclamation-triangle"></i>
                 <?= eth('The PHP {ext} extension is not installed. You can edit and save the settings, but test and import are disabled (Debian/Ubuntu: {cmd}).', ['ext' => '<code>ldap</code>', 'cmd' => '<code>apt install php-ldap</code>']) ?>

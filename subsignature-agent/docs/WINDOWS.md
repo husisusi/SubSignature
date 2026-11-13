@@ -2,7 +2,7 @@
 
 This document describes what the agent does on Windows, where it writes and what it deliberately cannot do.
 
-> **Status 1.0.0-rc1:** confirmed by the project owner on a real PC with Thunderbird and classic Outlook from
+> **Status 1.0.0-rc2:** confirmed (with 1.0.0-rc1) by the project owner on a real PC with Thunderbird and classic Outlook from
 > Microsoft 365 (IMAP account): signature files, default signature for new messages and replies, updates after a change
 > on the server and `remove` - with roaming signatures switched off (the default, see "Roaming signatures"). Built on
 > Linux (amd64, arm64) and additionally tested there against an in-memory registry. Not yet run on a real Windows:

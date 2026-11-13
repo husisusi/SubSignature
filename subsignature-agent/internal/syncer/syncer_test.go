@@ -49,6 +49,7 @@ type fakeServer struct {
 	pings           int
 	statusForbidden bool               // simulate a token without the status:write scope
 	statusReports   []fakeStatusReport // every POST /status body received, in order
+	deviceHeaders   []string           // "METHOD path device" for every request, in order
 }
 
 // fakeStatusReport is one decoded POST /api/v1/status body.
@@ -162,6 +163,7 @@ func (f *fakeServer) Handler() http.Handler {
 		f.mu.Lock()
 		defer f.mu.Unlock()
 		f.total++
+		f.deviceHeaders = append(f.deviceHeaders, r.Method+" "+r.URL.Path+" "+r.Header.Get("X-SubSignature-Device"))
 		if r.Header.Get("Authorization") != "Bearer "+testToken {
 			fakeErr(w, http.StatusUnauthorized, "unauthorized")
 			return
@@ -1235,5 +1237,91 @@ func TestClientDeviceIDStaysWithinTheServerLimit(t *testing.T) {
 		if len(got) > 80 || !strings.HasSuffix(got, " "+c) || !deviceIDPatternForTest.MatchString(got) {
 			t.Errorf("%q (len %d)", got, len(got))
 		}
+	}
+}
+
+// ---------- device name header (X-SubSignature-Device) ----------
+
+func TestDeviceHeaderIsSentWithEveryRequest(t *testing.T) {
+	fake := newFake()
+	srv := httptest.NewServer(fake.Handler())
+	defer srv.Close()
+	e := newEnv(t, srv.URL)
+	if _, err := e.run(); err != nil {
+		t.Fatal(err)
+	}
+	id := e.deviceID(t)
+	if id == "" {
+		t.Fatal("no device id was saved")
+	}
+	fake.mu.Lock()
+	defer fake.mu.Unlock()
+	if len(fake.deviceHeaders) == 0 {
+		t.Fatal("no requests recorded")
+	}
+	sawStatus := false
+	for _, h := range fake.deviceHeaders {
+		if !strings.HasSuffix(h, " "+id) {
+			t.Errorf("request without the installation's device name: %q (want suffix %q)", h, id)
+		}
+		if strings.HasPrefix(h, "POST /api/v1/status ") {
+			sawStatus = true
+		}
+	}
+	if !sawStatus {
+		t.Error("the status report was not sent")
+	}
+}
+
+func TestDryRunDoesNotCreateADeviceName(t *testing.T) {
+	fake := newFake()
+	srv := httptest.NewServer(fake.Handler())
+	defer srv.Close()
+	e := newEnv(t, srv.URL)
+	e.opt.DryRun = true
+	if _, err := e.run(); err != nil {
+		t.Fatal(err)
+	}
+	fake.mu.Lock()
+	defer fake.mu.Unlock()
+	for _, h := range fake.deviceHeaders {
+		if !strings.HasSuffix(h, " ") {
+			t.Errorf("a dry run without saved state sent a device name: %q", h)
+		}
+	}
+}
+
+func TestDryRunAndPingUseAnExistingDeviceName(t *testing.T) {
+	fake := newFake()
+	srv := httptest.NewServer(fake.Handler())
+	defer srv.Close()
+	e := newEnv(t, srv.URL)
+	if _, err := e.run(); err != nil {
+		t.Fatal(err)
+	}
+	id := e.deviceID(t)
+
+	fake.mu.Lock()
+	fake.deviceHeaders = nil
+	fake.mu.Unlock()
+	e.opt.DryRun = true
+	if _, err := e.run(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Ping(context.Background(), e.cfg, e.opt); err != nil {
+		t.Fatal(err)
+	}
+	fake.mu.Lock()
+	defer fake.mu.Unlock()
+	if len(fake.deviceHeaders) == 0 {
+		t.Fatal("no requests recorded")
+	}
+	for _, h := range fake.deviceHeaders {
+		if !strings.HasSuffix(h, " "+id) {
+			t.Errorf("request without the saved device name: %q (want suffix %q)", h, id)
+		}
+	}
+	if e.deviceID(t) != id {
+		t.Error("the device id changed")
 	}
 }

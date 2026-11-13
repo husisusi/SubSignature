@@ -39,8 +39,13 @@ cannot be used to read signature content.
 
 ## Endpoints
 
-All endpoints return `application/json; charset=utf-8`. The three below use `GET`;
-`POST /api/v1/status` (its own scope) is documented in its own section further down.
+All endpoints return `application/json; charset=utf-8`. The `GET` endpoints below need
+`signatures:read`; `POST /api/v1/status` (its own scope) is documented in its own section further down.
+
+Optional request header for every endpoint: **`X-SubSignature-Device: <device name>`** (1-80
+characters: letters, digits, space `. _ - @`). It is only shown in **System Logs -> API Requests**
+so the administrator can tell which machine sent a request; it is never used for authentication
+or any decision. The desktop agent sends it since 1.0.0-rc2.
 
 ### `GET /api/v1/`
 
@@ -59,6 +64,7 @@ Service information. Useful as a health and credentials check.
 | `updated_since` | ISO 8601 date/time; returns signatures created or changed at or after it. Tracks changes to the signature data only - edits to the template file itself are not visible here, see the note below. |
 | `limit` | 1-500, default 100. |
 | `offset` | Default 0. Page until `count < limit`. |
+| `images` | Optional: `meta` adds the list of the signature's images to every item, `inline` additionally returns the image data (Base64) - see [Embedded images](#embedded-images). |
 
 ```json
 {
@@ -93,7 +99,61 @@ Service information. Useful as a health and credentials check.
 
 ### `GET /api/v1/signatures/{id}`
 
-One signature in the same format. `404` if it does not exist or its owner is inactive.
+One signature in the same format. `404` if it does not exist or its owner is inactive. Accepts
+the same `images` parameter.
+
+### Embedded images
+
+Some clients cannot download the images of a signature themselves - for example an HCL
+Notes/Domino agent written in LotusScript, which cannot fetch binary data. For them the server
+delivers the images Base64-encoded.
+
+`images=meta` adds `images` to every signature: one entry per `<img>` of the HTML, in order and
+without duplicates (at most 20):
+
+```json
+"images": [
+  { "src": "img/logo.png", "url": "img/logo.png", "status": "ok",
+    "sha256": "4b1d...", "content_type": "image/png", "size": 4351 },
+  { "src": "https://www.example.com/banner.png?v=2&amp;x=1", "url": "https://www.example.com/banner.png?v=2&x=1",
+    "status": "not_allowed" }
+]
+```
+
+* `src` is the attribute value exactly as it appears in `html` (replace it there, e.g. with
+  `cid:` references); `url` is the decoded address.
+* `status`: `ok`, or why the image is not delivered: `not_allowed` (host not listed, or a path
+  outside the image folder), `https_required`, `invalid_url`, `not_found`, `too_large` (over 1 MiB),
+  `unsupported_type` (only PNG, JPEG and GIF), `blocked_address` (the host resolves to a private or
+  reserved address), `fetch_failed`, `fetch_unavailable` (PHP `curl` missing), `fetch_deferred`
+  (fetch limit of this request reached - ask again).
+* `sha256`, `content_type` (detected from the file content) and `size` only for `ok`.
+
+`images=inline` returns the same list plus the data, once per image and response, in a top-level
+object (for `GET /signatures/{id}` inside the signature object):
+
+```json
+"image_data": { "4b1d...": "iVBORw0KGgoAAAANSUhEUgAA..." }
+```
+
+`GET /api/v1/images/{sha256}` returns one image that a signature request has listed before:
+
+```json
+{ "sha256": "4b1d...", "content_type": "image/png", "size": 4351, "data": "iVBORw0KGgo..." }
+```
+
+`404` if no signature referenced this image (request the signature with `images=meta` first).
+Clients with small response limits (LotusScript: 64 KB per byte array) should use `images=meta`
+plus one `GET /images/{sha256}` per image instead of `images=inline`.
+
+Where images may come from:
+
+| Source in the template | Delivered |
+|---|---|
+| The image folder of SubSignature (**Manage Images**): `img/logo.png`, `/img/logo.png` or an absolute URL of this server | Always |
+| `data:image/...;base64,...` | Always |
+| `https://` URL on another server | Only if the host is listed under **Admin -> Configuration -> Image hosts for embedding** (empty by default). Fetched by the server over https without redirects or proxy (timeouts 3 s / 8 s), only if every address of the host is public, cached for 24 hours (failures for 10 minutes); at most 3 new fetches per request. |
+| `http://` URL, other ports, user names in the URL | Never |
 
 ### `POST /api/v1/status`
 
@@ -156,10 +216,30 @@ Response:
 | 400 | `bad_request` | Invalid parameter. |
 | 401 | `unauthorized` | Token missing, wrong, expired or revoked. |
 | 403 | `https_required` / `forbidden` | Plain HTTP, or the token lacks the scope required for this request. |
-| 404 | `not_found` | Unknown endpoint or signature. |
+| 404 | `not_found` | Unknown endpoint, signature or image. |
 | 405 | `method_not_allowed` | Anything but `GET` on the reading endpoints, or anything but `POST` on `/status` (see the `Allow` response header). |
 | 413 | `payload_too_large` | `POST /status` body over 64 KiB. |
 | 429 | `too_many_attempts` / `rate_limited` | Honour the `Retry-After` header. |
+
+## Request log
+
+Since 1.8.0 the server logs API requests under **System Logs -> API Requests** (administrators
+only), so you can see which clients use the API, with which token and with what result:
+
+* Logged per request: time, HTTP status and result, method and path (plus the known query
+  parameters `username`, `email`, `updated_since`, `limit`, `offset`, shortened), token ID and
+  label, the device name (`device_id` of a status report, otherwise the `X-SubSignature-Device`
+  header), the client's `User-Agent`, IP address, number of
+  signatures returned or status rows stored, and the duration. **The token itself is never
+  stored.**
+* For refused requests the log shows the exact reason - no token, unknown token, revoked token,
+  expired token - while the client still only receives the generic `unauthorized` shown above.
+* A client that keeps getting `429` is recorded at most once per minute and reason.
+* **Admin -> Configuration -> API request log:** all requests (default), only errors, or off;
+  retention 1-365 days (default 30), and never more than 200,000 rows.
+
+Tip for client authors: send a meaningful `User-Agent` (for example `my-sync-script/1.2`) and
+the header `X-SubSignature-Device` - that is how your client is recognised in the log.
 
 ## The desktop agent
 

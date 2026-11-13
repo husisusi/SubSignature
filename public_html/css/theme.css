@@ -194,6 +194,26 @@ input, select, textarea { color: var(--text-main); }
 }
 
 /* ======================================================================
+   Status messages (success / error / warning / info).
+   One look on every page: rendered by alertBox() in PHP and by
+   js/alerts.js in the browser. Pages must not restyle .alert locally.
+   ====================================================================== */
+.alert {
+    display: flex; align-items: flex-start; gap: 0.75rem;
+    padding: 1rem 1.25rem; margin: 0 0 1.5rem;
+    border: 1px solid transparent; border-radius: 10px;
+    font-size: 0.95rem; line-height: 1.5;
+}
+.alert > i { flex: 0 0 auto; font-size: 1.05rem; line-height: 1.45; }
+.alert .alert-text { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+.alert-dynamic .alert-text { white-space: pre-line; }
+.alert a { color: inherit; font-weight: 600; text-decoration: underline; }
+.alert-success { background: var(--success-bg); color: var(--success-text); border-color: var(--success-border); }
+.alert-error   { background: var(--danger-bg);  color: var(--danger-text);  border-color: var(--danger-border); }
+.alert-warning { background: var(--warning-bg); color: var(--warning-text); border-color: var(--warning-border); }
+.alert-info    { background: var(--info-bg);    color: var(--info-text);    border-color: var(--info-border); }
+
+/* ======================================================================
    Right-to-left languages (Arabic): mirror the fixed sidebar layout.
    Flex/grid layouts flip on their own through dir="rtl" on <html>.
    ====================================================================== */

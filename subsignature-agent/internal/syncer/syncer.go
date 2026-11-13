@@ -185,6 +185,10 @@ func Ping(ctx context.Context, cfg *config.Config, opt Options) (*PingResult, er
 	if err != nil {
 		return nil, err
 	}
+	// Identify the installation if it already has an ID (ping never creates one).
+	if st, err := state.Load(filepath.Join(opt.StateDir, "state.json")); err == nil {
+		c.SetDeviceID(st.DeviceID)
+	}
 	info, err := c.Ping(ctx)
 	if err != nil {
 		return nil, err
@@ -241,6 +245,14 @@ func Run(ctx context.Context, cfg *config.Config, opt Options) (*Report, error) 
 	}
 	if err := r.loadState(); err != nil {
 		r.log.Warn("state file unreadable - starting with an empty state", "err", err)
+	}
+	// Tell the server which installation is asking (shown in its API log).
+	// A dry run uses an existing ID but never creates one, because it does
+	// not save the state.
+	if r.opt.DryRun {
+		r.client.SetDeviceID(r.st.DeviceID)
+	} else {
+		r.client.SetDeviceID(r.st.EnsureDeviceID())
 	}
 
 	infos, accts, err := r.collect()

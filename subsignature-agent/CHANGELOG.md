@@ -1,5 +1,24 @@
 # Changelog – SubSignature Agent
 
+## 1.0.0-rc2
+
+### Added
+- **Device name with every request.** The agent sends its installation ID (host name plus a random suffix, the same
+  ID that `status` shows and that status reports use) in the header `X-SubSignature-Device` with every API request.
+  SubSignature 1.8.0 shows it under **System Logs -> API Requests**, so the administrator sees which PC fetched
+  signatures, not only the program name. The header is informational only; the server never uses it to authenticate
+  or decide anything. Invalid values are never sent.
+- A real `sync` creates the installation ID on its first run (before, only when status reporting was on). A dry run
+  (`check`) and `ping` use an existing ID but never create one.
+
+### Changed
+- Documentation: the header is described in `README.md` and `docs/API.md`; vendor names were removed from the
+  sources section of `README.md`.
+- Tests: 5 new test functions (header on GET and POST, invalid values, dry run, ping).
+
+### Compatibility
+- Works with every SubSignature server version: older servers ignore the header.
+
 ## 1.0.0-rc1
 
 Release candidate for the first stable version. No functional changes compared to 0.6.1-beta.

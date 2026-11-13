@@ -21,7 +21,7 @@ define('SUBSIG_BOOTSTRAPPED', true);
 // ---------------------------------------------------------------------
 // 1. CONSTANTS & PATHS
 // ---------------------------------------------------------------------
-define('APP_VERSION', '1.7.0');
+define('APP_VERSION', '1.8.0');
 define('APP_ROOT', dirname(__DIR__));                      // public_html/
 define('TEMPLATES_DIR', APP_ROOT . '/templates');
 define('IMAGES_DIR', APP_ROOT . '/img');
@@ -36,7 +36,7 @@ define('TMP_DIR', BASE_DIR . '/tmp');
 define('SECRET_KEY_FILE', BASE_DIR . '/secret.key');
 
 // Current database schema version (see runMigrations()).
-define('SCHEMA_VERSION', 7);
+define('SCHEMA_VERSION', 9);
 
 // ---------------------------------------------------------------------
 // 2. DIRECTORY CHECKS
@@ -84,6 +84,7 @@ set_exception_handler(function ($e) {
 // ---------------------------------------------------------------------
 require_once __DIR__ . '/crypto.php';
 require_once __DIR__ . '/helpers.php';
+require_once __DIR__ . '/SignatureImages.php';
 require_once __DIR__ . '/i18n.php';
 
 // ---------------------------------------------------------------------
@@ -329,6 +330,54 @@ function runMigrations(SQLite3 $db): void
         // Devices that have not reported for this many days are no longer
         // counted (e.g. a replaced laptop) and their rows are pruned.
         $db->exec("INSERT OR IGNORE INTO system_settings (setting_key, setting_value) VALUES ('status_device_retention_days', '30')");
+
+        // ---- Version 8: API request log -----------------------------------
+        // One row per API request of a client (desktop agent, Domino agent,
+        // scripts), shown under System Logs -> API Requests. Never stores the
+        // token itself: token_id/token_label identify it (label is a snapshot,
+        // so the row stays readable after the token is deleted). "result" is
+        // the internal outcome (e.g. token_revoked), which can be more precise
+        // than the deliberately generic error the client receives.
+        $db->exec("CREATE TABLE IF NOT EXISTS api_request_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            token_id INTEGER,
+            token_label TEXT,
+            method TEXT NOT NULL,
+            endpoint TEXT NOT NULL,
+            http_status INTEGER NOT NULL,
+            result TEXT NOT NULL,
+            items INTEGER,
+            device_id TEXT,
+            client TEXT,
+            ip_address TEXT,
+            duration_ms INTEGER
+        )");
+        $db->exec('CREATE INDEX IF NOT EXISTS idx_apilog_created ON api_request_log(created_at)');
+        // all = every request, errors = only failed requests, off = nothing
+        $db->exec("INSERT OR IGNORE INTO system_settings (setting_key, setting_value) VALUES ('api_log_mode', 'all')");
+        $db->exec("INSERT OR IGNORE INTO system_settings (setting_key, setting_value) VALUES ('api_log_retention_days', '30')");
+
+        // ---- Version 9: embedded template images for the API ---------------
+        // Images referenced by signatures, delivered Base64-encoded through
+        // the API (?images=meta|inline and GET /api/v1/images/{sha256}) for
+        // clients that cannot download images themselves (HCL Notes/Domino).
+        // One row per image source (a local file, a data: URI or a remote URL
+        // on an allowed host); failures are cached too, so a broken URL is not
+        // fetched on every request. Remote images are only fetched from the
+        // hosts listed in the setting image_embed_hosts (empty = none).
+        $db->exec("CREATE TABLE IF NOT EXISTS image_cache (
+            source_hash TEXT PRIMARY KEY,
+            source TEXT NOT NULL,
+            status TEXT NOT NULL,
+            sha256 TEXT,
+            content_type TEXT,
+            size INTEGER,
+            data BLOB,
+            fetched_at INTEGER NOT NULL
+        )");
+        $db->exec('CREATE INDEX IF NOT EXISTS idx_imgcache_sha ON image_cache(sha256)');
+        $db->exec("INSERT OR IGNORE INTO system_settings (setting_key, setting_value) VALUES ('image_embed_hosts', '')");
 
         $db->exec('PRAGMA user_version = ' . (int)SCHEMA_VERSION);
         $db->exec('COMMIT');

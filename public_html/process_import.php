@@ -214,6 +214,12 @@ $template_display = templateDisplayName($template);
             <p><?= et('Processing complete for {count} records.', ['count' => count($rows)]) ?></p>
         </header>
 
+        <?php if ($error_count > 0): ?>
+            <?= alertBox('warning', t('{ok} signatures imported, {failed} failed. See the details below.', ['ok' => $success_count, 'failed' => $error_count])) ?>
+        <?php else: ?>
+            <?= alertBox('success', t('Successfully imported {count} signatures!', ['count' => $success_count])) ?>
+        <?php endif; ?>
+
         <div class="result-stats-grid">
             <div class="result-card success">
                 <span class="result-label"><?= et('Success') ?></span>

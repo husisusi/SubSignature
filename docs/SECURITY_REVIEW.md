@@ -125,6 +125,36 @@ bulk deletes) are written to the audit log, which only administrators can read.
 * The device retention setting (`status_device_retention_days`) is validated and clamped server-side (1-365).
 * Migration from 1.6.0 copies the old one-row-per-signature table into the new per-device table inside the migration transaction and then drops it.
 
+## Controls for the 1.8.0 features
+
+**API request log (System Logs -> API Requests)**
+
+* Written in exactly one place (`apiRespond()`), so every response - successful or refused - is logged the same way; logging is best effort and can never fail or change a response.
+* The bearer token is never stored. Rows contain the token's ID and a snapshot of its label; for refused requests the exact internal reason (`token_missing`, `token_unknown`, `token_revoked`, `token_expired`) is logged while the client still only receives the generic `unauthorized` - the log helps the administrator without telling an attacker whether a guessed token exists.
+* Only the path and the known query parameters (`username`, `email`, `updated_since`, `limit`, `offset`, values shortened to 64 characters) are recorded; every text field is cleaned and length-capped before it is stored and escaped on output.
+* Flooding: a blocked address (too many invalid tokens) or a throttled token is recorded at most once per minute and reason; rows older than the retention setting (1-365 days, default 30) are pruned on about 1 % of API requests and with the regular log cleanup; a hard cap keeps at most 200,000 rows. Logging can be limited to errors or switched off.
+* The page is administrator-only like the rest of System Logs; the client overview groups by device/User-Agent, token and address only.
+
+**Embedded images (`images=meta|inline`, `GET /api/v1/images/{sha256}`)**
+
+This is the only place where the server makes outgoing HTTP requests on behalf of an API client, so it is built against server-side request forgery (SSRF):
+
+* Image URLs come only from the rendered (sanitised) signature HTML, i.e. from templates that administrators and technicians maintain - an API client cannot pass a URL.
+* Remote images are fetched only from host names that an administrator listed (setting `image_embed_hosts`, empty by default; IP literals, ports, wildcards and user names are rejected; every change is in the audit log), only over https (`CURLPROTO_HTTPS`), with certificate verification, without redirects and without a proxy.
+* Every address the host name resolves to (A and AAAA) must be public; loopback, private, link-local, carrier-grade NAT, multicast, documentation, IPv4-mapped and reserved ranges are refused. The checked address is pinned for the connection (`CURLOPT_RESOLVE`), so a DNS answer cannot change between the check and the request (DNS rebinding).
+* Timeouts (3 s connect, 8 s total), a 1 MiB size limit enforced while downloading, at most 3 new downloads per request and a cache (24 h; failures 10 min) bound the work an API client can cause.
+* Only PNG, JPEG and GIF are delivered, detected from the bytes (the remote Content-Type is ignored); SVG and anything else is never delivered.
+* Local images are read only from the image folder (`realpath` check against `img/`, no `..`, no encoded NUL, image extensions only); `GET /images/{sha256}` serves only images that passed these checks and were referenced by a signature.
+* The `X-SubSignature-Device` header is validated (same rule as `device_id`) and only written to the API log.
+
+**Unified messages**
+
+* `alertBox()` escapes the message text (`e()` + `nl2br`); the only variant that accepts markup (`alertBoxHtml()`) is called with fixed, translated text and escaped values only. Browser-side messages (`js/alerts.js`) are inserted with `textContent`, never as HTML.
+
+**No external requests**
+
+* All scripts, styles and fonts are served from the application itself; the CSP (`script-src`/`style-src`/`font-src 'self'`, `connect-src 'self'`) enforces it. The template editor's optional CDN features (Ace from cdnjs, js-beautify, Google Fonts) are now configured off or to the bundled copy instead of relying on the CSP to block them. The only third-party requests a browser can make are images that a template deliberately references by URL.
+
 ## Residual risks and recommendations
 
 * **Run behind HTTPS.** Without it, session cookies lose the `Secure` flag and the API refuses to work by design.

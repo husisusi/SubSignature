@@ -1,5 +1,53 @@
 # Changelog
 
+## 1.8.0
+
+### Added (System Logs: API requests of the clients)
+- **New tab System Logs -> API Requests.** Every request of a client - the desktop agent (Outlook / Thunderbird, Windows and Linux), the HCL Domino agent or your own scripts - is logged with time, result, endpoint, token, client (device name for status reports, otherwise the program's User-Agent), IP address, number of signatures and duration.
+- **Exact reason for refused requests.** The client still only receives a generic `unauthorized`; the log shows whether no token was sent, the token is unknown, **revoked** or **expired** - so an agent that still uses an old token is found in seconds.
+- **"Clients in the last 24 hours"** overview on the same tab: one row per client, token and address with last-seen time, number of requests and errors.
+- New statistic **API Requests (24h)** (with the number of errors) on the System Logs page; filter **Only errors**.
+- **Admin -> Configuration -> API request log:** log *all requests* (default), *only errors* or *off*, and keep them 1-365 days (default 30).
+
+### Added (API: device name and embedded images)
+- **Device name in the API log.** Clients can send the header `X-SubSignature-Device`; the desktop agent 1.0.0-rc2 sends its installation ID with every request, so **API Requests** shows which PC fetched signatures (before, only status reports carried a device name). Informational only.
+- **Images of a signature Base64-encoded through the API**, for clients that cannot download images themselves (HCL Notes/Domino):
+  - `GET /api/v1/signatures?images=meta` lists every image of a signature (`src` as in the HTML, status, SHA-256, type, size); `images=inline` also returns the data, once per image and response.
+  - `GET /api/v1/images/{sha256}` returns one image - for clients with small response limits.
+  - Images from **Manage Images** (`img/...`) and `data:` images are always delivered; images on other servers only from the hosts listed under **Admin -> Configuration -> Image hosts for embedding** (empty by default).
+- System status: the `curl` extension (optional, needed for images from other hosts).
+
+### Changed (messages)
+- **All messages look the same on every page.** Success messages are green, errors red, warnings yellow and notes blue - with the same box, icon and position at the top of the page, in light and dark mode. This fixes **System Configuration**, where "Configuration saved successfully." (and other messages) appeared as plain text, and the same problem on **API Tokens**, **Images** and **Templates**.
+- One shared implementation: `alertBox()` / `flashAlerts()` in PHP and `js/alerts.js` for messages created in the browser. The pages' own message styles (login, installer, export, CSV import, user management, ...) were removed.
+- Browser pop-ups (`alert()`) for errors and hints (copy failed, template name missing, CSV file too large, passwords do not match, CSV requirements) are now shown as the same in-page message.
+- Messages on Images and Templates no longer disappear after 5 seconds; an error stays until you leave the page, as everywhere else.
+- The CSV import result page starts with a summary message (green, or yellow when rows failed).
+- Messages no longer carry their own emoji (the icon of the message box shows the type); the four affected texts were renamed in all languages, their translations are kept.
+
+### Security / privacy
+- **No request leaves your server from the interface.** All assets (scripts, styles, icons) were already hosted locally; the template editor now also pins Jodit's optional helpers explicitly: the code editor (Ace) is loaded from this server, the external HTML beautifier and Google Fonts are switched off. Before, they were only blocked by the Content-Security-Policy.
+- `Permissions-Policy` additionally disables the browser's ad-topic API (`browsing-topics=()`).
+- API log: the token itself is never stored (only its ID and label), query values are shortened, only known parameters are recorded. Refused requests from a blocked address or a throttled token are recorded at most once per minute, and the table is capped (retention setting plus at most 200,000 rows), so the log cannot be flooded.
+- System Logs show all times converted from the database's UTC to the server's time zone.
+- Image embedding cannot be used to reach internal systems: remote images only over https from listed host names (no IP literals, ports or user names), no redirects, no proxy, the host's addresses must all be public (no loopback, private, link-local, carrier-grade NAT, multicast, documentation or reserved ranges) and the checked address is pinned for the connection (no DNS rebinding). Size limit 1 MiB, PNG/JPEG/GIF detected from the content (SVG is never delivered), at most 3 new downloads per request, results cached (24 h, failures 10 min). Changes to the host list are written to the audit log.
+
+### Changed (requirements)
+- **PHP 8.0 or newer** is now the documented requirement (as in the README badge); the installer checks for it. PHP 7.4 no longer receives security fixes from the PHP project - an existing installation on 7.4 keeps running, the system status panel shows a warning.
+
+### Added (database)
+- Schema v8: table `api_request_log`, settings `api_log_mode` and `api_log_retention_days`.
+- Schema v9: table `image_cache`, setting `image_embed_hosts`.
+
+### Changed (documentation)
+- README rewritten for clarity and search: what SubSignature is in one sentence, central signature management and the desktop clients for Windows and Linux first in the feature list, a FAQ, and consistent requirements (PHP 8.0+).
+- `docs/API.md`: how API requests are logged, the device header, embedded images. `docs/SECURITY_REVIEW.md`: controls for 1.8.0.
+- The 41 new interface texts are translated into all 18 languages.
+
+### Upgrade notes
+- Copy the files, keep `private_data/`, reload once. The migration to schema v8 runs automatically; logging starts with the next API request.
+- The desktop agent works unchanged; update to 1.0.0-rc2 to see the PC names of signature fetches in the API log.
+
 ## 1.7.0
 
 ### Added (sync status)

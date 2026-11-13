@@ -159,7 +159,16 @@ type Options struct {
 	UseProxy           bool
 	Token              string
 	UserAgent          string
+	// DeviceID, if set, is sent as the X-SubSignature-Device header with
+	// every request, so the server's API log (System Logs -> API Requests)
+	// shows which installation a request came from. Informational only: the
+	// server never uses it for authentication or any decision. Values the
+	// server would not accept are dropped (see validDeviceHeader).
+	DeviceID string
 }
+
+// deviceHeader is the request header that carries Options.DeviceID.
+const deviceHeader = "X-SubSignature-Device"
 
 type Client struct {
 	o  Options
@@ -203,6 +212,7 @@ func New(o Options) (*Client, error) {
 	if o.UserAgent == "" {
 		o.UserAgent = "subsignature-agent"
 	}
+	o.DeviceID = validDeviceHeader(o.DeviceID)
 	return &Client{
 		o: o,
 		hc: &http.Client{
@@ -408,16 +418,40 @@ func (c *Client) reportStatusBatch(ctx context.Context, deviceID, agentVersion s
 	return nil
 }
 
+// SetDeviceID sets the device name sent with every following request (see
+// Options.DeviceID). An invalid value clears it.
+func (c *Client) SetDeviceID(id string) {
+	c.o.DeviceID = validDeviceHeader(id)
+}
+
+// validDeviceHeader returns id if the server accepts it as a device name
+// (1-80 characters: letters, digits, space . _ - @, starting with a letter or
+// digit - the same rule as device_id in POST /status), otherwise "".
+func validDeviceHeader(id string) string {
+	if len(id) > maxDeviceIDLen || !deviceIDPattern.MatchString(id) {
+		return ""
+	}
+	return id
+}
+
+// setCommonHeaders sets the headers every request carries.
+func (c *Client) setCommonHeaders(req *http.Request) {
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("User-Agent", c.o.UserAgent)
+	req.Header.Set("Authorization", "Bearer "+c.o.Token)
+	if c.o.DeviceID != "" {
+		req.Header.Set(deviceHeader, c.o.DeviceID)
+	}
+}
+
 // post performs a POST request with a JSON body and returns the body only for HTTP 200.
 func (c *Client) post(ctx context.Context, rawURL string, body []byte) ([]byte, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, rawURL, bytes.NewReader(body))
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Accept", "application/json")
+	c.setCommonHeaders(req)
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("User-Agent", c.o.UserAgent)
-	req.Header.Set("Authorization", "Bearer "+c.o.Token)
 
 	resp, err := c.hc.Do(req)
 	if err != nil {
@@ -452,9 +486,7 @@ func (c *Client) get(ctx context.Context, rawURL string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Accept", "application/json")
-	req.Header.Set("User-Agent", c.o.UserAgent)
-	req.Header.Set("Authorization", "Bearer "+c.o.Token)
+	c.setCommonHeaders(req)
 
 	resp, err := c.hc.Do(req)
 	if err != nil {

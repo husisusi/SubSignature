@@ -139,6 +139,7 @@ $csrf_token = generateCSRFToken();
     <?= i18nHead() ?>
     
     <script src="<?= assetUrl('js/theme.js') ?>"></script>
+    <script src="<?= assetUrl('js/alerts.js') ?>"></script>
     <link rel="stylesheet" href="<?= assetUrl('css/theme.css') ?>">
     <link rel="stylesheet" href="<?= assetUrl('css/style.css') ?>">
     <link rel="stylesheet" href="<?= assetUrl('css/all.min.css') ?>">    
@@ -233,9 +234,7 @@ $csrf_token = generateCSRFToken();
         <?php endif; ?>
 
         <?php if ($success): ?>
-            <div class="alert alert-success">
-                <i class="fas fa-check-circle"></i> <?php echo e($success); ?>
-            </div>
+            <?= alertBox('success', (string)$success) ?>
             
             <div style="margin-top: 1.5rem; text-align: center;">
                 <?php if ($admin_create): ?>
@@ -248,11 +247,10 @@ $csrf_token = generateCSRFToken();
         <?php else: ?>  
             
             <?php if ($error): ?>
-                <div class="alert alert-error">
-                    <i class="fas fa-exclamation-circle"></i> <?php echo e($error); ?>
-                </div>
+                <?= alertBox('error', (string)$error) ?>
             <?php endif; ?>
 
+            <div data-alert-host></div>
             <form method="POST" id="regForm" autocomplete="off">
                 <input type="hidden" name="csrf_token" value="<?php echo e($csrf_token); ?>">
                 
@@ -374,7 +372,7 @@ $csrf_token = generateCSRFToken();
         form.addEventListener('submit', function(e) {
             const p1 = document.getElementById('password').value;
             const p2 = document.getElementById('confirm_password').value;
-            if (p1 !== p2) { e.preventDefault(); alert(<?= tj('Passwords do not match!') ?>); }
+            if (p1 !== p2) { e.preventDefault(); SubSigAlert.show('error', <?= tj('Passwords do not match!') ?>); }
         });
     }
     </script>

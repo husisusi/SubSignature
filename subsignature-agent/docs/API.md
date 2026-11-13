@@ -5,7 +5,7 @@ The basis is the server documentation
 (API v1, since SubSignature 1.4.0; the status report since 1.6.0, the applied version in it since 1.7.0). This document records **what the agent uses from it** and
 **which decisions** it makes where the server documentation leaves things open.
 
-> **Status (1.0.0-rc1):** the agent runs against the project owner's real server on Linux and Windows, including the
+> **Status (1.0.0-rc2):** the agent runs against the project owner's real server on Linux and Windows, including the
 > status report. The automated tests run against a
 > **mock server** (`cmd/mocksubsig`) that mimics the server documentation. That documentation was read for this
 > document but not copied character by character; in case of doubt the documentation in the repository applies.
@@ -114,13 +114,24 @@ There is no ETag. Every run fetches the complete response per address and compar
 file in the profile: only on a difference is anything written. A deleted or hand-modified file therefore heals itself.
 The server's `html_sha256` value is not used for this decision; it is only reported back (see below).
 
+## Request headers
+
+Every request carries:
+
+| Header | Value |
+|---|---|
+| `Authorization` | `Bearer <token>` |
+| `Accept` | `application/json` |
+| `User-Agent` | `subsignature-agent/<version>` |
+| `X-SubSignature-Device` | since 1.0.0-rc2: the installation's device ID, e.g. `PC-ANNA-3f9a2b1c` (without the mail-client suffix). Shown by SubSignature 1.8.0+ under System Logs -> API Requests; ignored by older servers. Only sent if it matches the server's `device_id` rule (1-80 characters: letters, digits, space `. _ - @`). A dry run (`check`) and `ping` send it only if the ID already exists. Informational only, never authentication. |
+
 ## Status report
 
 After every **real** sync (`sync`/`run`, never `check`) that was not aborted (no 401/403/429/network abort), the agent
 sends one `POST /api/v1/status` **per mail client** with all of that client's addresses that resolved to a signature id:
 
 ```json
-{ "device_id": "PC-ANNA-3f9a2b1c Outlook", "agent_version": "1.0.0-rc1",
+{ "device_id": "PC-ANNA-3f9a2b1c Outlook", "agent_version": "1.0.0-rc2",
   "items": [ { "signature_id": 2, "status": "ok", "html_sha256": "9f2c…" },
              { "signature_id": 7, "status": "warn", "message": "…", "html_sha256": "1b0e…" } ] }
 ```

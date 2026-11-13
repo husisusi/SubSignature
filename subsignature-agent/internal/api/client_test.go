@@ -79,7 +79,7 @@ func TestSignaturesRequestAndFields(t *testing.T) {
 		t.Fatal(err)
 	}
 	if gotReq.URL.Path != "/api/v1/signatures" {
-		t.Errorf("Pfad = %q", gotReq.URL.Path)
+		t.Errorf("path = %q", gotReq.URL.Path)
 	}
 	q := gotReq.URL.Query()
 	if q.Get("email") != "max+test@example.com" || q.Get("limit") != "50" || q.Get("offset") != "0" {
@@ -710,5 +710,69 @@ func TestReportStatusStopsAtFirstFailingBatch(t *testing.T) {
 	}
 	if atomic.LoadInt32(&requests) != 1 {
 		t.Errorf("sent %d requests, expected to stop after the first failure", requests)
+	}
+}
+
+// ---------- device name header (X-SubSignature-Device) ----------
+
+func TestDeviceHeaderIsSentWithGetAndPost(t *testing.T) {
+	var got []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got = append(got, r.Method+" "+r.Header.Get("X-SubSignature-Device"))
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path == "/api/v1/status" {
+			fmt.Fprint(w, `{"received":1,"updated":1}`)
+			return
+		}
+		fmt.Fprint(w, page([]map[string]any{item(2, "anna@example.com")}, 50, 0))
+	}))
+	defer srv.Close()
+
+	c := newTestClient(t, srv.URL, func(o *Options) { o.DeviceID = "PC-042-1a2b3c4d" })
+	if _, err := c.Signatures(context.Background(), "anna@example.com"); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.ReportStatus(context.Background(), "PC-042-1a2b3c4d Outlook", "1.0.0-rc2", []StatusItem{{SignatureID: 2, Status: "ok"}}); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"GET PC-042-1a2b3c4d", "POST PC-042-1a2b3c4d"}
+	if fmt.Sprint(got) != fmt.Sprint(want) {
+		t.Errorf("headers = %q, want %q", got, want)
+	}
+}
+
+func TestDeviceHeaderInvalidValuesAreNotSent(t *testing.T) {
+	var got string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got = r.Header.Get("X-SubSignature-Device")
+		fmt.Fprint(w, page(nil, 50, 0))
+	}))
+	defer srv.Close()
+
+	for _, id := range []string{"", " leading-space", "line\nbreak", "slash/name", "ümlaut", strings.Repeat("a", 81)} {
+		got = "unset"
+		c := newTestClient(t, srv.URL, func(o *Options) { o.DeviceID = id })
+		if _, err := c.Signatures(context.Background(), "anna@example.com"); err != nil {
+			t.Fatal(err)
+		}
+		if got != "" {
+			t.Errorf("device %q: header sent as %q", id, got)
+		}
+	}
+
+	c := newTestClient(t, srv.URL, nil)
+	c.SetDeviceID("PC-1")
+	if _, err := c.Signatures(context.Background(), "anna@example.com"); err != nil {
+		t.Fatal(err)
+	}
+	if got != "PC-1" {
+		t.Errorf("after SetDeviceID: header = %q", got)
+	}
+	c.SetDeviceID("bad/name")
+	if _, err := c.Signatures(context.Background(), "anna@example.com"); err != nil {
+		t.Fatal(err)
+	}
+	if got != "" {
+		t.Errorf("an invalid SetDeviceID must clear the header, got %q", got)
 	}
 }

@@ -2,4 +2,4 @@
 package version
 
 // Version is overridden at build time with -ldflags "-X subsignature-agent/internal/version.Version=...".
-var Version = "1.0.0-rc1"
+var Version = "1.0.0-rc2"

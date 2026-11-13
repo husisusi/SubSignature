@@ -190,18 +190,6 @@ if ($is_admin) {
             box-shadow: 0 1px 3px rgba(0,0,0,0.05);
         }
 
-        .warning-banner {
-            background: var(--warning-bg);
-            border-left: 4px solid var(--warning);
-            color: var(--warning-text);
-            padding: 1rem;
-            border-radius: 8px;
-            margin-bottom: 1.5rem;
-            display: flex;
-            align-items: center;
-            gap: 0.75rem;
-        }
-
         /* Export Options Grid */
         .export-options {
             display: grid;
@@ -346,12 +334,7 @@ if ($is_admin) {
         </div>
 
         <?php if ($selected_user_id != $_SESSION['user_id']): ?>
-            <div class="warning-banner">
-                <i class="fas fa-exclamation-triangle"></i>
-                <div>
-                    <strong><?= et('Admin View:') ?></strong> <?= et("You are viewing another user's data. Exports will contain their signatures.") ?>
-                </div>
-            </div>
+            <?= alertBoxHtml('warning', '<strong>' . et('Admin View:') . '</strong> ' . et("You are viewing another user's data. Exports will contain their signatures.")) ?>
         <?php endif; ?>
 
         <?php if ($is_admin && !empty($users)): ?>

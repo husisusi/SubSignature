@@ -244,12 +244,7 @@ if (isset($_GET['error'])) $error = $_GET['error'];
             <p><?= et('Secure upload and management of images (Logos, Banners, etc.).') ?></p>
         </header>
 
-        <?php if ($message): ?>
-            <div class="alert alert-success"><i class="fas fa-check-circle"></i> <?php echo e($message); ?></div>
-        <?php endif; ?>
-        <?php if ($error): ?>
-            <div class="alert alert-error"><i class="fas fa-exclamation-circle"></i> <?php echo nl2br(e($error)); ?></div>
-        <?php endif; ?>
+        <?= flashAlerts($message, $error) ?>
 
         <div class="form-grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); margin-bottom: 2rem;">
             <div class="card" style="padding: 1.5rem; text-align:center;">
@@ -428,11 +423,6 @@ if (isset($_GET['error'])) $error = $_GET['error'];
         showFileCount(input);
     });
 
-    // Auto-hide alerts
-    setTimeout(() => {
-        const alerts = document.querySelectorAll('.alert');
-        alerts.forEach(el => el.style.display = 'none');
-    }, 5000);
     </script>
 </body>
 </html>

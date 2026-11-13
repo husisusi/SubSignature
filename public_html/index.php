@@ -109,20 +109,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         .logo { font-size: 2.8rem; color: #4a6cf7; margin-bottom: 10px; }
         .logo-text { font-size: 1.8rem; font-weight: 700; color: var(--text-main); margin-bottom: 5px; letter-spacing: -0.5px; }
         .tagline { color: var(--text-muted); font-size: 0.95rem; margin-bottom: 30px; font-weight: 500; }
-        .error-alert {
-            background: var(--danger-bg); color: var(--danger-text); padding: 12px 16px; border-radius: 10px;
-            border-left: 4px solid #f56565; margin-bottom: 25px; font-size: 0.9rem;
-            display: flex; align-items: center; justify-content: center; gap: 8px; text-align: left; animation: shake 0.5s;
-        }
+        /* Messages use the shared .alert style (css/theme.css); errors shake once. */
+        .login-box .alert { text-align: left; }
+        .login-box .alert-error { animation: shake 0.5s; }
         @keyframes shake {
             0%, 100% { transform: translateX(0); }
             10%, 30%, 50%, 70%, 90% { transform: translateX(-5px); }
             20%, 40%, 60%, 80% { transform: translateX(5px); }
-        }
-        .success-alert {
-            background: var(--success-bg); color: var(--success-text); padding: 12px 16px; border-radius: 10px;
-            border-left: 4px solid #48bb78; margin-bottom: 25px; font-size: 0.9rem;
-            display: flex; align-items: center; justify-content: center; gap: 8px; text-align: left;
         }
         .input-group { margin-bottom: 20px; text-align: left; }
         .input-label { display: block; color: var(--text-muted); font-size: 0.9rem; font-weight: 600; margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
@@ -163,24 +156,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <div class="tagline"><?= et('Professional Email Signatures') ?></div>
         
         <?php if (isset($_GET['error']) && $_GET['error'] === 'deactivated'): ?>
-            <div class="error-alert">
-                <i class="fas fa-ban"></i>
-                <div><strong><?= et('Account Deactivated') ?></strong><br><?= et('Contact administrator.') ?></div>
-            </div>
+            <?= alertBoxHtml('error', '<strong>' . et('Account Deactivated') . '</strong><br>' . et('Contact administrator.')) ?>
         <?php endif; ?>
         
         <?php if (isset($_GET['success']) && $_GET['success'] == 'registered'): ?>
-            <div class="success-alert">
-                <i class="fas fa-check-circle"></i>
-                <div><strong><?= et('Registration Successful!') ?></strong><br><?= et('Wait for activation.') ?></div>
-            </div>
+            <?= alertBoxHtml('success', '<strong>' . et('Registration Successful!') . '</strong><br>' . et('Wait for activation.')) ?>
         <?php endif; ?>
         
         <?php if (isset($_GET['msg']) && $_GET['msg'] == 'loggedout'): ?>
-            <div class="success-alert">
-                <i class="fas fa-sign-out-alt"></i>
-                <div><strong><?= et('Logged Out') ?></strong><br><?= et('See you soon.') ?></div>
-            </div>
+            <?= alertBoxHtml('success', '<strong>' . et('Logged Out') . '</strong><br>' . et('See you soon.')) ?>
         <?php endif; ?>
         
         <?php if (isset($_SESSION['failed_logins']) && $_SESSION['failed_logins'] > 0): ?>
@@ -191,17 +175,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <?php endif; ?>
         
         <?php if ($notice !== ''): ?>
-            <div class="success-alert">
-                <i class="fas fa-clock"></i>
-                <div><?php echo e($notice); ?></div>
-            </div>
+            <?= alertBox('info', $notice) ?>
         <?php endif; ?>
 
         <?php if ($error): ?>
-            <div class="error-alert">
-                <i class="fas fa-exclamation-circle"></i>
-                <div><?php echo e($error); ?></div>
-            </div>
+            <?= alertBox('error', (string)$error) ?>
         <?php endif; ?>
         
         <form method="POST" id="loginForm" autocomplete="off">

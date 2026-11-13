@@ -543,8 +543,6 @@ $errorMessage = popFlash('error');
 <?php echo csrfMeta(); ?>
 <style>
     .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); opacity: 0; }
-    .alert { padding: 1rem; border-radius: 8px; margin-bottom: 1.5rem; display: flex; gap: 0.75rem; align-items: center; }
-    .alert-success { background: var(--success-bg); color: var(--success-text); border: 1px solid var(--success-border); }
     .empty-state { text-align: center; padding: 4rem 1rem; color: var(--text-faint); }
 
     /* MODAL STYLES - UPDATED FOR LARGER PREVIEW */
@@ -633,7 +631,6 @@ $errorMessage = popFlash('error');
     .header-actions { display: flex; gap: 8px; align-items: center; }
     .btn-header { display: flex; align-items: center; gap: 6px; padding: 0.5rem 0.8rem; font-size: 0.85rem; }
     .btn-disabled { opacity: 0.5; pointer-events: none; cursor: not-allowed; }
-    .alert-error { background: var(--danger-bg); color: var(--danger-text); border: 1px solid var(--danger-border); }
 
     /* FILTERS */
     .filter-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; width: 100%; }
@@ -712,12 +709,7 @@ $errorMessage = popFlash('error');
         <p><?= et('View, search and manage existing signatures.') ?></p>
     </header>
 
-    <?php if ($message): ?>
-    <div class="alert alert-success"><i class="fas fa-check-circle"></i> <?php echo e($message); ?></div>
-    <?php endif; ?>
-    <?php if ($errorMessage): ?>
-    <div class="alert alert-error"><i class="fas fa-exclamation-circle"></i> <?php echo e($errorMessage); ?></div>
-    <?php endif; ?>
+    <?= flashAlerts($message, $errorMessage) ?>
 
     <section class="card">
         <div class="card-header">

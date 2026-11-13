@@ -65,10 +65,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_profile'])) {
             if (!$is_admin_editing_others) {
                 $_SESSION['full_name'] = $full_name;
                 $_SESSION['email'] = $email;
-                $success = t('✅ Profile updated successfully!');
+                $success = t('Profile updated successfully!');
             } else {
                 logSecurityEventToDB($db, 'ADMIN_PROFILE_EDIT', $current_user_id, "Target ID: $target_user_id");
-                $success = t('✅ User profile updated successfully (Admin Mode).');
+                $success = t('User profile updated successfully (Admin Mode).');
             }
         }
     }
@@ -191,12 +191,7 @@ $sig_count = $sig_result->fetchArray(SQLITE3_ASSOC)['count'];
                     <i class="fas fa-user-edit"></i> <?= et('Edit Details') ?>
                 </h3>
 
-                <?php if ($success): ?>
-                    <div class="alert alert-success"><i class="fas fa-check-circle"></i> <?php echo e($success); ?></div>
-                <?php endif; ?>
-                <?php if ($error): ?>
-                    <div class="alert alert-error"><i class="fas fa-exclamation-circle"></i> <?php echo e($error); ?></div>
-                <?php endif; ?>
+                <?= flashAlerts($success, $error) ?>
 
                 <form method="POST">
                     <?php echo csrfField(); ?>

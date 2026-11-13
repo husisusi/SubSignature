@@ -37,6 +37,23 @@ if ($mailLogsExist) {
 $secResult = $db->query("SELECT s.*, u.username as real_username FROM security_events s LEFT JOIN users u ON s.user_id = u.id ORDER BY s.created_at DESC LIMIT $limit");
 $loginResult = $db->query("SELECT * FROM login_attempts ORDER BY attempted_at DESC LIMIT $limit");
 
+// API requests of clients (desktop agent, Domino agent, scripts)
+$apiErrorsOnly = ($_GET['api_errors'] ?? '') === '1';
+$stats['api_requests'] = (int)$db->querySingle("SELECT COUNT(*) FROM api_request_log WHERE created_at > datetime('now', '-1 day')");
+$stats['api_errors'] = (int)$db->querySingle("SELECT COUNT(*) FROM api_request_log WHERE http_status >= 400 AND created_at > datetime('now', '-1 day')");
+$apiResult = $db->query('SELECT * FROM api_request_log' . ($apiErrorsOnly ? ' WHERE http_status >= 400' : '') . ' ORDER BY id DESC LIMIT ' . (int)$limit);
+// One row per client in the last 24 hours. A client is the reporting device
+// (status reports) or the program name sent as User-Agent, per token and address.
+$apiClients = $db->query("SELECT COALESCE(NULLIF(device_id, ''), NULLIF(client, ''), '-') AS who,
+                                 token_label, ip_address, MAX(created_at) AS last_seen, COUNT(*) AS requests,
+                                 SUM(CASE WHEN http_status >= 400 THEN 1 ELSE 0 END) AS errors
+                            FROM api_request_log
+                           WHERE created_at > datetime('now', '-1 day')
+                        GROUP BY who, token_label, ip_address
+                        ORDER BY last_seen DESC LIMIT 100");
+$apiLogMode = apiLogMode($db);
+$apiLogDays = apiLogRetentionDays($db);
+
 ?>
 <!DOCTYPE html>
 <html lang="<?= e(currentLang()) ?>" dir="<?= e(langDir()) ?>">
@@ -111,6 +128,16 @@ $loginResult = $db->query("SELECT * FROM login_attempts ORDER BY attempted_at DE
         
         .ip-addr { font-family: 'Courier New', monospace; background: var(--bg-subtle); padding: 2px 6px; border-radius: 4px; font-size: 0.85rem; color: var(--text-muted); }
         
+        /* API requests tab */
+        .stat-sub { font-size: 0.8rem; font-weight: 600; color: var(--warning-text); margin-left: 0.4rem; }
+        .api-log-toolbar { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 0.75rem; padding: 1rem 15px; border-bottom: 1px solid var(--border-color); }
+        .api-log-mode { color: var(--text-muted); font-size: 0.85rem; display: inline-flex; gap: 0.4rem; align-items: center; flex-wrap: wrap; }
+        .api-log-mode a { color: var(--info-text); font-weight: 600; }
+        .api-log-filter label { display: inline-flex; gap: 0.4rem; align-items: center; font-size: 0.85rem; cursor: pointer; color: var(--text-main); }
+        .api-log-heading { margin: 1.25rem 15px 0.5rem; font-size: 0.95rem; color: var(--text-main); display: flex; gap: 0.5rem; align-items: center; }
+        .api-endpoint { font-family: 'Courier New', monospace; font-size: 0.85rem; word-break: break-all; }
+        .api-meta { display: inline-block; font-size: 0.78rem; color: var(--text-muted); margin-right: 0.6rem; overflow-wrap: anywhere; }
+
         /* Limit Selector */
         .limit-selector { display: flex; align-items: center; gap: 8px; font-size: 0.85rem; color: var(--text-muted); background: var(--bg-white); padding: 5px 10px; border-radius: 6px; border: 1px solid var(--border-color); }
         .limit-selector select { border: none; outline: none; background: transparent; font-weight: bold; cursor: pointer; color: var(--text-main); }
@@ -144,6 +171,7 @@ $loginResult = $db->query("SELECT * FROM login_attempts ORDER BY attempted_at DE
         <form method="GET" class="limit-selector">
             <i class="fas fa-list"></i>
             <span><?= et('Show:') ?></span>
+            <?php if ($apiErrorsOnly): ?><input type="hidden" name="api_errors" value="1"><?php endif; ?>
             <select name="limit" onchange="this.form.submit()">
                 <?php foreach($allowed_limits as $val): ?>
                     <option value="<?php echo $val; ?>" <?php echo ($limit == $val) ? 'selected' : ''; ?>><?php echo $val; ?></option>
@@ -180,12 +208,27 @@ $loginResult = $db->query("SELECT * FROM login_attempts ORDER BY attempted_at DE
                 <i class="fas fa-user-lock"></i>
             </div>
         </div>
+
+        <div class="stat-card">
+            <div class="stat-info">
+                <h4><?= et('API Requests (24h)') ?></h4>
+                <p><?php echo (int)$stats['api_requests']; ?>
+                    <?php if ($stats['api_errors'] > 0): ?>
+                        <span class="stat-sub"><?= et('Errors: {count}', ['count' => (int)$stats['api_errors']]) ?></span>
+                    <?php endif; ?>
+                </p>
+            </div>
+            <div class="stat-icon <?php echo ($stats['api_errors'] > 0) ? 'icon-orange' : 'icon-info'; ?>">
+                <i class="fas fa-plug"></i>
+            </div>
+        </div>
     </div>
 
     <div class="tabs">
         <button class="tab-btn active" onclick="openTab(event, 'tab-security')"><i class="fas fa-shield-alt"></i> <?= et('Security Events') ?></button>
         <button class="tab-btn" onclick="openTab(event, 'tab-email')"><i class="fas fa-envelope"></i> <?= et('Email Logs') ?></button>
         <button class="tab-btn" onclick="openTab(event, 'tab-login')"><i class="fas fa-key"></i> <?= et('Login Attempts') ?></button>
+        <button class="tab-btn" onclick="openTab(event, 'tab-api')"><i class="fas fa-plug"></i> <?= et('API Requests') ?></button>
     </div>
 
     <div id="tab-security" class="tab-content active">
@@ -211,7 +254,7 @@ $loginResult = $db->query("SELECT * FROM login_attempts ORDER BY attempted_at DE
                                 if(strpos($row['event_type'], 'RATE') !== false) { $cls = 'badge-warning'; $icon = 'exclamation-triangle'; }
                             ?>
                             <tr>
-                                <td style="color:var(--text-muted);"><?php echo e(date('d.m.Y H:i', strtotime($row['created_at']) ?: time())); ?></td>
+                                <td style="color:var(--text-muted);"><?php echo e(date('d.m.Y H:i', strtotime($row['created_at'] . ' UTC') ?: time())); ?></td>
                                 <td><span class="badge <?php echo $cls; ?>"><i class="fas fa-<?php echo $icon; ?>"></i> <?php echo e($row['event_type']); ?></span></td>
                                 <td><?php echo $row['real_username'] ? '<strong>'.e($row['real_username']).'</strong>' : '<span style="color:var(--border-strong)">-</span>'; ?></td>
                                 <td><?php echo e($row['details']); ?></td>
@@ -240,7 +283,7 @@ $loginResult = $db->query("SELECT * FROM login_attempts ORDER BY attempted_at DE
                         <?php if ($mailResult): ?>
                             <?php while($row = $mailResult->fetchArray(SQLITE3_ASSOC)): ?>
                                 <tr>
-                                    <td style="color:var(--text-muted);"><?php echo e(date('d.m.Y H:i', strtotime($row['created_at']) ?: time())); ?></td>
+                                    <td style="color:var(--text-muted);"><?php echo e(date('d.m.Y H:i', strtotime($row['created_at'] . ' UTC') ?: time())); ?></td>
                                     <td>
                                         <?php if($row['status'] === 'success'): ?>
                                             <span class="badge badge-success"><i class="fas fa-check"></i> <?= et('Sent') ?></span>
@@ -279,7 +322,7 @@ $loginResult = $db->query("SELECT * FROM login_attempts ORDER BY attempted_at DE
                     <tbody>
                         <?php while($row = $loginResult->fetchArray(SQLITE3_ASSOC)): ?>
                             <tr>
-                                <td style="color:var(--text-muted);"><?php echo e(date('d.m.Y H:i', strtotime($row['attempted_at']) ?: time())); ?></td>
+                                <td style="color:var(--text-muted);"><?php echo e(date('d.m.Y H:i', strtotime($row['attempted_at'] . ' UTC') ?: time())); ?></td>
                                 <td>
                                     <?php if($row['successful']): ?>
                                         <span class="badge badge-success"><i class="fas fa-check"></i> <?= et('Success') ?></span>
@@ -294,6 +337,116 @@ $loginResult = $db->query("SELECT * FROM login_attempts ORDER BY attempted_at DE
                                 </td>
                             </tr>
                         <?php endwhile; ?>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </div>
+
+    <div id="tab-api" class="tab-content">
+        <section class="card">
+            <div class="api-log-toolbar">
+                <span class="api-log-mode">
+                    <i class="fas fa-info-circle"></i>
+                    <?php if ($apiLogMode === 'off'): ?>
+                        <?= et('API logging is switched off.') ?>
+                    <?php elseif ($apiLogMode === 'errors'): ?>
+                        <?= et('Only failed requests are logged, kept for {days} days.', ['days' => $apiLogDays]) ?>
+                    <?php else: ?>
+                        <?= et('All requests are logged, kept for {days} days.', ['days' => $apiLogDays]) ?>
+                    <?php endif; ?>
+                    <a href="admin_config.php"><?= et('Change') ?></a>
+                </span>
+                <form method="GET" class="api-log-filter">
+                    <input type="hidden" name="limit" value="<?php echo (int)$limit; ?>">
+                    <label>
+                        <input type="checkbox" name="api_errors" value="1" <?php echo $apiErrorsOnly ? 'checked' : ''; ?> onchange="this.form.submit()">
+                        <?= et('Only errors') ?>
+                    </label>
+                </form>
+            </div>
+
+            <h4 class="api-log-heading"><i class="fas fa-desktop"></i> <?= et('Clients in the last 24 hours') ?></h4>
+            <div style="overflow-x: auto;">
+                <table class="log-table">
+                    <thead>
+                        <tr>
+                            <th><?= et('Client') ?></th>
+                            <th><?= et('Token') ?></th>
+                            <th width="140"><?= et('IP Address') ?></th>
+                            <th width="150"><?= et('Last seen') ?></th>
+                            <th width="100"><?= et('Requests') ?></th>
+                            <th width="90"><?= et('Errors') ?></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php $hasClients = false; ?>
+                        <?php while ($row = $apiClients->fetchArray(SQLITE3_ASSOC)): $hasClients = true; ?>
+                            <tr>
+                                <td><strong><?php echo e($row['who']); ?></strong></td>
+                                <td><?php echo $row['token_label'] !== '' ? e($row['token_label']) : '<span style="color:var(--border-strong)">-</span>'; ?></td>
+                                <td><span class="ip-addr"><?php echo e($row['ip_address']); ?></span></td>
+                                <td style="color:var(--text-muted);"><?php echo e(date('d.m.Y H:i', strtotime($row['last_seen'] . ' UTC') ?: time())); ?></td>
+                                <td><?php echo (int)$row['requests']; ?></td>
+                                <td>
+                                    <?php if ((int)$row['errors'] > 0): ?>
+                                        <span class="badge badge-danger"><?php echo (int)$row['errors']; ?></span>
+                                    <?php else: ?>
+                                        <span style="color:var(--text-muted);">0</span>
+                                    <?php endif; ?>
+                                </td>
+                            </tr>
+                        <?php endwhile; ?>
+                        <?php if (!$hasClients): ?>
+                            <tr><td colspan="6" style="text-align:center; padding:1.5rem; color:var(--text-muted);"><?= et('No API requests in the last 24 hours.') ?></td></tr>
+                        <?php endif; ?>
+                    </tbody>
+                </table>
+            </div>
+
+            <h4 class="api-log-heading"><i class="fas fa-list"></i> <?= et('Requests') ?></h4>
+            <div style="overflow-x: auto;">
+                <table class="log-table">
+                    <thead>
+                        <tr>
+                            <th width="150"><?= et('Time') ?></th>
+                            <th width="210"><?= et('Result') ?></th>
+                            <th><?= et('Request') ?></th>
+                            <th><?= et('Token') ?></th>
+                            <th style="min-width:190px;"><?= et('Client') ?></th>
+                            <th width="140"><?= et('IP Address') ?></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php $hasRequests = false; ?>
+                        <?php while ($row = $apiResult->fetchArray(SQLITE3_ASSOC)): $hasRequests = true; ?>
+                            <?php
+                                $code = (int)$row['http_status'];
+                                if ($code < 400) { $cls = 'badge-success'; $icon = 'check'; }
+                                elseif ($code === 429) { $cls = 'badge-warning'; $icon = 'hourglass-half'; }
+                                else { $cls = 'badge-danger'; $icon = 'times'; }
+                            ?>
+                            <tr>
+                                <td style="color:var(--text-muted);"><?php echo e(date('d.m.Y H:i:s', strtotime($row['created_at'] . ' UTC') ?: time())); ?></td>
+                                <td><span class="badge <?php echo $cls; ?>" title="<?php echo e($row['result']); ?>"><i class="fas fa-<?php echo $icon; ?>"></i> <?php echo $code; ?> <?php echo e(apiResultLabel((string)$row['result'])); ?></span></td>
+                                <td>
+                                    <span class="api-endpoint"><?php echo e($row['method'] . ' ' . $row['endpoint']); ?></span>
+                                    <?php if ($row['items'] !== null): ?>
+                                        <span class="api-meta"><?= et('Items: {count}', ['count' => (int)$row['items']]) ?></span>
+                                    <?php endif; ?>
+                                    <span class="api-meta"><?php echo (int)$row['duration_ms']; ?> ms</span>
+                                </td>
+                                <td><?php echo $row['token_label'] !== '' ? e($row['token_label']) : '<span style="color:var(--border-strong)">-</span>'; ?></td>
+                                <td>
+                                    <?php if ($row['device_id'] !== ''): ?><strong><?php echo e($row['device_id']); ?></strong><br><?php endif; ?>
+                                    <span class="api-meta"><?php echo e($row['client']); ?></span>
+                                </td>
+                                <td><span class="ip-addr"><?php echo e($row['ip_address']); ?></span></td>
+                            </tr>
+                        <?php endwhile; ?>
+                        <?php if (!$hasRequests): ?>
+                            <tr><td colspan="6" style="text-align:center; padding:2rem; color:var(--text-muted);"><?= et('No logs available.') ?></td></tr>
+                        <?php endif; ?>
                     </tbody>
                 </table>
             </div>

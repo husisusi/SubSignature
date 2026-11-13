@@ -202,6 +202,7 @@ $csrf_token = generateCSRFToken();
     <title><?= et('CSV Import') ?> - SubSignature</title>
     <?= i18nHead() ?>
     <script src="<?= assetUrl('js/theme.js') ?>"></script>
+    <script src="<?= assetUrl('js/alerts.js') ?>"></script>
     <link rel="stylesheet" href="<?= assetUrl('css/theme.css') ?>">
     <link rel="stylesheet" href="<?= assetUrl('css/style.css') ?>">
     <link rel="stylesheet" href="<?= assetUrl('css/all.min.css') ?>">
@@ -271,9 +272,6 @@ $csrf_token = generateCSRFToken();
         .help-card:hover { border-color: var(--primary); transform: translateY(-2px); box-shadow: var(--shadow); }
         .help-icon { font-size: 1.5rem; color: var(--primary); margin-bottom: 0.5rem; display: block; }
 
-        .alert { padding: 1rem; border-radius: 8px; margin-bottom: 1.5rem; display: flex; gap: 0.75rem; align-items: center; }
-        .alert-success { background: var(--success-bg); color: var(--success-text); border: 1px solid var(--success-border); }
-        .alert-error { background: var(--danger-bg); color: var(--danger-text); border: 1px solid var(--danger-border); }
         
         .form-actions-centered { display: flex; justify-content: center; gap: 1rem; margin-top: 2rem; padding-top: 1.5rem; border-top: 1px solid var(--border); }
     </style>
@@ -302,13 +300,7 @@ $csrf_token = generateCSRFToken();
             <p><?= et('Upload a CSV file to generate multiple signatures at once.') ?></p>
         </header>
 
-        <?php if ($error): ?>
-            <div class="alert alert-error"><i class="fas fa-exclamation-circle"></i> <?php echo e($error); ?></div>
-        <?php endif; ?>
-        
-        <?php if (isset($_GET['success'])): ?>
-            <div class="alert alert-success"><i class="fas fa-check-circle"></i> <?= et('Successfully imported {count} signatures!', ['count' => (int)$_GET['success']]) ?></div>
-        <?php endif; ?>
+        <?= flashAlerts(isset($_GET['success']) ? t('Successfully imported {count} signatures!', ['count' => (int)$_GET['success']]) : '', (string)$error) ?>
 
         <section class="card">
             <div class="card-header">
@@ -501,7 +493,7 @@ $csrf_token = generateCSRFToken();
             
             // Security: Client-side size check
             if (file.size > 2 * 1024 * 1024) {
-                alert(<?= tj('File is too large! Maximum allowed is 2MB.') ?>);
+                SubSigAlert.show('error', <?= tj('File is too large! Maximum allowed is 2MB.') ?>);
                 this.value = '';
                 return;
             }
@@ -526,7 +518,7 @@ $csrf_token = generateCSRFToken();
     
     // Help Functions
     function showCSVGuide() {
-        alert(<?= tj('CSV REQUIREMENTS:
+        SubSigAlert.show('info', <?= tj('CSV REQUIREMENTS:
 
 1. Required Headers:
    name, role, email, phone

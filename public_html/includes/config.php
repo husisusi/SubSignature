@@ -123,7 +123,7 @@ function sendSecurityHeaders(): void
     header('X-Content-Type-Options: nosniff');
     header('X-XSS-Protection: 0'); // legacy XSS auditors are harmful; CSP is the control
     header('Referrer-Policy: same-origin');
-    header('Permissions-Policy: geolocation=(), microphone=(), camera=(), payment=()');
+    header('Permissions-Policy: geolocation=(), microphone=(), camera=(), payment=(), browsing-topics=()');
     header('Cross-Origin-Opener-Policy: same-origin');
     header('Cache-Control: no-store, max-age=0');
     if (isHttpsRequest()) {

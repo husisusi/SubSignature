@@ -12,7 +12,7 @@
        and syncs at the interval from config.xml (default: every 2 hours).
 
   Deliberately ASCII only (Windows PowerShell does not read files without a BOM as UTF-8).
-  Release candidate 1.0.0-rc1: this script has not been run on a real Windows yet.
+  Release candidate 1.0.0-rc2: this script has not been run on a real Windows yet.
 #>
 param([switch]$NoAutostart)
 

@@ -118,6 +118,7 @@ while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
     <title><?= et('Signature Generator') ?></title>
     <?= i18nHead() ?>
     <script src="<?= assetUrl('js/theme.js') ?>"></script>
+    <script src="<?= assetUrl('js/alerts.js') ?>"></script>
     <link rel="stylesheet" href="<?= assetUrl('css/theme.css') ?>">
     <link rel="stylesheet" href="<?= assetUrl('css/style.css') ?>">
     <link rel="stylesheet" href="<?= assetUrl('css/all.min.css') ?>">
@@ -126,9 +127,6 @@ while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
     <style>
         /* --- GENERAL --- */
         .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); opacity: 0; }
-        .alert { padding: 1rem; border-radius: 8px; margin-bottom: 1.5rem; display: flex; gap: 0.75rem; align-items: center; }
-        .alert-success { background: var(--success-bg); color: var(--success-text); border: 1px solid var(--success-border); }
-        .alert-error { background: var(--danger-bg); color: var(--danger-text); border: 1px solid var(--danger-border); }
 
         /* --- SPLIT EDITOR STYLES --- */
         .split-editor-container {
@@ -244,12 +242,7 @@ while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
             <p><?= et('Create and manage your email signatures.') ?></p>
         </header>
 
-        <?php if ($message): ?>
-            <div class="alert alert-success"><i class="fas fa-check-circle"></i> <?php echo e($message); ?></div>
-        <?php endif; ?>
-        <?php if ($errorMessage): ?>
-            <div class="alert alert-error"><i class="fas fa-exclamation-circle"></i> <?php echo e($errorMessage); ?></div>
-        <?php endif; ?>
+        <?= flashAlerts($message, $errorMessage) ?>
 
         <section class="card" id="create-form">
             <div class="card-header">
@@ -596,12 +589,12 @@ while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
                         btnCopy.innerHTML = '<i class="fas fa-check"></i> ' + <?= tj('HTML Copied!') ?>;
                         setTimeout(() => btnCopy.innerHTML = originalText, 2000);
                     } else {
-                        alert(<?= tj('Could not copy HTML code. Please copy manually.') ?>);
+                        SubSigAlert.show('error', <?= tj('Could not copy HTML code. Please copy manually.') ?>);
                     }
 
                 } catch (err) {
                     console.error('Copy failed:', err);
-                    alert(<?= tj('Error copying code.') ?>);
+                    SubSigAlert.show('error', <?= tj('Error copying code.') ?>);
                 }
             });
         }

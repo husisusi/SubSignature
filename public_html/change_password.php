@@ -47,11 +47,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $_SESSION['pw_fp'] = passwordFingerprint($new_hash);
             rateLimitReset('change_password', 'uid:' . $user_id);
             logSecurityEventToDB($db, 'PASSWORD_CHANGED', $user_id, 'Self-service');
-            $message = t('✅ Password successfully changed!');
+            $message = t('Password successfully changed!');
         } else {
             rateLimitHit('change_password', 900, 'uid:' . $user_id);
             usleep(random_int(500000, 1000000));
-            $error = t('❌ Current password is incorrect!');
+            $error = t('Current password is incorrect!');
         }
     }
 }
@@ -182,17 +182,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <p><?= et('Update your credentials to keep your account secure.') ?></p>
         </header>
 
-        <?php if ($message): ?>
-            <div class="alert alert-success">
-                <i class="fas fa-check-circle"></i> <?php echo e($message); ?>
-            </div>
-        <?php endif; ?>
-        
-        <?php if ($error): ?>
-            <div class="alert alert-error">
-                <i class="fas fa-exclamation-circle"></i> <?php echo e($error); ?>
-            </div>
-        <?php endif; ?>
+        <?= flashAlerts((string)$message, (string)$error) ?>
 
         <div class="form-grid" style="grid-template-columns: 2fr 1fr; gap: 2rem;">
             
