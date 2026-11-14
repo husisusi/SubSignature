@@ -27,10 +27,31 @@ function sourceLabel(?string $source): string
     return t('Manual');
 }
 
+/**
+ * Data of the sync details dialog for one signature (see summarizeSyncStatus()).
+ * Plain values only; the script inserts them with textContent.
+ */
+function syncDetailsData(string $name, array $sync): array
+{
+    $data = ['name' => $name, 'level' => $sync['level'], 'label' => $sync['label'], 'devices' => []];
+    foreach ($sync['devices'] as $dev) {
+        $ts = strtotime($dev['synced_at'] . ' UTC');
+        $data['devices'][] = [
+            'device'  => $dev['device_id'],
+            'state'   => $dev['state'],
+            'label'   => $dev['label'],
+            'time'    => $ts ? gmdate('Y-m-d H:i', $ts) . ' UTC' : $dev['synced_at'],
+            'version' => $dev['agent_version'],
+            'message' => $dev['message'],
+        ];
+    }
+    return $data;
+}
+
 function renderSignatureItem($sig, array $f, array $tags, $show_owner_name = false, array $deviceRows = [], $freshnessHours = 6) {
-    // Final, sanitised HTML of the signature for the preview textarea.
+    // Final, sanitised HTML of the signature (sync hash below; the preview
+    // fetches it on demand through the viewer request).
     $html = renderStoredSignature($sig);
-    $encodedHtml = e($html);
     $deleteUrl = 'all_signatures.php?' . sigQuery($f);
     $source = in_array($sig['source'] ?? '', ['ldap', 'csv'], true) ? $sig['source'] : 'manual';
 
@@ -59,18 +80,7 @@ function renderSignatureItem($sig, array $f, array $tags, $show_owner_name = fal
 
     // Same information for the details dialog (click on the badge; tooltips do
     // not exist on touch screens). Inserted with textContent by the script.
-    $syncData = ['name' => (string)$sig['name'], 'level' => $sync['level'], 'label' => $sync['label'], 'devices' => []];
-    foreach ($sync['devices'] as $dev) {
-        $ts = strtotime($dev['synced_at'] . ' UTC');
-        $syncData['devices'][] = [
-            'device'  => $dev['device_id'],
-            'state'   => $dev['state'],
-            'label'   => $dev['label'],
-            'time'    => $ts ? gmdate('Y-m-d H:i', $ts) . ' UTC' : $dev['synced_at'],
-            'version' => $dev['agent_version'],
-            'message' => $dev['message'],
-        ];
-    }
+    $syncData = syncDetailsData((string)$sig['name'], $sync);
 
     // Data for the edit modal. Rendered as JSON inside a <script type="application/json">
     // block (never interpreted as HTML/JS), so no field needs separate JS-string escaping.
@@ -119,9 +129,8 @@ function renderSignatureItem($sig, array $f, array $tags, $show_owner_name = fal
                 </div>
 
                 <div class="sig-actions" style="display:flex; gap:0.5rem; align-items:center;">
-                    <?php if ($encodedHtml !== ''): ?>
-                    <textarea id="source-<?php echo (int)$sig['id']; ?>" class="visually-hidden"><?php echo $encodedHtml; ?></textarea>
-                    <button type="button" onclick="openModal(<?php echo (int)$sig['id']; ?>)" class="btn btn-sm btn-secondary" style="background:var(--bg-white); border:1px solid var(--border-strong);" title="<?= et('Preview') ?>"><i class="fas fa-eye"></i></button>
+                    <?php if ($html !== ''): ?>
+                    <button type="button" data-sv-open="<?php echo (int)$sig['id']; ?>" class="btn btn-sm btn-secondary" style="background:var(--bg-white); border:1px solid var(--border-strong);" title="<?= et('Preview') ?>" aria-label="<?= et('Preview') ?>"><i class="fas fa-eye"></i></button>
                     <?php endif; ?>
                     <a href="download.php?id=<?php echo (int)$sig['id']; ?>" class="btn btn-sm btn-primary" title="<?= et('Download') ?>"><i class="fas fa-download"></i></a>
                     <button type="button" onclick="openEditModal(<?php echo (int)$sig['id']; ?>)" class="btn btn-sm btn-secondary" style="background:var(--bg-white); border:1px solid var(--border-strong);" title="<?= et('Edit') ?>"><i class="fas fa-pen"></i></button>
@@ -184,7 +193,7 @@ if ($is_admin) {
         if ($_GET['user_id'] === 'all') $target_user_id = 'all';
         elseif (is_numeric($_GET['user_id'])) $target_user_id = (int)$_GET['user_id'];
     }
-    if (!isset($_GET['ajax'])) {
+    if (!isset($_GET['ajax']) && !isset($_GET['viewer'])) {
         $resUsers = $db->query("SELECT id, username, full_name FROM users ORDER BY username ASC");
         while ($u = $resUsers->fetchArray(SQLITE3_ASSOC)) $users_list[] = $u;
     }
@@ -231,6 +240,100 @@ $whereSQL = !empty($whereClauses) ? "WHERE " . implode(' AND ', $whereClauses) :
 function bindParams(SQLite3Stmt $st, array $params): void
 {
     foreach ($params as $k => $v) $st->bindValue($k, $v, is_int($v) ? SQLITE3_INTEGER : SQLITE3_TEXT);
+}
+
+/** Sends a JSON answer of the signature viewer and stops. */
+function viewerJson(array $data, int $status = 200): void
+{
+    http_response_code($status);
+    header('Content-Type: application/json; charset=utf-8');
+    // HEX flags: no "<", ">", "&" or quotes appear literally, so the answer can
+    // never be interpreted as markup even if a browser ignored the content type.
+    echo json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_AMP
+        | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_INVALID_UTF8_SUBSTITUTE);
+    exit;
+}
+
+// ---------------------------------------------------------
+// SIGNATURE VIEWER ("Show all signatures" and the preview button of a row)
+// ---------------------------------------------------------
+// Returns ONE signature of the current list as JSON. It uses the WHERE clause
+// and sort order built above, i.e. exactly the scope of the list itself: users
+// only ever reach their own signatures, staff the selected user or everyone,
+// always narrowed by the active filters. Read-only GET like the infinite-scroll
+// request; a signature is addressed by its position in the list (pos) or by its
+// ID (id, the preview button of a row) - the answer always carries both.
+if (isset($_GET['viewer'])) {
+    $st = $db->prepare("SELECT COUNT(*) AS c FROM user_signatures s $whereSQL");
+    bindParams($st, $params);
+    $vTotal = (int)$st->execute()->fetchArray(SQLITE3_ASSOC)['c'];
+    $vOrder = $sortOptions[$f['sort']]['sql']; // whitelisted above, never user text
+
+    $rawVid = (string)($_GET['id'] ?? '');
+    if ($rawVid !== '') {
+        if (!preg_match('/^[1-9]\d{0,9}$/', $rawVid)) viewerJson(['error' => 'bad_request'], 400);
+        $vid = (int)$rawVid;
+        $vPos = -1;
+        if (SQLite3::version()['versionNumber'] >= 3025000) {
+            // Position of the signature in the filtered, sorted list (window function, SQLite 3.25+).
+            $st = $db->prepare("SELECT rn FROM (SELECT s.id AS sid, ROW_NUMBER() OVER (ORDER BY $vOrder) - 1 AS rn
+                                FROM user_signatures s $whereSQL) WHERE sid = :vid");
+            bindParams($st, $params);
+            $st->bindValue(':vid', $vid, SQLITE3_INTEGER);
+            $r = $st->execute()->fetchArray(SQLITE3_ASSOC);
+            if ($r) $vPos = (int)$r['rn'];
+        } else {
+            // Older SQLite: walk the IDs in list order (IDs only, cheap).
+            $st = $db->prepare("SELECT s.id FROM user_signatures s $whereSQL ORDER BY $vOrder");
+            bindParams($st, $params);
+            $res = $st->execute();
+            for ($i = 0; $r = $res->fetchArray(SQLITE3_NUM); $i++) {
+                if ((int)$r[0] === $vid) { $vPos = $i; break; }
+            }
+        }
+        // Not in this list: deleted meanwhile, or outside the caller's scope -
+        // both answer the same, so the answer reveals nothing about other users.
+        if ($vPos < 0) viewerJson(['error' => 'not_found', 'total' => $vTotal], 404);
+    } else {
+        $vPos = (int)($_GET['pos'] ?? 0);
+        if ($vPos < 0 || $vPos >= $vTotal) viewerJson(['error' => 'not_found', 'total' => $vTotal], 404);
+    }
+
+    $st = $db->prepare("SELECT s.*, u.username FROM user_signatures s LEFT JOIN users u ON s.user_id = u.id
+                        $whereSQL ORDER BY $vOrder LIMIT 1 OFFSET :voff");
+    bindParams($st, $params);
+    $st->bindValue(':voff', $vPos, SQLITE3_INTEGER);
+    $vSig = $st->execute()->fetchArray(SQLITE3_ASSOC);
+    if (!$vSig) viewerJson(['error' => 'not_found', 'total' => $vTotal], 404);
+
+    $vHtml = renderStoredSignature($vSig);
+    $vSource = in_array($vSig['source'] ?? '', ['ldap', 'csv'], true) ? $vSig['source'] : 'manual';
+    $vDevices = loadSignatureDeviceStatus($db, [$vSig])[(int)$vSig['id']] ?? [];
+    $vSync = summarizeSyncStatus($vDevices, hash('sha256', $vHtml), $vSig['updated_at'] ?? null,
+                                 (int)getSetting($db, 'status_freshness_hours', '6'));
+    $vTags = [];
+    foreach (loadSignatureTags($db, [$vSig])[(int)$vSig['id']] ?? [] as $tg) {
+        $vTags[] = ['name' => (string)$tg['name'], 'color' => normalizeTagColor($tg['color'])];
+    }
+
+    // Plain values only; the browser inserts them with textContent. The HTML is
+    // the same sanitised rendering as download/API and is shown in a sandboxed
+    // frame after a second, client-side sanitising pass.
+    viewerJson([
+        'total'    => $vTotal,
+        'pos'      => $vPos,
+        'id'       => (int)$vSig['id'],
+        'name'     => (string)$vSig['name'],
+        'role'     => (string)$vSig['role'],
+        'email'    => (string)$vSig['email'],
+        'owner'    => ($target_user_id === 'all') ? (string)($vSig['username'] ?? '') : '',
+        'template' => templateDisplayName((string)$vSig['template']),
+        'source'   => sourceLabel($vSource),
+        'created'  => date('M d, Y', strtotime((string)$vSig['created_at']) ?: time()),
+        'tags'     => $vTags,
+        'sync'     => syncDetailsData((string)$vSig['name'], $vSync),
+        'html'     => $vHtml,
+    ]);
 }
 
 // Count
@@ -542,7 +645,6 @@ $errorMessage = popFlash('error');
 <link rel="stylesheet" href="<?= assetUrl('css/all.min.css') ?>">
 <?php echo csrfMeta(); ?>
 <style>
-    .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); opacity: 0; }
     .empty-state { text-align: center; padding: 4rem 1rem; color: var(--text-faint); }
 
     /* MODAL STYLES - UPDATED FOR LARGER PREVIEW */
@@ -571,7 +673,6 @@ $errorMessage = popFlash('error');
         background: var(--bg-white); 
     }
     
-    .modal-iframe { width: 100%; height: 100%; border: none; display: block; }
     .modal-footer { padding: 1rem; text-align: right; border-top: 1px solid var(--border); background: var(--bg-subtle); }
 
     .close-modal-btn { 
@@ -579,6 +680,49 @@ $errorMessage = popFlash('error');
         cursor: pointer; color: var(--text-muted); padding: 0 10px; line-height: 1;
     }
     .close-modal-btn:hover { color: var(--text-main); }
+
+    /* SIGNATURE VIEWER - one signature at a time, arrows on both sides */
+    .sv-box { max-height: 96vh; }
+    .sv-counter { margin-left: 0; font-size: 0.8rem; }
+    .sv-stage { position: relative; height: min(560px, calc(96vh - 250px)); min-height: 260px; background: var(--bg-subtle); border-bottom: 1px solid var(--border); }
+    .sv-frame-wrap { position: absolute; inset: 0; padding: 16px 72px; display: flex; justify-content: center; }
+    .sv-frame { width: 100%; height: 100%; border: 1px solid var(--border); border-radius: 8px; background: #ffffff; display: block; transition: width 0.2s ease; }
+    .sv-box.sv-mobile .sv-frame { width: 375px; max-width: 100%; box-shadow: 0 4px 14px rgba(0,0,0,0.12); }
+    .sv-nav { position: absolute; top: 50%; transform: translateY(-50%); width: 46px; height: 46px; border-radius: 50%; z-index: 2;
+              border: 1px solid var(--border-strong); background: var(--bg-white); color: var(--text-main); cursor: pointer; font-size: 1.05rem;
+              display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 8px rgba(0,0,0,0.15); transition: background 0.15s, color 0.15s, opacity 0.15s; }
+    .sv-nav:hover:not(:disabled) { background: var(--primary); color: #ffffff; border-color: var(--primary); }
+    .sv-nav:focus-visible { outline: 3px solid var(--primary); outline-offset: 2px; }
+    .sv-nav:disabled { opacity: 0.35; cursor: default; box-shadow: none; }
+    .sv-prev { inset-inline-start: 14px; }
+    .sv-next { inset-inline-end: 14px; }
+    [dir="rtl"] .sv-nav i { transform: scaleX(-1); }
+    .sv-loading { position: absolute; inset: 0; display: none; align-items: center; justify-content: center; color: var(--text-muted); z-index: 1; pointer-events: none; }
+    .sv-stage.is-loading .sv-loading { display: flex; }
+    .sv-stage.is-loading .sv-frame { opacity: 0.35; }
+    .sv-error { position: absolute; inset-inline: 72px; top: 50%; transform: translateY(-50%); z-index: 1; display: none; text-align: center;
+                background: var(--danger-bg, #fee2e2); color: var(--danger-text, #b91c1c); border: 1px solid var(--danger-border, #fca5a5); border-radius: 8px; padding: 0.8rem 1rem; }
+    .sv-stage.has-error .sv-error { display: block; }
+    .sv-stage.has-error .sv-frame { visibility: hidden; }
+    .sv-info { padding: 0.75rem 1.5rem; display: flex; flex-direction: column; gap: 0.3rem; }
+    .sv-info-main { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .sv-info-main strong { font-size: 1.05rem; }
+    .sv-owner { background: var(--info-bg); color: var(--info-text); font-size: 0.7rem; padding: 2px 6px; border-radius: 4px; border: 1px solid var(--info-border); }
+    .sv-tags { display: inline-flex; gap: 6px; flex-wrap: wrap; }
+    .sv-info-sub { font-size: 0.85rem; color: var(--text-muted); overflow-wrap: anywhere; }
+    .sv-footer { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; text-align: start; }
+    .sv-width { display: inline-flex; border: 1px solid var(--border-strong); border-radius: 6px; overflow: hidden; }
+    .sv-width button { border: none; background: var(--bg-white); color: var(--text-muted); padding: 0.35rem 0.7rem; font-size: 0.8rem; cursor: pointer; font-family: inherit; }
+    .sv-width button + button { border-inline-start: 1px solid var(--border-strong); }
+    .sv-width button[aria-pressed="true"] { background: var(--primary); color: #ffffff; }
+    .sv-hint { font-size: 0.8rem; color: var(--text-faint); flex: 1; }
+    .sv-actions { display: inline-flex; gap: 0.5rem; margin-inline-start: auto; }
+    @media (max-width: 640px) {
+        .sv-frame-wrap { padding: 10px 10px 64px; }
+        .sv-nav { top: auto; bottom: 10px; transform: none; }
+        .sv-error { inset-inline: 10px; }
+        .sv-hint { display: none; }
+    }
 
     .filter-bar { background: var(--bg-white); padding: 1rem; border-radius: 8px; border: 1px solid var(--border); margin-bottom: 1.5rem; display: flex; gap: 1rem; flex-wrap: wrap; align-items: center; }
 
@@ -720,6 +864,12 @@ $errorMessage = popFlash('error');
 
             <div class="header-actions">
                 <?php if (!empty($signatures)): ?>
+                <button type="button" id="btnShowAll" class="btn btn-sm btn-secondary btn-header" style="background:var(--bg-white); border:1px solid var(--border-strong);"
+                        title="<?= et('Browse the signatures of this list one by one, in the current filter and sort order.') ?>">
+                    <i class="fas fa-images"></i> <?= et('Show all signatures') ?>
+                </button>
+
+                <div style="width:1px; height:20px; background:var(--border-strong); margin:0 5px;"></div>
                 
                 <?php if ($is_admin): ?>
                 <button id="btnSendSelected" onclick="sendBulkEmail()" class="btn btn-sm btn-primary btn-header btn-disabled">
@@ -861,13 +1011,66 @@ $errorMessage = popFlash('error');
     </section>
 </main>
 
-<div id="previewModal" class="modal-overlay">
-    <div class="modal-box">
-        <div class="modal-header"><h3 style="margin:0"><?= et('Preview') ?></h3><button class="close-modal-btn" onclick="closeModal()">&times;</button></div>
-        <div class="modal-body"><iframe id="modalFrame" class="modal-iframe" sandbox=""></iframe></div>
-        <div class="modal-footer"><button class="btn btn-sm btn-secondary" onclick="closeModal()"><?= et('Close') ?></button></div>
+<!-- Signature viewer: one signature at a time with previous/next arrows. Filled
+     by js/signature-viewer.js; every value is inserted as text, the signature
+     itself only into the sandboxed frame. -->
+<div id="sigViewer" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="svTitle">
+    <div class="modal-box sv-box">
+        <div class="modal-header">
+            <h3 id="svTitle" style="margin:0; display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+                <span><i class="fas fa-images"></i> <?= et('Preview') ?></span>
+                <span class="count-badge sv-counter" id="svCounter" aria-live="polite"></span>
+            </h3>
+            <button type="button" class="close-modal-btn" data-sv="close" aria-label="<?= et('Close') ?>">&times;</button>
+        </div>
+        <div class="sv-stage" id="svStage">
+            <button type="button" class="sv-nav sv-prev" data-sv="prev" aria-label="<?= et('Previous signature') ?>" title="<?= et('Previous signature') ?>"><i class="fas fa-chevron-left"></i></button>
+            <div class="sv-frame-wrap"><iframe id="svFrame" class="sv-frame" sandbox="" referrerpolicy="no-referrer" title="<?= et('Preview') ?>"></iframe></div>
+            <button type="button" class="sv-nav sv-next" data-sv="next" aria-label="<?= et('Next signature') ?>" title="<?= et('Next signature') ?>"><i class="fas fa-chevron-right"></i></button>
+            <div class="sv-loading" id="svLoading" aria-hidden="true"><i class="fas fa-spinner fa-spin fa-2x"></i></div>
+            <div class="sv-error" id="svError" role="alert"></div>
+        </div>
+        <div class="sv-info">
+            <div class="sv-info-main">
+                <strong id="svName"></strong>
+                <span id="svOwner" class="sv-owner"><i class="fas fa-user"></i> <span></span></span>
+                <button type="button" id="svSync" class="sync-badge sync-grey" data-sv="sync" title="<?= et('Sync status') ?>"><span class="sync-dot"></span><span></span></button>
+                <span id="svTags" class="sv-tags"></span>
+            </div>
+            <div class="sv-info-sub" id="svMeta"></div>
+        </div>
+        <div class="modal-footer sv-footer">
+            <div class="sv-width" role="group" aria-label="<?= et('Preview width') ?>">
+                <button type="button" data-sv="desktop" aria-pressed="true"><i class="fas fa-desktop"></i> <?= et('Desktop') ?></button>
+                <button type="button" data-sv="mobile" aria-pressed="false"><i class="fas fa-mobile-alt"></i> <?= et('Mobile') ?></button>
+            </div>
+            <span class="sv-hint"><i class="far fa-keyboard"></i> <?= et('Use the arrow keys to browse.') ?></span>
+            <span class="sv-actions">
+                <a id="svDownload" class="btn btn-sm btn-primary" href="#"><i class="fas fa-download"></i> <?= et('Download') ?></a>
+                <button type="button" class="btn btn-sm btn-secondary" data-sv="close"><?= et('Close') ?></button>
+            </span>
+        </div>
     </div>
 </div>
+<?php
+// Settings of the viewer script. A JSON data block is never executed; the HEX
+// flags keep "</script" or quotes in a translation from ending it early.
+// The endpoint is relative to the page's own address ("?..."), so it works with
+// and without the pretty URLs of .htaccess (which answer "name.php" GET
+// requests with a redirect to "name").
+$viewerConfig = [
+    'endpoint' => '?viewer=1&' . $filterQS,
+    'total'    => $totalSignatures,
+    'i18n'     => [
+        'counter'  => t('{current} of {total}'),
+        'failed'   => t('The signature could not be loaded.'),
+        'gone'     => t('This signature is no longer in the list.'),
+        'session'  => t('Your session has expired. Please sign in again.'),
+        'empty'    => t('No signatures found.'),
+    ],
+];
+?>
+<script type="application/json" id="sigViewerConfig"><?php echo json_encode($viewerConfig, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?></script>
 
 <div id="syncModal" class="modal-overlay">
     <div class="modal-box" style="max-width: 680px; height: auto; max-height: 90vh;">
@@ -984,6 +1187,7 @@ $errorMessage = popFlash('error');
 
 <script src="<?= assetUrl('js/post-action.js') ?>"></script>
 <script src="<?= assetUrl('js/safe-html.js') ?>"></script>
+<script src="<?= assetUrl('js/signature-viewer.js') ?>"></script>
 <script>
 const CSRF_TOKEN = <?php echo json_encode(generateCSRFToken()); ?>;
 let abortController = null; // Global variable to handle cancellation
@@ -1224,29 +1428,9 @@ function finishProcess(success) {
     };
 }
 
-// --- MODALS (PREVIEW & PROGRESS) ---
-const modal = document.getElementById('previewModal');
-const modalFrame = document.getElementById('modalFrame');
-
-function openModal(id) {
-    const source = document.getElementById('source-' + id);
-    if(source) {
-        const styleReset = `
-            <style>
-                body { margin: 0; padding: 20px; font-family: Arial, Helvetica, sans-serif; background-color: #ffffff; color: #000000; }
-                p { margin: 0; padding: 0; line-height: 1.4; } 
-                table { border-collapse: collapse; border-spacing: 0; }
-                td { padding: 0; vertical-align: top; }
-                a { text-decoration: none; color: inherit; }
-            </style>
-        `;
-        modalFrame.srcdoc = styleReset + SafeHtml.sanitize(source.value);
-        modal.style.display = 'flex';
-    }
-}
-function closeModal() { modal.style.display = 'none'; modalFrame.srcdoc=''; }
+// --- PROGRESS MODAL ---
+// (The preview of a row and "Show all signatures" are handled by js/signature-viewer.js.)
 function closeProgressModal() { document.getElementById('progressModal').style.display = 'none'; }
-window.onclick = e => { if(e.target == modal) closeModal(); }
 
 // --- EDIT MODAL ---
 const editModal = document.getElementById('editModal');
@@ -1285,6 +1469,11 @@ function openSyncModal(id) {
     if (!el) return;
     let d;
     try { d = JSON.parse(el.textContent); } catch (e) { return; }
+    showSyncDetails(d);
+}
+// Also used by the signature viewer, which gets the same data with each signature.
+function showSyncDetails(d) {
+    if (!d || typeof d !== 'object') return;
     document.getElementById('syncModalName').textContent = d.name || '';
     const summary = document.getElementById('syncModalSummary');
     summary.textContent = '';

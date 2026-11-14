@@ -52,9 +52,10 @@ locally, and nothing is sent to third parties.
 
 * **Central email signature management:** all signatures of all users in one overview
   (*All Signatures*) with search, filters (user, template, tag, source), bulk actions (send,
-  delete, change template, tags), inline editing and a **sync-status badge** per signature: up
-  to date or out of date, counted per device ("2/3 up to date"). See
-  [All Signatures](#all-signatures-overview).
+  delete, change template, tags), inline editing, **Show all signatures** (browse the
+  signatures one by one in a large preview with arrows, desktop and mobile width) and a
+  **sync-status badge** per signature: up to date or out of date, counted per device
+  ("2/3 up to date"). See [All Signatures](#all-signatures-overview).
 * **Desktop client for Windows and Linux:** the SubSignature agent (a single Go binary, see
   `subsignature-agent/`) fetches the signatures over the API, installs them in **Outlook** and
   **Thunderbird**, sets them as default for new mails and replies, keeps them up to date and
@@ -114,8 +115,9 @@ locally, and nothing is sent to third parties.
 
 * PHP 8.0 or newer (tested with 8.x), with the extensions `sqlite3`, `mbstring`, `fileinfo`,
   `zip`, and `openssl` or `sodium`.
-* Optional: the `ldap` extension for the LDAP import (`apt install php-ldap`), and the `curl`
-  extension to deliver template images from other servers embedded through the API.
+* Optional: the `ldap` extension for the LDAP import (`apt install php-ldap`), the `curl`
+  extension to deliver template images from other servers embedded through the API, and the
+  `dom` extension (usually built in, `php-xml` on Debian/Ubuntu) for the HCL Notes output.
 * Apache 2.4 with `mod_rewrite` and `mod_headers` (the shipped `.htaccess` is written for it).
   Nginx works with equivalent rules, see [Hardening](#hardening-checklist).
 * HTTPS (strongly recommended; required for the API).
@@ -210,6 +212,8 @@ If the PHP `ldap` extension is missing, the page shows a notice; the settings ca
 
 **Bulk actions** on the selected signatures: *Send*, *Delete*, *Change template* (administrators and technicians for any signature, users for their own), *Add tag* / *Remove tag* (administrators and technicians). *Delete All* removes exactly the signatures the current filter shows.
 
+**Show all signatures:** the button above the list opens the signatures one at a time in a large preview - like browsing pictures: an arrow on each side (or the left / right arrow keys, Home / End, Esc to close) goes to the previous / next signature. It follows the list exactly: current user selection, search, filters and sort order, also for signatures not yet loaded by scrolling. Below the signature you see name, owner, sync status (click for details), tags, role, email, template and source, plus a *Download* button; the *Desktop / Mobile* switch shows it at the width of a phone screen. The preview button (eye) of a row opens the same view at that signature. The preview is sandboxed (no scripts), and users only ever browse their own signatures.
+
 **Editing a single signature:** the pencil icon on a signature opens an edit dialog (name, role, email, phone, template; administrators and technicians can also change its tags there). Users may edit their own signatures, administrators and technicians any signature within their scope - the same ownership rule enforced everywhere else applies on the actual save, not only in the form that is shown. Editing an **LDAP-sourced** signature shows a warning that the next LDAP re-import will overwrite manual changes.
 
 **Sync status:** each signature carries a coloured badge showing whether the desktop agents have the current version. Every agent installation (device) that applied the signature is tracked on its own:
@@ -234,6 +238,7 @@ A **Go** agent for **Windows and Linux** (already built, see `subsignature-agent
 * `POST /api/v1/status` lets the agent report per signature `ok`/`warn`/`error` plus the version it applied (`html_sha256`), per device (feeding the sync-status badge above) - a narrow write that can only store status rows, never signature content, and needs its own scope so a read-only token cannot be used to fake a status report.
 * HTTPS only, rate limited (separate limits for reading and for status reports), no session or cookie involved.
 * `GET /api/v1/signatures?images=meta|inline` and `GET /api/v1/images/{sha256}` deliver the images of a signature Base64-encoded, for clients that cannot download images themselves (e.g. HCL Notes/Domino). Images from **Manage Images** are always available; images on other servers only from hosts that the administrator lists under **Admin -> Configuration -> Image hosts for embedding** (https only, private and reserved addresses are refused).
+* `GET /api/v1/signatures?notes=dxl` delivers each signature additionally as **HCL Notes rich text** (Domino XML) with the pictures embedded - ready to be imported into a Notes mail file's signature, where it keeps its tables, fonts, colours, links and pictures. The output is generated from scratch and checked against an allow-list, so it can never carry executable Notes content.
 * Every request is visible under **System Logs -> API Requests** (since 1.8.0): result, endpoint, token, client, IP and duration - and for refused requests the exact reason (no token, unknown, revoked or expired token). The token itself is never stored. Configurable under **Admin -> Configuration** (all requests / only errors / off, 1-365 days).
 
 Full documentation with implementation notes for the agent: [docs/API.md](docs/API.md).
@@ -338,7 +343,7 @@ deliberately references by URL.
 
 * macOS support for the desktop agent (currently Windows and Linux; see `subsignature-agent/`).
 * HCL Notes / Domino: server-side agent that writes the signatures into the mail files (in
-  development).
+  development; the server already delivers the signatures as Notes rich text, see the API).
 * Optional LDAP import scheduling (cron/CLI).
 
 ## Contributing

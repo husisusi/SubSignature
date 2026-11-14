@@ -85,6 +85,7 @@ set_exception_handler(function ($e) {
 require_once __DIR__ . '/crypto.php';
 require_once __DIR__ . '/helpers.php';
 require_once __DIR__ . '/SignatureImages.php';
+require_once __DIR__ . '/NotesDxl.php';
 require_once __DIR__ . '/i18n.php';
 
 // ---------------------------------------------------------------------

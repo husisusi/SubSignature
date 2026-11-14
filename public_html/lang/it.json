@@ -811,5 +811,16 @@
     "Clients that cannot load images themselves (e.g. HCL Notes/Domino) can receive the images of a signature embedded through the API. Images from Manage Images are always allowed; images on other servers only from the hosts listed here (one host name per line, https only). Empty = none.": "I client che non possono caricare le immagini da soli (ad es. HCL Notes/Domino) possono ricevere le immagini di una firma incorporate tramite l'API. Le immagini di «Gestisci immagini» sono sempre consentite; quelle di altri server solo dagli host indicati qui (un nome host per riga, solo https). Vuoto = nessuno.",
     "Ignored image hosts (enter host names only, e.g. www.example.com): {hosts}": "Host di immagini ignorati (inserire solo nomi host, ad es. www.example.com): {hosts}",
     "Image hosts for embedding": "Host di immagini per l'incorporamento",
-    "missing (optional, needed to embed images from other hosts)": "mancante (facoltativa, necessaria per incorporare immagini di altri host)"
+    "missing (optional, needed to embed images from other hosts)": "mancante (facoltativa, necessaria per incorporare immagini di altri host)",
+    "missing (optional, needed for HCL Notes signatures)": "mancante (facoltativa, necessaria per le firme HCL Notes)",
+    "Browse the signatures of this list one by one, in the current filter and sort order.": "Sfoglia una per una le firme di questo elenco, con il filtro e l'ordinamento attuali.",
+    "Desktop": "Desktop",
+    "Mobile": "Mobile",
+    "Next signature": "Firma successiva",
+    "Preview width": "Larghezza anteprima",
+    "Previous signature": "Firma precedente",
+    "Show all signatures": "Mostra tutte le firme",
+    "The signature could not be loaded.": "Impossibile caricare la firma.",
+    "This signature is no longer in the list.": "Questa firma non è più nell'elenco.",
+    "Use the arrow keys to browse.": "Usa i tasti freccia per sfogliare."
 }

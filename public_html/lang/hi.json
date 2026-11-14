@@ -811,5 +811,16 @@
     "Clients that cannot load images themselves (e.g. HCL Notes/Domino) can receive the images of a signature embedded through the API. Images from Manage Images are always allowed; images on other servers only from the hosts listed here (one host name per line, https only). Empty = none.": "जो क्लाइंट स्वयं इमेज लोड नहीं कर सकते (जैसे HCL Notes/Domino), वे API के माध्यम से हस्ताक्षर की इमेज एम्बेड करके प्राप्त कर सकते हैं। \"छवियाँ प्रबंधित करें\" की इमेज हमेशा अनुमत हैं; अन्य सर्वरों की इमेज केवल यहाँ सूचीबद्ध होस्ट से (प्रति पंक्ति एक होस्ट नाम, केवल https)। खाली = कोई नहीं।",
     "Ignored image hosts (enter host names only, e.g. www.example.com): {hosts}": "अनदेखे इमेज होस्ट (केवल होस्ट नाम दर्ज करें, जैसे www.example.com): {hosts}",
     "Image hosts for embedding": "एम्बेड करने के लिए इमेज होस्ट",
-    "missing (optional, needed to embed images from other hosts)": "उपलब्ध नहीं (वैकल्पिक, अन्य होस्ट की इमेज एम्बेड करने के लिए आवश्यक)"
+    "missing (optional, needed to embed images from other hosts)": "उपलब्ध नहीं (वैकल्पिक, अन्य होस्ट की इमेज एम्बेड करने के लिए आवश्यक)",
+    "missing (optional, needed for HCL Notes signatures)": "अनुपलब्ध (वैकल्पिक, HCL Notes हस्ताक्षरों के लिए आवश्यक)",
+    "Browse the signatures of this list one by one, in the current filter and sort order.": "इस सूची के हस्ताक्षर एक-एक करके देखें, मौजूदा फ़िल्टर और क्रम के साथ।",
+    "Desktop": "डेस्कटॉप",
+    "Mobile": "मोबाइल",
+    "Next signature": "अगला हस्ताक्षर",
+    "Preview width": "पूर्वावलोकन की चौड़ाई",
+    "Previous signature": "पिछला हस्ताक्षर",
+    "Show all signatures": "सभी हस्ताक्षर दिखाएँ",
+    "The signature could not be loaded.": "हस्ताक्षर लोड नहीं हो सका।",
+    "This signature is no longer in the list.": "यह हस्ताक्षर अब सूची में नहीं है।",
+    "Use the arrow keys to browse.": "देखने के लिए तीर कुंजियों का उपयोग करें।"
 }

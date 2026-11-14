@@ -8,8 +8,9 @@
  * Endpoints:
  *   GET  /api/v1/                   service info (needs a valid token)
  *   GET  /api/v1/signatures         list, filters: username, email, updated_since, limit, offset;
- *                                   images=meta|inline adds the signature's images (Base64 for inline)
- *   GET  /api/v1/signatures/{id}    one signature (same images option)
+ *                                   images=meta|inline adds the signature's images (Base64 for inline);
+ *                                   notes=dxl adds the signature as HCL Notes rich text (DXL)
+ *   GET  /api/v1/signatures/{id}    one signature (same images and notes options)
  *   GET  /api/v1/images/{sha256}    one image of a signature, Base64-encoded
  *   POST /api/v1/status             agent reports sync status for signatures it applied
  *
@@ -50,14 +51,20 @@ if (isHttpsRequest()) {
     header('Strict-Transport-Security: max-age=31536000');
 }
 
+// true: answer in pure ASCII (non-ASCII characters as \uXXXX escapes). Set for
+// notes=dxl, so that no client-side character decoding can alter the rich text.
+$apiAsciiJson = false;
+
 function apiRespond(int $status, array $payload, array $headers = []): void
 {
+    global $apiAsciiJson;
     apiWriteLog($status, (string)($payload['error']['code'] ?? 'ok'));
     http_response_code($status);
     foreach ($headers as $h) {
         header($h);
     }
-    echo json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE);
+    $flags = JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE | ($apiAsciiJson ? 0 : JSON_UNESCAPED_UNICODE);
+    echo json_encode($payload, $flags);
     exit;
 }
 
@@ -76,7 +83,7 @@ function apiLogEndpoint(): string
     $p = isset($path) ? (string)$path : trim((string)parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH), '/');
     $p = '/' . substr((string)preg_replace('#[^A-Za-z0-9/_.\-]#', '', $p), 0, 100);
     $query = [];
-    foreach (['username', 'email', 'updated_since', 'limit', 'offset', 'images'] as $key) {
+    foreach (['username', 'email', 'updated_since', 'limit', 'offset', 'images', 'notes'] as $key) {
         if (isset($_GET[$key]) && is_string($_GET[$key]) && $_GET[$key] !== '') {
             $query[] = $key . '=' . cleanText($_GET[$key], 64);
         }
@@ -263,6 +270,64 @@ function apiImagesMode(): string
 }
 
 /**
+ * Reads the Notes option (?notes=dxl); '' when not requested.
+ */
+function apiNotesMode(): string
+{
+    global $apiAsciiJson;
+    $mode = $_GET['notes'] ?? '';
+    if (!is_string($mode) || !in_array($mode, ['', 'dxl'], true)) {
+        apiError(400, 'bad_request', 'notes must be "dxl".');
+    }
+    if ($mode !== '') {
+        $apiAsciiJson = true;
+    }
+    return $mode;
+}
+
+/**
+ * Adds "notes" to an API signature: the signature as Domino XML rich text for
+ * HCL Notes, with the pictures embedded (same sources and checks as images=).
+ * $budget counts the remote image fetches still allowed in this request.
+ */
+function apiAttachNotes(SQLite3 $db, array &$item, int &$budget): void
+{
+    static $hosts = null;
+    if (!notesDxlAvailable()) {
+        $item['notes'] = ['format' => 'dxl-richtext', 'error' => 'unavailable',
+                          'message' => 'The PHP extension "dom" is missing on the SubSignature server.'];
+        return;
+    }
+    if ($hosts === null) {
+        $hosts = imageEmbedHosts($db);
+    }
+    $resolver = function (string $src) use ($db, $hosts, &$budget): array {
+        return resolveSignatureImage($db, $src, apiSelfHost(), apiBasePath(), $hosts, $budget);
+    };
+    try {
+        $res = signatureToNotesDxl($item['html'], $resolver);
+    } catch (Throwable $e) {
+        error_log('Notes DXL conversion failed for signature ' . $item['id'] . ': ' . $e->getMessage());
+        $item['notes'] = ['format' => 'dxl-richtext', 'error' => 'conversion_failed',
+                          'message' => 'The signature could not be converted for HCL Notes.'];
+        return;
+    }
+    $item['notes'] = [
+        'format'          => 'dxl-richtext',
+        // <richtext>...</richtext>: the content of the rich-text item Signature_Rich.
+        'dxl'             => $res['dxl'],
+        'dxl_sha256'      => hash('sha256', $res['dxl']),
+        // Length in UTF-16 code units (= LotusScript Len()), lets the client detect truncation.
+        'dxl_length'      => intdiv(strlen((string)mb_convert_encoding($res['dxl'], 'UTF-16LE', 'UTF-8')), 2),
+        // false: a picture could not be fetched yet (try again later); keep the current signature.
+        'complete'        => $res['complete'],
+        'images_embedded' => $res['images_embedded'],
+        'images_missing'  => $res['images_missing'],
+        'warnings'        => $res['warnings'],
+    ];
+}
+
+/**
  * Host name of this server as the client addressed it (without port), and
  * the URL path of the installation, for recognising its own image URLs.
  */
@@ -337,7 +402,12 @@ if ($method === 'GET' && $path === 'signatures') {
     }
 
     $imagesMode = apiImagesMode();
+    $notesMode = apiNotesMode();
     $limit = min(500, max(1, (int)($_GET['limit'] ?? 100)));
+    if ($notesMode !== '') {
+        // Every Notes signature carries its pictures: keep the pages small.
+        $limit = min($limit, 20);
+    }
     $offset = max(0, (int)($_GET['offset'] ?? 0));
     $sql .= ' ORDER BY s.id LIMIT ' . $limit . ' OFFSET ' . $offset;
 
@@ -354,6 +424,9 @@ if ($method === 'GET' && $path === 'signatures') {
         if ($imagesMode !== '') {
             apiAttachImages($db, $item, $imagesMode === 'inline', $imageData, $budget);
         }
+        if ($notesMode !== '') {
+            apiAttachNotes($db, $item, $budget);
+        }
         $items[] = $item;
     }
     $apiLog['items'] = count($items);
@@ -367,6 +440,7 @@ if ($method === 'GET' && $path === 'signatures') {
 
 if ($method === 'GET' && preg_match('#^signatures/(\d{1,10})$#', $path, $m)) {
     $imagesMode = apiImagesMode();
+    $notesMode = apiNotesMode();
     $stmt = $db->prepare(API_SELECT . ' AND s.id = ?');
     $stmt->bindValue(1, (int)$m[1], SQLITE3_INTEGER);
     $row = $stmt->execute()->fetchArray(SQLITE3_ASSOC);
@@ -375,13 +449,16 @@ if ($method === 'GET' && preg_match('#^signatures/(\d{1,10})$#', $path, $m)) {
     }
     $apiLog['items'] = 1;
     $item = apiSignature($row);
+    $budget = IMAGE_FETCH_BUDGET;
     if ($imagesMode !== '') {
         $imageData = [];
-        $budget = IMAGE_FETCH_BUDGET;
         apiAttachImages($db, $item, $imagesMode === 'inline', $imageData, $budget);
         if ($imagesMode === 'inline') {
             $item['image_data'] = (object)$imageData;
         }
+    }
+    if ($notesMode !== '') {
+        apiAttachNotes($db, $item, $budget);
     }
     apiRespond(200, $item);
 }

@@ -811,5 +811,16 @@
     "Clients that cannot load images themselves (e.g. HCL Notes/Domino) can receive the images of a signature embedded through the API. Images from Manage Images are always allowed; images on other servers only from the hosts listed here (one host name per line, https only). Empty = none.": "无法自行加载图片的客户端（例如 HCL Notes/Domino）可以通过 API 接收签名中嵌入的图片。“管理图片”中的图片始终允许；其他服务器上的图片仅允许来自此处列出的主机（每行一个主机名，仅限 https）。留空 = 无。",
     "Ignored image hosts (enter host names only, e.g. www.example.com): {hosts}": "已忽略的图片主机（只填写主机名，例如 www.example.com）：{hosts}",
     "Image hosts for embedding": "用于嵌入的图片主机",
-    "missing (optional, needed to embed images from other hosts)": "缺失（可选，嵌入其他主机的图片时需要）"
+    "missing (optional, needed to embed images from other hosts)": "缺失（可选，嵌入其他主机的图片时需要）",
+    "missing (optional, needed for HCL Notes signatures)": "缺失（可选，HCL Notes 签名需要）",
+    "Browse the signatures of this list one by one, in the current filter and sort order.": "按当前筛选和排序逐个浏览此列表中的签名。",
+    "Desktop": "桌面",
+    "Mobile": "手机",
+    "Next signature": "下一个签名",
+    "Preview width": "预览宽度",
+    "Previous signature": "上一个签名",
+    "Show all signatures": "显示所有签名",
+    "The signature could not be loaded.": "无法加载签名。",
+    "This signature is no longer in the list.": "此签名已不在列表中。",
+    "Use the arrow keys to browse.": "使用方向键浏览。"
 }

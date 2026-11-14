@@ -849,6 +849,8 @@ function systemHealthChecks(): array
     }
     $add(t('PHP extension: {name}', ['name' => 'curl']), extension_loaded('curl') ? 'ok' : 'warn',
         extension_loaded('curl') ? t('loaded') : t('missing (optional, needed to embed images from other hosts)'));
+    $add(t('PHP extension: {name}', ['name' => 'dom']), notesDxlAvailable() ? 'ok' : 'warn',
+        notesDxlAvailable() ? t('loaded') : t('missing (optional, needed for HCL Notes signatures)'));
     $add(t('Password encryption'), function_exists('sodium_crypto_secretbox') ? 'ok' : (extension_loaded('openssl') ? 'ok' : 'fail'),
         function_exists('sodium_crypto_secretbox') ? 'libsodium' : 'OpenSSL AES-256-GCM');
 

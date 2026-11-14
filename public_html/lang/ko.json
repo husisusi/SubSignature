@@ -811,5 +811,16 @@
     "Clients that cannot load images themselves (e.g. HCL Notes/Domino) can receive the images of a signature embedded through the API. Images from Manage Images are always allowed; images on other servers only from the hosts listed here (one host name per line, https only). Empty = none.": "이미지를 직접 불러올 수 없는 클라이언트(예: HCL Notes/Domino)는 API를 통해 서명의 이미지를 포함된 형태로 받을 수 있습니다. '이미지 관리'의 이미지는 항상 허용되며, 다른 서버의 이미지는 여기에 나열된 호스트에서만 허용됩니다(한 줄에 호스트 이름 하나, https만). 비어 있음 = 없음.",
     "Ignored image hosts (enter host names only, e.g. www.example.com): {hosts}": "무시된 이미지 호스트(호스트 이름만 입력하세요. 예: www.example.com): {hosts}",
     "Image hosts for embedding": "포함할 이미지 호스트",
-    "missing (optional, needed to embed images from other hosts)": "없음(선택 사항, 다른 호스트의 이미지를 포함하는 데 필요)"
+    "missing (optional, needed to embed images from other hosts)": "없음(선택 사항, 다른 호스트의 이미지를 포함하는 데 필요)",
+    "missing (optional, needed for HCL Notes signatures)": "없음 (선택 사항, HCL Notes 서명에 필요)",
+    "Browse the signatures of this list one by one, in the current filter and sort order.": "현재 필터와 정렬 순서대로 이 목록의 서명을 하나씩 살펴봅니다.",
+    "Desktop": "데스크톱",
+    "Mobile": "모바일",
+    "Next signature": "다음 서명",
+    "Preview width": "미리보기 너비",
+    "Previous signature": "이전 서명",
+    "Show all signatures": "모든 서명 보기",
+    "The signature could not be loaded.": "서명을 불러올 수 없습니다.",
+    "This signature is no longer in the list.": "이 서명은 더 이상 목록에 없습니다.",
+    "Use the arrow keys to browse.": "화살표 키로 넘겨 보세요."
 }

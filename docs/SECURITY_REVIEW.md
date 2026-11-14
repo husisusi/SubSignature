@@ -131,7 +131,7 @@ bulk deletes) are written to the audit log, which only administrators can read.
 
 * Written in exactly one place (`apiRespond()`), so every response - successful or refused - is logged the same way; logging is best effort and can never fail or change a response.
 * The bearer token is never stored. Rows contain the token's ID and a snapshot of its label; for refused requests the exact internal reason (`token_missing`, `token_unknown`, `token_revoked`, `token_expired`) is logged while the client still only receives the generic `unauthorized` - the log helps the administrator without telling an attacker whether a guessed token exists.
-* Only the path and the known query parameters (`username`, `email`, `updated_since`, `limit`, `offset`, values shortened to 64 characters) are recorded; every text field is cleaned and length-capped before it is stored and escaped on output.
+* Only the path and the known query parameters (`username`, `email`, `updated_since`, `limit`, `offset`, `images`, `notes`, values shortened to 64 characters) are recorded; every text field is cleaned and length-capped before it is stored and escaped on output.
 * Flooding: a blocked address (too many invalid tokens) or a throttled token is recorded at most once per minute and reason; rows older than the retention setting (1-365 days, default 30) are pruned on about 1 % of API requests and with the regular log cleanup; a hard cap keeps at most 200,000 rows. Logging can be limited to errors or switched off.
 * The page is administrator-only like the rest of System Logs; the client overview groups by device/User-Agent, token and address only.
 
@@ -146,6 +146,24 @@ This is the only place where the server makes outgoing HTTP requests on behalf o
 * Only PNG, JPEG and GIF are delivered, detected from the bytes (the remote Content-Type is ignored); SVG and anything else is never delivered.
 * Local images are read only from the image folder (`realpath` check against `img/`, no `..`, no encoded NUL, image extensions only); `GET /images/{sha256}` serves only images that passed these checks and were referenced by a signature.
 * The `X-SubSignature-Device` header is validated (same rule as `device_id`) and only written to the API log.
+
+**HCL Notes rich text (`notes=dxl`)**
+
+DXL can describe executable Notes content (formulas, LotusScript in buttons and hotspots, fields, references to other databases), so this output is treated as a security boundary towards the Domino side:
+
+* The DXL is generated from scratch from the sanitised HTML (parsed with PHP DOM, `LIBXML_NONET`, non-ASCII passed as numeric references); no part of the input is copied as markup. Element names are fixed in the code; every text and attribute value is escaped (`htmlspecialchars` with `ENT_XML1`) after removing characters XML does not allow; colours are normalised to `#rrggbb`, sizes to numbers, font names to letters, digits, space, `. _ -`; links only for `http(s)://host`, `mailto:` and `tel:` without spaces, quotes or angle brackets - anything else is plain text.
+* Before it is returned, every result is checked (`notesDxlSelfCheck()`): only the elements `richtext pardef par run font break tab picture png gif jpeg notesbitmap urllink table tablecolumn tablerow tablecell border horizrule`, no comments, processing instructions, CDATA or DOCTYPE, no entity references beyond the five predefined ones, only allowed link schemes, and the whole result must parse as XML. A failing check returns `conversion_failed`, never the DXL.
+* Pictures are taken only through `resolveSignatureImage()` (the SSRF-protected path above), must be PNG, JPEG or GIF by content and readable by `getimagesizefromstring()`; at most 3 MiB of pictures and 4 MiB of DXL per signature, 20 signatures per page.
+* Bounded work: nested tables beyond 5 levels are flattened, spans are clamped to 20, table widths to 900 px.
+* The response is pure ASCII and carries the exact length (`dxl_length`) and SHA-256, so the Domino agent can detect truncation or character conversion; the agent runs the same allow-list check before it imports and imports only into a temporary document of its own database first.
+
+**Signature viewer (All Signatures -> Show all signatures, preview button of a row)**
+
+* One signature per request (`all_signatures.php?viewer=1&pos=N` or `&id=N`, read-only GET, login required). The query reuses the list's own WHERE clause and whitelisted sort order, so the viewer reaches exactly the signatures the list shows: users only their own (a `user_id` parameter is ignored for them), administrators and technicians the selected user or everyone, narrowed by the filters. An ID outside that scope answers `404 not_found` exactly like a deleted signature, so the answer reveals nothing about other users' data.
+* Input: `id` must be a positive integer (else `400`), `pos` is cast to an integer and must lie inside the list; all values are bound as parameters.
+* Output: `Content-Type: application/json`, `nosniff`, `no-store`; encoded with `JSON_HEX_TAG|AMP|APOS|QUOT`, so the body contains no literal `<`, `>`, `&` or quotes. The signature HTML is the same sanitised rendering used for download and API (`renderStoredSignature()`), sanitised again in the browser (`SafeHtml.sanitize`) and shown only in an `<iframe sandbox="">` (no scripts, forms, popups or top navigation, opaque origin, `referrerpolicy="no-referrer"`). Every other value is inserted with `textContent`; CSS classes are built only from allow-listed values (sync level, tag colour). The script's settings come from a `<script type="application/json">` block, never from executable code.
+* The endpoint is relative to the page's own address (works with and without the pretty URLs of `.htaccess`) and must resolve to the same origin. Only a JSON answer is used; an HTML answer after a redirect to the login page (ended session) shows a message instead of being rendered. At most 15 signatures are kept in memory; only the newest request may update the view.
+* `download.php`: administrators and technicians may download every signature (their scope in All Signatures), users still only their own - unchanged IDOR protection for users.
 
 **Unified messages**
 

@@ -2,13 +2,20 @@
 /**
  * download.php - downloads one saved signature as an HTML file.
  * Users can only download their own signatures (IDOR protection).
+ * Administrators and technicians may download every signature - the same scope
+ * they already have in All Signatures, where they view, edit and delete them.
  */
 require_once 'includes/config.php';
 requireLogin();
 
-$stmt = $db->prepare('SELECT * FROM user_signatures WHERE id = ? AND user_id = ?');
-$stmt->bindValue(1, (int)($_GET['id'] ?? 0), SQLITE3_INTEGER);
-$stmt->bindValue(2, (int)$_SESSION['user_id'], SQLITE3_INTEGER);
+if (isStaff()) {
+    $stmt = $db->prepare('SELECT * FROM user_signatures WHERE id = ?');
+    $stmt->bindValue(1, (int)($_GET['id'] ?? 0), SQLITE3_INTEGER);
+} else {
+    $stmt = $db->prepare('SELECT * FROM user_signatures WHERE id = ? AND user_id = ?');
+    $stmt->bindValue(1, (int)($_GET['id'] ?? 0), SQLITE3_INTEGER);
+    $stmt->bindValue(2, (int)$_SESSION['user_id'], SQLITE3_INTEGER);
+}
 $sig = $stmt->execute()->fetchArray(SQLITE3_ASSOC);
 
 if (!$sig) {

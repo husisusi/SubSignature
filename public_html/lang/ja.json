@@ -811,5 +811,16 @@
     "Clients that cannot load images themselves (e.g. HCL Notes/Domino) can receive the images of a signature embedded through the API. Images from Manage Images are always allowed; images on other servers only from the hosts listed here (one host name per line, https only). Empty = none.": "画像を自分で読み込めないクライアント（例: HCL Notes/Domino）は、署名の画像を API 経由で埋め込み形式で受け取れます。「画像を管理」の画像は常に許可されます。他のサーバーの画像は、ここに記載したホストからのみ許可されます（1 行に 1 つのホスト名、https のみ）。空欄 = なし。",
     "Ignored image hosts (enter host names only, e.g. www.example.com): {hosts}": "無視された画像ホスト（ホスト名のみを入力してください。例: www.example.com）: {hosts}",
     "Image hosts for embedding": "埋め込み用の画像ホスト",
-    "missing (optional, needed to embed images from other hosts)": "なし（任意。他のホストの画像を埋め込む場合に必要）"
+    "missing (optional, needed to embed images from other hosts)": "なし（任意。他のホストの画像を埋め込む場合に必要）",
+    "missing (optional, needed for HCL Notes signatures)": "なし（任意。HCL Notes の署名に必要）",
+    "Browse the signatures of this list one by one, in the current filter and sort order.": "このリストの署名を、現在の絞り込みと並べ替えで 1 件ずつ表示します。",
+    "Desktop": "デスクトップ",
+    "Mobile": "モバイル",
+    "Next signature": "次の署名",
+    "Preview width": "プレビューの幅",
+    "Previous signature": "前の署名",
+    "Show all signatures": "すべての署名を表示",
+    "The signature could not be loaded.": "署名を読み込めませんでした。",
+    "This signature is no longer in the list.": "この署名はリストにありません。",
+    "Use the arrow keys to browse.": "矢印キーで切り替えられます。"
 }

@@ -65,6 +65,7 @@ Service information. Useful as a health and credentials check.
 | `limit` | 1-500, default 100. |
 | `offset` | Default 0. Page until `count < limit`. |
 | `images` | Optional: `meta` adds the list of the signature's images to every item, `inline` additionally returns the image data (Base64) - see [Embedded images](#embedded-images). |
+| `notes` | Optional: `dxl` adds the signature as HCL Notes rich text (Domino XML) with the pictures embedded - see [HCL Notes rich text](#hcl-notes-rich-text). With `notes=dxl`, `limit` is at most 20. |
 
 ```json
 {
@@ -100,7 +101,7 @@ Service information. Useful as a health and credentials check.
 ### `GET /api/v1/signatures/{id}`
 
 One signature in the same format. `404` if it does not exist or its owner is inactive. Accepts
-the same `images` parameter.
+the same `images` and `notes` parameters.
 
 ### Embedded images
 
@@ -154,6 +155,61 @@ Where images may come from:
 | `data:image/...;base64,...` | Always |
 | `https://` URL on another server | Only if the host is listed under **Admin -> Configuration -> Image hosts for embedding** (empty by default). Fetched by the server over https without redirects or proxy (timeouts 3 s / 8 s), only if every address of the host is public, cached for 24 hours (failures for 10 minutes); at most 3 new fetches per request. |
 | `http://` URL, other ports, user names in the URL | Never |
+
+### HCL Notes rich text
+
+HCL Notes does not keep the layout of an HTML signature: when Notes converts HTML into a
+rich-text signature itself, pictures become attachments and CSS and table layout are lost. With
+`notes=dxl` the server converts the signature into **Domino XML (DXL) rich text** instead - the
+format in which Notes stores a signature set up by hand - with the pictures embedded. A Domino
+agent imports it with the DXL importer into the item `Signature_Rich` of the mail file's
+`CalendarProfile`.
+
+```json
+"notes": {
+  "format": "dxl-richtext",
+  "dxl": "<richtext>\n<table widthtype='fixedleft' ...>...</table>\n</richtext>\n",
+  "dxl_sha256": "7790...",
+  "dxl_length": 17882,
+  "complete": true,
+  "images_embedded": 1,
+  "images_missing": [ { "src": "https://www.example.com/banner.png", "status": "not_allowed" } ],
+  "warnings": [ "Not every picture could be embedded (see images_missing)." ]
+}
+```
+
+* `dxl` is the content of the rich-text item: one `<richtext>` element, without the
+  `<document>`/`<item>` wrapper and without a namespace declaration (it belongs to
+  `xmlns='http://www.lotus.com/dxl'` of the wrapper).
+* `dxl_length` is the length in UTF-16 code units (what LotusScript's `Len()` returns), so a
+  client can detect a truncated answer.
+* `complete` is `false` when a picture could not be fetched yet (`fetch_deferred`,
+  `fetch_failed`): keep the current signature and ask again later. Pictures that are not
+  allowed at all (`not_allowed`, `too_large`, ...) are listed in `images_missing`, replaced by
+  their `alt` text, and do not make the result incomplete. The statuses are those of
+  [Embedded images](#embedded-images), plus `too_large_total` (more than 3 MiB of pictures in one
+  signature).
+* `warnings` names things Notes cannot show as in the HTML (CSS from `<style>` blocks, several
+  border colours in one table, emoji, ...).
+* If the server cannot convert: `{"format": "dxl-richtext", "error": "unavailable" | "conversion_failed", "message": "..."}`
+  (`unavailable`: the PHP extension `dom` is missing).
+* Answers with `notes=dxl` are pure ASCII (non-ASCII characters as `\uXXXX`), so no client-side
+  character decoding can alter the rich text.
+
+What is converted: text with font, size, bold/italic/underline/strike-through and colour (inline
+styles and HTML attributes); paragraphs and line breaks with alignment, indentation and spacing
+(Notes knows 1, 1.5 and 2 lines); links (`http`, `https`, `mailto`, `tel` only); pictures (PNG,
+JPEG, GIF) with their display size; tables with column widths, cell borders (one border colour
+per table, a Notes limit), background colours, vertical alignment, column and row spans -
+layout-only tables are unwrapped, nesting is limited to 5 levels; horizontal rules; simple
+lists. Text without a font of its own is Arial 10 pt.
+
+Security: the DXL is generated from scratch - element names are fixed, all text and attribute
+values are escaped, colours, sizes and font names are normalised. Before it is returned it is
+checked against an allow-list of elements (`richtext pardef par run font break tab picture png
+gif jpeg notesbitmap urllink table tablecolumn tablerow tablecell border horizrule`), for
+comments/processing instructions/entities and link schemes, and parsed as XML. A client should
+run the same allow-list check before importing (the Domino agent does).
 
 ### `POST /api/v1/status`
 
@@ -227,7 +283,7 @@ Since 1.8.0 the server logs API requests under **System Logs -> API Requests** (
 only), so you can see which clients use the API, with which token and with what result:
 
 * Logged per request: time, HTTP status and result, method and path (plus the known query
-  parameters `username`, `email`, `updated_since`, `limit`, `offset`, shortened), token ID and
+  parameters `username`, `email`, `updated_since`, `limit`, `offset`, `images`, `notes`, shortened), token ID and
   label, the device name (`device_id` of a status report, otherwise the `X-SubSignature-Device`
   header), the client's `User-Agent`, IP address, number of
   signatures returned or status rows stored, and the duration. **The token itself is never

@@ -811,5 +811,16 @@
     "Clients that cannot load images themselves (e.g. HCL Notes/Domino) can receive the images of a signature embedded through the API. Images from Manage Images are always allowed; images on other servers only from the hosts listed here (one host name per line, https only). Empty = none.": "Клієнти, які не можуть самі завантажувати зображення (наприклад, HCL Notes/Domino), можуть отримувати зображення підпису вбудованими через API. Зображення з розділу «Керування зображеннями» дозволені завжди, зображення з інших серверів — лише з перелічених тут хостів (одне ім'я хоста в рядку, лише https). Порожньо = жодних.",
     "Ignored image hosts (enter host names only, e.g. www.example.com): {hosts}": "Пропущені хости зображень (вказуйте лише імена хостів, наприклад www.example.com): {hosts}",
     "Image hosts for embedding": "Хости зображень для вбудовування",
-    "missing (optional, needed to embed images from other hosts)": "відсутнє (необов'язково, потрібне для вбудовування зображень з інших хостів)"
+    "missing (optional, needed to embed images from other hosts)": "відсутнє (необов'язково, потрібне для вбудовування зображень з інших хостів)",
+    "missing (optional, needed for HCL Notes signatures)": "відсутнє (необов'язково, потрібне для підписів HCL Notes)",
+    "Browse the signatures of this list one by one, in the current filter and sort order.": "Переглядати підписи цього списку по одному, з поточним фільтром і сортуванням.",
+    "Desktop": "Комп'ютер",
+    "Mobile": "Мобільний",
+    "Next signature": "Наступний підпис",
+    "Preview width": "Ширина перегляду",
+    "Previous signature": "Попередній підпис",
+    "Show all signatures": "Показати всі підписи",
+    "The signature could not be loaded.": "Не вдалося завантажити підпис.",
+    "This signature is no longer in the list.": "Цього підпису більше немає в списку.",
+    "Use the arrow keys to browse.": "Гортайте клавішами зі стрілками."
 }

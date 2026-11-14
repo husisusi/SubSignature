@@ -17,6 +17,24 @@
   - Images from **Manage Images** (`img/...`) and `data:` images are always delivered; images on other servers only from the hosts listed under **Admin -> Configuration -> Image hosts for embedding** (empty by default).
 - System status: the `curl` extension (optional, needed for images from other hosts).
 
+### Added (HCL Notes / Domino: signatures as Notes rich text)
+- **`GET /api/v1/signatures?notes=dxl`** (also `/signatures/{id}`) delivers every signature additionally as **HCL Notes rich text in Domino XML (DXL)**, with the pictures embedded. A Domino agent imports it with the DXL importer into the mail file's signature (`Signature_Rich`), where it is stored exactly like a signature set up by hand in Notes: pictures inline, tables, fonts, colours and links intact, no attachments. (Letting Notes convert the HTML itself turns the pictures into attachments and loses CSS and table layout.)
+- The conversion covers text formatting from inline styles and HTML attributes, paragraphs, line breaks, alignment and spacing, links (http, https, mailto, tel), pictures with their display size, tables with column widths, cell borders, background colours, vertical alignment and spans (layout-only tables are unwrapped), horizontal rules and simple lists. The answer reports pictures that could not be embedded (`images_missing`, `complete`) and what Notes cannot show (`warnings`).
+- Pictures come from the same sources and pass the same checks as the embedded images above.
+- System status: the `dom` extension (optional, needed for the Notes output).
+- Tested with a proof-of-concept Domino agent on Domino 14.0 FP5.
+
+### Added (All Signatures: show all signatures)
+- **New button "Show all signatures"** above the list: the signatures open one at a time in a large preview, with an arrow on the left and on the right to go to the previous / next one - like browsing pictures. It shows exactly the signatures of the list, in the current filter and sort order (user, search, template, tag, source).
+- Below each signature: name, owner (when all users are shown), sync status (click for the device details), tags, role, email, template, source and date; a counter shows the position (*3 of 57*), and **Download** saves the shown signature.
+- **Keyboard:** left / right arrow to browse, Home / End for the first / last signature, Esc to close. In Arabic (right to left) arrows and keys are mirrored.
+- **Desktop / Mobile** switch: shows the signature at the width of a phone screen (375 px); the choice is remembered in the browser.
+- The **preview button (eye) of a row** opens the same view at that signature, so you can browse on from there.
+- Signatures are loaded one by one when needed (the neighbours in advance, so browsing is instant), also for lists with thousands of signatures. The page itself got lighter: the list no longer carries a hidden copy of every signature's HTML.
+
+### Fixed
+- **Download on All Signatures** of another user's signature (administrators and technicians) went back to the Generator instead of downloading the file. Administrators and technicians may now download every signature - the same scope they already have in that list; users still only their own.
+
 ### Changed (messages)
 - **All messages look the same on every page.** Success messages are green, errors red, warnings yellow and notes blue - with the same box, icon and position at the top of the page, in light and dark mode. This fixes **System Configuration**, where "Configuration saved successfully." (and other messages) appeared as plain text, and the same problem on **API Tokens**, **Images** and **Templates**.
 - One shared implementation: `alertBox()` / `flashAlerts()` in PHP and `js/alerts.js` for messages created in the browser. The pages' own message styles (login, installer, export, CSV import, user management, ...) were removed.
@@ -30,6 +48,8 @@
 - `Permissions-Policy` additionally disables the browser's ad-topic API (`browsing-topics=()`).
 - API log: the token itself is never stored (only its ID and label), query values are shortened, only known parameters are recorded. Refused requests from a blocked address or a throttled token are recorded at most once per minute, and the table is capped (retention setting plus at most 200,000 rows), so the log cannot be flooded.
 - System Logs show all times converted from the database's UTC to the server's time zone.
+- Signature viewer: the server returns one signature per request with the list's own scope and filters (users can never reach other users' signatures, staff only the selected scope); a signature outside the scope answers exactly like a deleted one. The signature is sanitised by the server, again in the browser, and shown only in a fully sandboxed frame (no scripts, forms or popups); all other values are inserted as text. The JSON answer contains no literal `<`, `>`, `&` or quotes, and an ended session shows a message instead of loading the login page.
+- Notes output: the DXL is generated from scratch (fixed element names, every text and attribute value escaped, colours, sizes and font names normalised, links limited to http/https/mailto/tel) and checked before it is returned against an allow-list of rich-text elements (no code, formulas, buttons, fields, references, comments or entities) and parsed as XML - it can never carry executable Notes content. Answers with `notes=dxl` are pure ASCII and state the exact length, so a client can detect alteration or truncation; at most 20 signatures per page and 3 MiB of pictures per signature.
 - Image embedding cannot be used to reach internal systems: remote images only over https from listed host names (no IP literals, ports or user names), no redirects, no proxy, the host's addresses must all be public (no loopback, private, link-local, carrier-grade NAT, multicast, documentation or reserved ranges) and the checked address is pinned for the connection (no DNS rebinding). Size limit 1 MiB, PNG/JPEG/GIF detected from the content (SVG is never delivered), at most 3 new downloads per request, results cached (24 h, failures 10 min). Changes to the host list are written to the audit log.
 
 ### Changed (requirements)
@@ -41,8 +61,8 @@
 
 ### Changed (documentation)
 - README rewritten for clarity and search: what SubSignature is in one sentence, central signature management and the desktop clients for Windows and Linux first in the feature list, a FAQ, and consistent requirements (PHP 8.0+).
-- `docs/API.md`: how API requests are logged, the device header, embedded images. `docs/SECURITY_REVIEW.md`: controls for 1.8.0.
-- The 41 new interface texts are translated into all 18 languages.
+- `docs/API.md`: how API requests are logged, the device header, embedded images, HCL Notes rich text. `docs/SECURITY_REVIEW.md`: controls for 1.8.0.
+- The 52 new interface texts are translated into all 18 languages.
 
 ### Upgrade notes
 - Copy the files, keep `private_data/`, reload once. The migration to schema v8 runs automatically; logging starts with the next API request.

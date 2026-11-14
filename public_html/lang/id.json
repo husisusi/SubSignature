@@ -811,5 +811,16 @@
     "Clients that cannot load images themselves (e.g. HCL Notes/Domino) can receive the images of a signature embedded through the API. Images from Manage Images are always allowed; images on other servers only from the hosts listed here (one host name per line, https only). Empty = none.": "Klien yang tidak dapat memuat gambar sendiri (mis. HCL Notes/Domino) dapat menerima gambar tanda tangan yang disematkan melalui API. Gambar dari \"Kelola gambar\" selalu diizinkan; gambar dari server lain hanya dari host yang tercantum di sini (satu nama host per baris, hanya https). Kosong = tidak ada.",
     "Ignored image hosts (enter host names only, e.g. www.example.com): {hosts}": "Host gambar yang diabaikan (masukkan nama host saja, mis. www.example.com): {hosts}",
     "Image hosts for embedding": "Host gambar untuk disematkan",
-    "missing (optional, needed to embed images from other hosts)": "tidak ada (opsional, diperlukan untuk menyematkan gambar dari host lain)"
+    "missing (optional, needed to embed images from other hosts)": "tidak ada (opsional, diperlukan untuk menyematkan gambar dari host lain)",
+    "missing (optional, needed for HCL Notes signatures)": "tidak ada (opsional, diperlukan untuk tanda tangan HCL Notes)",
+    "Browse the signatures of this list one by one, in the current filter and sort order.": "Telusuri tanda tangan dalam daftar ini satu per satu, dengan filter dan urutan saat ini.",
+    "Desktop": "Desktop",
+    "Mobile": "Seluler",
+    "Next signature": "Tanda tangan berikutnya",
+    "Preview width": "Lebar pratinjau",
+    "Previous signature": "Tanda tangan sebelumnya",
+    "Show all signatures": "Tampilkan semua tanda tangan",
+    "The signature could not be loaded.": "Tanda tangan tidak dapat dimuat.",
+    "This signature is no longer in the list.": "Tanda tangan ini sudah tidak ada dalam daftar.",
+    "Use the arrow keys to browse.": "Gunakan tombol panah untuk menelusuri."
 }
