@@ -1,0 +1,32 @@
+' SubSignature for HCL Domino - helper agent "Run SubSignature on server".
+' Trigger: Action menu selection, target: None. Starts the agent TARGET_AGENT
+' with RunOnServer on the server that holds this database.
+Sub Initialize
+	Const TARGET_AGENT = "SubSignature"
+	Dim s As New NotesSession
+	Dim db As NotesDatabase
+	Dim ag As NotesAgent
+	Dim names As String
+	Dim rc As Integer
+
+	Set db = s.CurrentDatabase
+	' Hidden agents (Agent list selection) may need the name in parentheses.
+	Set ag = db.GetAgent(TARGET_AGENT)
+	If ag Is Nothing Then Set ag = db.GetAgent("(" & TARGET_AGENT & ")")
+	If ag Is Nothing Then
+		' List all agents so the right name can be copied into TARGET_AGENT.
+		ForAll a In db.Agents
+			names = names & Chr$(10) & a.Name
+		End ForAll
+		Messagebox "Agent '" & TARGET_AGENT & "' not found. Agents in this database:" & names, 16, "RunOnServer"
+		Exit Sub
+	End If
+
+	' Runs the agent on the server that holds this database and waits for it.
+	rc = ag.RunOnServer()
+	If rc = 0 Then
+		Messagebox "Finished on the server - see the server console or log.nsf.", 64, "RunOnServer"
+	Else
+		Messagebox "RunOnServer returned " & rc & " - see the server console.", 16, "RunOnServer"
+	End If
+End Sub

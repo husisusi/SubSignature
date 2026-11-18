@@ -1,0 +1,2124 @@
+'==============================================================================
+' SubSignature for HCL Domino - server agent - version 0.5.3
+'
+' Writes the signatures maintained in SubSignature into the mail files of the
+' Domino server the agent runs on. The SubSignature server (1.8.0 or newer)
+' delivers every signature as Domino XML rich text with the pictures embedded
+' (GET /api/v1/signatures/{id}?notes=dxl). The agent checks it (only text,
+' fonts, links, pictures and tables are accepted) and imports it as the
+' rich-text signature (Signature_Rich of the CalendarProfile), so it is stored
+' exactly like a signature set up by hand in Notes.
+'
+' All settings are in the text file subsignature-domino.ini in the Domino
+' data directory (see README.md). Two ways to run it:
+'   - distributed (agent_server empty): the agent runs on every mail server
+'     listed under "servers" and changes the mail files of that server only;
+'   - central (agent_server set): the agent works only on agent_server and
+'     changes the mail files of all servers listed under "servers" over the
+'     network (those servers must trust agent_server).
+' Only mail files whose owner has a signature in SubSignature are touched; a
+' mail file is written only when its signature changed (or force_update).
+'
+' This file has three blocks. In Domino Designer, paste each block into the
+' agent section named in its header:
+'   BLOCK 1 -> (Options)
+'   BLOCK 2 -> (Declarations)
+'   BLOCK 3 -> Initialize: replace the empty "Sub Initialize ... End Sub" with
+'              the whole block. Designer moves the other Subs and Functions
+'              into entries of their own.
+'==============================================================================
+
+
+'============================ BLOCK 1: (Options) ==============================
+Option Public
+Option Declare
+
+
+'========================== BLOCK 2: (Declarations) ===========================
+
+' ---- Constants: no need to change them; the settings are in CONFIG_FILE ----
+Const AGENT_VERSION = "0.5.3"
+' Configuration file in the Domino data directory of the server.
+Const CONFIG_FILE = "subsignature-domino.ini"
+Const HTTP_TIMEOUT_SEC = 30
+' Signatures per API page when the list is read.
+Const PAGE_SIZE = 25
+' SHA-256 of an empty text: html_sha256 of a signature without HTML.
+Const EMPTY_SHA256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+Const SS_ITEM_RICHTEXT = 1
+Const SS_ITEM_NUMBERS = 768
+Const SS_ITEM_DATETIMES = 1024
+Const SS_ITEM_TEXT = 1280
+Const SS_ITEM_MIME = 25
+Const SS_ACL_EDITOR = 4
+Const SS_DXLIMPORT_CREATE = 2
+Const SS_DXL_VALIDATE_NEVER = 0
+Const MAX_MESSAGEBOX = 12000
+Const MAX_REPORT_ITEMS = 200
+' Elements a signature may contain. Everything else (code, formulas, buttons,
+' fields, references to other databases or files) is refused.
+Const DXL_ALLOWED = "|richtext|pardef|par|run|font|break|tab|picture|png|gif|jpeg|notesbitmap|urllink|table|tablecolumn|tablerow|tablecell|border|horizrule|"
+
+' ---- Settings read from CONFIG_FILE ----
+Dim cfgUrl As String
+Dim cfgToken As String
+Dim cfgServers As String
+Dim cfgAgentServer As String
+Dim cfgMode As String
+Dim cfgTestAddress As String
+Dim cfgLimit As Long
+Dim cfgOnDeleted As String
+Dim cfgReportStatus As Boolean
+Dim cfgForceUpdate As Boolean
+Dim cfgMaxMinutes As Long
+Dim cfgDirectory As String
+
+Dim session As NotesSession
+Dim ctlDb As NotesDatabase
+Dim agentLog As NotesLog
+Dim logText As String
+Dim baseUrl As String
+' Canonical name of the server that runs the agent
+Dim thisServer As String
+' True: this server writes the mail files of all listed servers (agent_server)
+Dim centralMode As Boolean
+' Error text of the last mail file that could not be opened
+Dim lastOpenError As String
+Dim startTime As Variant
+
+' Mail files of this server, keyed by Internet address (lower case)
+Dim dirMailFile List As String
+Dim dirMailServer List As String
+Dim dirFullName List As String
+Dim dirAmbiguous List As Boolean
+' Mail servers seen in the directory (canonical names), for the diagnosis
+Dim dirSeenServers List As Boolean
+
+' Signatures for mail files of this server (index 0 .. candCount - 1), in the
+' order of the SubSignature IDs
+Dim candCount As Long
+Dim candAddress() As String
+Dim candKey() As String
+Dim candServer() As String
+Dim candId() As String
+Dim candUpdated() As String
+Dim candHtmlSha() As String
+Dim candIndex List As Long
+' Mail file keys that have a signature in SubSignature
+Dim presentKey List As Boolean
+' True when the whole signature list was read
+Dim listComplete As Boolean
+' True when every signature of the list was processed (no limit / time stop)
+Dim processedAll As Boolean
+
+' State documents (Form SubSigState) of this server: mail file key -> UNID
+Dim stateUnid List As String
+
+' Status report items (JSON), sent at the end of an APPLY run
+Dim repCount As Long
+Dim repItems() As String
+Dim repDevice() As String
+
+' Counters for the summary
+Dim nUpdated As Long
+Dim nWouldUpdate As Long
+Dim nUnchanged As Long
+Dim nSkipped As Long
+Dim nErrors As Long
+Dim nDeleted As Long
+
+' Temporary import document in this database
+Dim tmpDoc As NotesDocument
+Dim tmpUnid As String
+
+' Content-Type / Content-Length of the last HTTP response (diagnostics)
+Dim lastHeaders As String
+
+
+'=========================== BLOCK 3: Initialize ==============================
+Sub Initialize
+	Dim origConvert As Boolean
+	Dim ok As Boolean
+
+	Set session = New NotesSession
+	Set ctlDb = session.CurrentDatabase
+	origConvert = session.ConvertMIME
+	startTime = Now
+	Call LogOpen()
+
+	On Error GoTo Fatal
+	' Read every item raw (no MIME conversion anywhere in this agent).
+	session.ConvertMIME = False
+	ok = RunAgent()
+
+Finish:
+	On Error Resume Next
+	Call RemoveTempDoc()
+	session.ConvertMIME = origConvert
+	If ok Then
+		LogLine "RESULT: OK"
+	Else
+		LogLine "RESULT: FAILED - see the messages above."
+	End If
+	Call LogClose()
+	If Not session.IsOnServer Then
+		Messagebox Left$(logText, MAX_MESSAGEBOX), 64, "SubSignature for Domino " & AGENT_VERSION
+	End If
+	Exit Sub
+
+Fatal:
+	LogLine "UNEXPECTED ERROR " & Err & " (line " & Erl & "): " & Error$
+	ok = False
+	Resume Finish
+End Sub
+
+'------------------------------------------------------------------------------
+' Main flow. Returns True when the run finished without errors.
+'------------------------------------------------------------------------------
+Function RunAgent() As Boolean
+	Dim nm As NotesName
+
+	LogLine "SubSignature for HCL Domino " & AGENT_VERSION
+	If Not session.IsOnServer Then
+		LogLine "This agent runs only on a Domino server: scheduled, or started with the helper agent (RunOnServer) or 'tell amgr run'."
+		Exit Function
+	End If
+	' In a server agent, UserName is the server's name (EffectiveUserName is the signer).
+	Set nm = New NotesName(session.UserName)
+	thisServer = nm.Canonical
+	LogLine "Server: " & nm.Abbreviated & " | effective user: " & session.EffectiveUserName
+
+	If Not LoadConfig() Then Exit Function
+	If cfgAgentServer <> "" Then
+		If Not NameMatches(cfgAgentServer, thisServer) Then
+			LogLine "agent_server is " & cfgAgentServer & " - only that server works (central mode); nothing to do here."
+			RunAgent = True
+			Exit Function
+		End If
+		centralMode = True
+		LogLine "Central mode: this server writes the signatures of the mail files on: " & cfgServers
+	ElseIf Not InServerList(thisServer) Then
+		LogLine "This server is not listed under 'servers' in " & CONFIG_FILE & " - nothing to do."
+		RunAgent = True
+		Exit Function
+	End If
+	If Not LoadDirectory() Then Exit Function
+	If cfgTestAddress <> "" And Not IsElement(dirMailFile(cfgTestAddress)) Then
+		If centralMode Then
+			LogLine "The mail file of " & cfgTestAddress & " is not on one of the servers listed under 'servers' - nothing to do."
+		Else
+			' Normal when the agent runs on all servers: the test mail file is on another one.
+			LogLine "The mail file of " & cfgTestAddress & " is not on this server - nothing to do here."
+		End If
+		RunAgent = True
+		Exit Function
+	End If
+
+	If cfgMode = "RESTORE" Then
+		RunAgent = RestoreOne()
+		Exit Function
+	ElseIf cfgMode = "EXPORT_DXL" Then
+		RunAgent = ExportOne()
+		Exit Function
+	End If
+
+	repCount = 0
+	ReDim repItems(0)
+	ReDim repDevice(0)
+	If Not CheckApi() Then Exit Function
+	If Not FetchSignatureList() Then Exit Function
+	Call LoadStates()
+	Call ProcessCandidates()
+	Call HandleDeleted()
+	If cfgMode = "APPLY" And cfgReportStatus Then Call SendStatusReports()
+
+	If cfgMode = "SHOW" Then
+		LogLine "Summary (SHOW, nothing was changed): " & nWouldUpdate & " would be written, " & nUnchanged & " unchanged, " & nSkipped & " skipped, " & nErrors & " error(s)."
+	Else
+		LogLine "Summary: " & nUpdated & " written, " & nUnchanged & " unchanged, " & nSkipped & " skipped, " & nDeleted & " deleted signature(s) handled, " & nErrors & " error(s)."
+		If nUpdated > 0 Then LogLine "Users see a new signature after they close and reopen their mail file (Notes caches the profile)."
+	End If
+	RunAgent = (nErrors = 0)
+End Function
+
+'------------------------------------------------------------------------------
+' Configuration file
+'------------------------------------------------------------------------------
+Function LoadConfig() As Boolean
+	Dim path As String
+	Dim st As NotesStream
+	Dim text As String
+	Dim lines As Variant
+	Dim cline As String
+	Dim key As String
+	Dim value As String
+	Dim p As Long
+	Dim lineNo As Long
+	Dim bad As Boolean
+
+	On Error GoTo Failed
+	' Defaults: safe for a first run.
+	cfgMode = "SHOW"
+	cfgLimit = 10
+	cfgOnDeleted = "keep"
+	cfgReportStatus = True
+	cfgForceUpdate = False
+	cfgMaxMinutes = 30
+	cfgDirectory = "names.nsf"
+
+	path = DataDirectory()
+	If path = "" Then
+		LogLine "CONFIG: the data directory is unknown (notes.ini Directory)."
+		Exit Function
+	End If
+	path = path & CONFIG_FILE
+	' Check first: NotesStream.Open would create a missing file.
+	If Dir$(path, 0) = "" Then
+		LogLine "CONFIG: " & path & " not found. Copy subsignature-domino.ini into the Domino data directory of this server (see README)."
+		Exit Function
+	End If
+	Set st = session.CreateStream()
+	If Not st.Open(path, "UTF-8") Then
+		LogLine "CONFIG: cannot read " & path
+		Exit Function
+	End If
+	If st.Bytes > 65536 Then
+		Call st.Close()
+		LogLine "CONFIG: " & path & " is larger than 64 KB - not a configuration file."
+		Exit Function
+	End If
+	text = st.ReadText()
+	Call st.Close()
+	If Len(text) > 0 Then
+		If Uni(Left$(text, 1)) = 65279 Then text = Mid$(text, 2)
+	End If
+
+	lines = Split(Replace(Replace(text, Chr$(13), ""), Chr$(9), " "), Chr$(10))
+	ForAll ln In lines
+		lineNo = lineNo + 1
+		cline = Trim$(CStr(ln))
+		If cline <> "" And Left$(cline, 1) <> "#" And Left$(cline, 1) <> ";" Then
+			' A comment may follow a value after " #".
+			p = InStr(cline, " #")
+			If p > 0 Then cline = Trim$(Left$(cline, p - 1))
+			p = InStr(cline, "=")
+			If p = 0 Then
+				LogLine "CONFIG: line " & lineNo & " ignored (no '=')."
+			Else
+				key = LCase$(Trim$(Left$(cline, p - 1)))
+				value = Trim$(Mid$(cline, p + 1))
+				If Len(value) >= 2 And Left$(value, 1) = Chr$(34) And Right$(value, 1) = Chr$(34) Then value = Mid$(value, 2, Len(value) - 2)
+				Select Case key
+				Case "url"
+					cfgUrl = value
+				Case "token"
+					cfgToken = value
+				Case "servers"
+					cfgServers = value
+				Case "agent_server"
+					cfgAgentServer = value
+				Case "mode"
+					cfgMode = UCase$(value)
+				Case "test_address"
+					cfgTestAddress = LCase$(value)
+				Case "limit"
+					If Not ParseCount(value, cfgLimit) Then
+						LogLine "CONFIG: limit must be a whole number (0 = no limit)."
+						bad = True
+					End If
+				Case "on_deleted"
+					cfgOnDeleted = LCase$(value)
+				Case "report_status"
+					If Not ParseBool(value, cfgReportStatus) Then
+						LogLine "CONFIG: report_status must be true or false."
+						bad = True
+					End If
+				Case "force_update"
+					If Not ParseBool(value, cfgForceUpdate) Then
+						LogLine "CONFIG: force_update must be true or false."
+						bad = True
+					End If
+				Case "max_minutes"
+					If Not ParseCount(value, cfgMaxMinutes) Then
+						LogLine "CONFIG: max_minutes must be a whole number (0 = no own time limit)."
+						bad = True
+					End If
+				Case "directory"
+					cfgDirectory = value
+				Case Else
+					LogLine "CONFIG: unknown setting '" & Left$(key, 40) & "' ignored."
+				End Select
+			End If
+		End If
+	End ForAll
+
+	If Not CheckConfig() Then bad = True
+	If bad Then Exit Function
+	LogLine "Config: " & baseUrl & " | servers " & cfgServers & " | agent_server " & TextOr(cfgAgentServer, "(none: every server handles its own mail files)") & _
+	" | mode " & cfgMode & " | limit " & LimitText() & " | test address " & TextOr(cfgTestAddress, "(none: all mail files)") & _
+	" | on_deleted " & cfgOnDeleted & " | force_update " & LCase$(CStr(cfgForceUpdate)) & " | max_minutes " & cfgMaxMinutes
+	LoadConfig = True
+	Exit Function
+
+Failed:
+	LogLine "ERROR while reading the configuration (" & Err & ", line " & Erl & "): " & Error$
+	Exit Function
+End Function
+
+Function CheckConfig() As Boolean
+	Dim i As Integer
+	Dim c As Long
+	Dim ok As Boolean
+
+	ok = True
+	baseUrl = Trim$(cfgUrl)
+	Do While Right$(baseUrl, 1) = "/"
+		baseUrl = Left$(baseUrl, Len(baseUrl) - 1)
+	Loop
+	If OriginOf(baseUrl) = "" Or InStr(LCase$(baseUrl), "example.com") > 0 Then
+		LogLine "CONFIG: url must be the https:// address of your SubSignature server."
+		ok = False
+	End If
+	If Left$(cfgToken, 4) <> "ssg_" Or InStr(cfgToken, "REPLACE") > 0 Or Len(cfgToken) < 20 Or Len(cfgToken) > 200 Then
+		LogLine "CONFIG: token is not set (an API token starts with ssg_)."
+		ok = False
+	Else
+		' The token goes into an HTTP header: letters, digits, _ and - only.
+		For i = 1 To Len(cfgToken)
+			c = Uni(Mid$(cfgToken, i, 1))
+			If Not ((c >= 48 And c <= 57) Or (c >= 65 And c <= 90) Or (c >= 97 And c <= 122) Or c = 95 Or c = 45) Then
+				LogLine "CONFIG: token contains invalid characters."
+				ok = False
+				Exit For
+			End If
+		Next
+	End If
+	If Trim$(cfgServers) = "" Then
+		LogLine "CONFIG: servers is empty - list the Domino servers whose mail files the agent may change."
+		ok = False
+	End If
+	If Len(cfgAgentServer) > 200 Or InStr(cfgAgentServer, ",") > 0 Or InStr(cfgAgentServer, ";") > 0 Then
+		LogLine "CONFIG: agent_server must be the name of one server."
+		ok = False
+	End If
+	If cfgMode <> "SHOW" And cfgMode <> "APPLY" And cfgMode <> "RESTORE" And cfgMode <> "EXPORT_DXL" Then
+		LogLine "CONFIG: mode must be SHOW, APPLY, RESTORE or EXPORT_DXL."
+		ok = False
+	End If
+	If cfgTestAddress <> "" And Not ValidAddress(cfgTestAddress) Then
+		LogLine "CONFIG: test_address is not a valid e-mail address."
+		ok = False
+	End If
+	If (cfgMode = "RESTORE" Or cfgMode = "EXPORT_DXL") And cfgTestAddress = "" Then
+		LogLine "CONFIG: mode " & cfgMode & " works on one mail file only - set test_address."
+		ok = False
+	End If
+	If cfgLimit < 0 Or cfgLimit > 1000000 Then
+		LogLine "CONFIG: limit must be between 0 and 1000000."
+		ok = False
+	End If
+	If cfgOnDeleted <> "keep" And cfgOnDeleted <> "restore" And cfgOnDeleted <> "remove" Then
+		LogLine "CONFIG: on_deleted must be keep, restore or remove."
+		ok = False
+	End If
+	If cfgMaxMinutes < 0 Or cfgMaxMinutes > 1440 Then
+		LogLine "CONFIG: max_minutes must be between 0 and 1440."
+		ok = False
+	End If
+	If Not ValidDbPath(cfgDirectory) Then
+		LogLine "CONFIG: directory must be a database path such as names.nsf."
+		ok = False
+	End If
+	CheckConfig = ok
+End Function
+
+' "true/yes/on/1" or "false/no/off/0".
+Function ParseBool(value As String, result As Boolean) As Boolean
+	Select Case LCase$(Trim$(value))
+	Case "true", "yes", "on", "1"
+		result = True
+		ParseBool = True
+	Case "false", "no", "off", "0"
+		result = False
+		ParseBool = True
+	End Select
+End Function
+
+' A whole number of digits only.
+Function ParseCount(value As String, result As Long) As Boolean
+	Dim v As String
+	Dim i As Integer
+
+	v = Trim$(value)
+	If v = "" Or Len(v) > 9 Then Exit Function
+	For i = 1 To Len(v)
+		If InStr("0123456789", Mid$(v, i, 1)) = 0 Then Exit Function
+	Next
+	result = CLng(v)
+	ParseCount = True
+End Function
+
+' A relative database path: letters, digits, _ - . \ /, ending in .nsf, no "..".
+Function ValidDbPath(path As String) As Boolean
+	Dim i As Integer
+	Dim c As Long
+
+	If Len(path) < 5 Or Len(path) > 200 Then Exit Function
+	If LCase$(Right$(path, 4)) <> ".nsf" Or InStr(path, "..") > 0 Or InStr(path, ":") > 0 Then Exit Function
+	If Left$(path, 1) = "\" Or Left$(path, 1) = "/" Then Exit Function
+	For i = 1 To Len(path)
+		c = Uni(Mid$(path, i, 1))
+		If Not ((c >= 48 And c <= 57) Or (c >= 65 And c <= 90) Or (c >= 97 And c <= 122) _
+		Or c = 95 Or c = 45 Or c = 46 Or c = 92 Or c = 47) Then Exit Function
+	Next
+	ValidDbPath = True
+End Function
+
+Function LimitText() As String
+	If cfgLimit = 0 Then
+		LimitText = "none"
+	Else
+		LimitText = CStr(cfgLimit)
+	End If
+End Function
+
+Function TextOr(s As String, fallback As String) As String
+	If s = "" Then
+		TextOr = fallback
+	Else
+		TextOr = s
+	End If
+End Function
+
+' True when a server name matches an entry of a server list. The common name
+' must be the same; an entry with "/" must also have the same organization.
+' Organizational units are ignored, so "domino-hub", "domino-hub/Example",
+' "domino-hub/srv/Example" and "CN=domino-hub/OU=srv/O=Example" all match
+' the server CN=domino-hub/OU=srv/O=Example.
+Function NameMatches(entry As String, serverName As String) As Boolean
+	Dim nm As NotesName
+	Dim en As NotesName
+	Dim e As String
+
+	e = Trim$(entry)
+	If e = "" Or serverName = "" Then Exit Function
+	Set nm = New NotesName(serverName)
+	If LCase$(e) = LCase$(nm.Abbreviated) Or LCase$(e) = LCase$(nm.Canonical) Then
+		NameMatches = True
+		Exit Function
+	End If
+	Set en = New NotesName(e)
+	If LCase$(en.Common) <> LCase$(nm.Common) Then Exit Function
+	If InStr(e, "/") = 0 Then
+		NameMatches = True
+	ElseIf LCase$(en.Organization) = LCase$(nm.Organization) Then
+		NameMatches = True
+	End If
+End Function
+
+' True when the server is in the "servers" list (separated by commas or
+' semicolons).
+Function InServerList(serverName As String) As Boolean
+	Dim parts As Variant
+
+	parts = Split(Replace(cfgServers, ";", ","), ",")
+	ForAll x In parts
+		If NameMatches(CStr(x), serverName) Then InServerList = True
+	End ForAll
+End Function
+
+Function Abbrev(serverName As String) As String
+	Dim nm As NotesName
+
+	Set nm = New NotesName(serverName)
+	Abbrev = nm.Abbreviated
+End Function
+
+' " on <server>" in central mode (where the mail file is), else "".
+Function OnServer(serverName As String) As String
+	If centralMode Then OnServer = " on " & Abbrev(serverName)
+End Function
+
+'------------------------------------------------------------------------------
+' Domino Directory: mail files of this server by Internet address
+'------------------------------------------------------------------------------
+Function LoadDirectory() As Boolean
+	Dim nab As NotesDatabase
+	Dim dc As NotesDocumentCollection
+	Dim doc As NotesDocument
+	Dim nm As NotesName
+	Dim formula As String
+	Dim addr As String
+	Dim mf As String
+	Dim srv As String
+	Dim n As Long
+	Dim found As Long
+
+	On Error GoTo Failed
+	Set nab = session.GetDatabase(thisServer, cfgDirectory, False)
+	If nab Is Nothing Then
+		LogLine "DIRECTORY: cannot open " & cfgDirectory & "."
+		Exit Function
+	End If
+	If Not nab.IsOpen Then
+		LogLine "DIRECTORY: cannot open " & cfgDirectory & "."
+		Exit Function
+	End If
+	If centralMode Then
+		' Every person with a mail file; the servers are compared with the list below.
+		formula = {Form = "Person" & InternetAddress != "" & MailServer != ""}
+	Else
+		formula = {Form = "Person" & InternetAddress != "" & @LowerCase(MailServer) = "} & FormulaText(LCase$(thisServer)) & {"}
+	End If
+	If cfgTestAddress <> "" Then
+		formula = formula & { & @LowerCase(InternetAddress) = "} & FormulaText(cfgTestAddress) & {"}
+	End If
+	Set dc = nab.Search(formula, Nothing, 0)
+	Set doc = dc.GetFirstDocument()
+	Do While Not doc Is Nothing
+		addr = LCase$(Trim$(CStr(doc.GetItemValue("InternetAddress")(0))))
+		mf = Trim$(CStr(doc.GetItemValue("MailFile")(0)))
+		Set nm = New NotesName(Trim$(CStr(doc.GetItemValue("MailServer")(0))))
+		srv = nm.Canonical
+		If addr <> "" And mf <> "" And srv <> "" Then
+			found = found + 1
+			dirSeenServers(srv) = True
+			If Not centralMode Or InServerList(srv) Then
+				If LCase$(Right$(mf, 4)) <> ".nsf" Then mf = mf & ".nsf"
+				If IsElement(dirMailFile(addr)) Then
+					dirAmbiguous(addr) = True
+				Else
+					dirMailFile(addr) = mf
+					dirMailServer(addr) = srv
+					dirFullName(addr) = CStr(doc.GetItemValue("FullName")(0))
+				End If
+				n = n + 1
+			ElseIf cfgTestAddress <> "" Then
+				LogLine "DIRECTORY: " & addr & " has the mail file " & mf & " on " & nm.Abbreviated & " - that server is not in 'servers'."
+			End If
+		End If
+		Set doc = dc.GetNextDocument(doc)
+	Loop
+	If centralMode Then
+		LogLine "Directory: " & n & " person(s) with a mail file on the listed servers" & TestSuffix() & "."
+	Else
+		LogLine "Directory: " & n & " person(s) with a mail file on this server" & TestSuffix() & "."
+	End If
+	If cfgTestAddress <> "" And found = 0 Then
+		If centralMode Then
+			LogLine "DIRECTORY: no Person document in " & cfgDirectory & " has the Internet address " & cfgTestAddress & " (field InternetAddress) together with a mail server and mail file."
+		Else
+			LogLine "DIRECTORY: no Person document with the Internet address " & cfgTestAddress & " has its mail file on this server."
+		End If
+	End If
+	If centralMode And cfgTestAddress = "" Then Call CheckServerEntries()
+	LoadDirectory = True
+	Exit Function
+
+Failed:
+	LogLine "ERROR while reading the directory (" & Err & ", line " & Erl & "): " & Error$
+	Exit Function
+End Function
+
+' Central mode: warns about entries of "servers" that match no mail server of
+' the directory (usually a misspelled name) and lists the names it knows.
+Sub CheckServerEntries()
+	Dim parts As Variant
+	Dim known As String
+	Dim hit As Boolean
+	Dim nm As NotesName
+
+	ForAll ks In dirSeenServers
+		Set nm = New NotesName(ListTag(ks))
+		If known <> "" Then known = known & ", "
+		known = known & nm.Abbreviated
+	End ForAll
+	parts = Split(Replace(cfgServers, ";", ","), ",")
+	ForAll x In parts
+		If Trim$(CStr(x)) <> "" Then
+			hit = False
+			ForAll ss In dirSeenServers
+				If NameMatches(CStr(x), ListTag(ss)) Then hit = True
+			End ForAll
+			If Not hit Then
+				LogLine "WARNING: no person has a mail file on the server '" & Trim$(CStr(x)) & "' (servers). Mail servers in the directory: " & known
+			End If
+		End If
+	End ForAll
+End Sub
+
+Function TestSuffix() As String
+	If cfgTestAddress <> "" Then TestSuffix = " (only " & cfgTestAddress & ")"
+End Function
+
+' Key of a mail file (server!!path), also used for the backup documents.
+Function MailKey(serverName As String, mailFile As String) As String
+	MailKey = LCase$(Abbrev(serverName) & "!!" & Replace(mailFile, "\", "/"))
+End Function
+
+' Opens a mail file on its server; Nothing (and lastOpenError) on failure.
+Function OpenMailDb(serverName As String, mailFile As String) As NotesDatabase
+	Dim mdb As NotesDatabase
+
+	On Error GoTo Failed
+	lastOpenError = ""
+	Set mdb = session.GetDatabase(serverName, mailFile, False)
+	If mdb Is Nothing Then
+		lastOpenError = "not found"
+		Exit Function
+	End If
+	If Not mdb.IsOpen Then
+		lastOpenError = "not opened (path or access)"
+		Exit Function
+	End If
+	Set OpenMailDb = mdb
+	Exit Function
+
+Failed:
+	lastOpenError = "error " & Err & ": " & Error$
+	Exit Function
+End Function
+
+' Hint for a mail file on another server that cannot be opened.
+Function RemoteHint(serverName As String) As String
+	If LCase$(serverName) <> LCase$(thisServer) Then
+		RemoteHint = " - " & Abbrev(serverName) & " must list " & Abbrev(thisServer) & " under 'Trusted servers' (server document, Security), and the servers must reach each other"
+	End If
+End Function
+
+'------------------------------------------------------------------------------
+' Signature list from SubSignature
+'------------------------------------------------------------------------------
+Function FetchSignatureList() As Boolean
+	Dim url As String
+	Dim status As Integer
+	Dim errText As String
+	Dim nav As NotesJSONNavigator
+	Dim offset As Long
+	Dim n As Long
+	Dim i As Long
+	Dim idx As Long
+	Dim total As Long
+	Dim pages As Long
+	Dim p As String
+	Dim addr As String
+	Dim id As String
+	Dim upd As String
+	Dim sha As String
+	Dim srv As String
+	Dim mf As String
+
+	On Error GoTo Failed
+	candCount = 0
+	ReDim candAddress(0)
+	ReDim candKey(0)
+	ReDim candServer(0)
+	ReDim candId(0)
+	ReDim candUpdated(0)
+	ReDim candHtmlSha(0)
+	Do
+		url = baseUrl & "/api/v1/signatures?limit=" & PAGE_SIZE & "&offset=" & offset
+		If cfgTestAddress <> "" Then url = url & "&email=" & UrlEncode(cfgTestAddress)
+		Set nav = ApiGetNav(url, status, errText)
+		If status <> 200 Then
+			LogLine "API: " & DescribeFailure(status, errText) & ApiErrorNav(nav)
+			Exit Function
+		End If
+		If nav Is Nothing Then
+			LogLine "API: empty answer."
+			Exit Function
+		End If
+		n = CLng(Val(JsonText(nav, "/count")))
+		pages = pages + 1
+		For i = 0 To n - 1
+			p = "/items/" & CStr(i) & "/"
+			addr = LCase$(Trim$(JsonText(nav, p & "email")))
+			id = CStr(CLng(Val(JsonText(nav, p & "id"))))
+			upd = JsonText(nav, p & "updated_at")
+			sha = LCase$(JsonText(nav, p & "html_sha256"))
+			total = total + 1
+			' Only signatures with HTML (the hash of an empty text means none), for an
+			' address with a mail file on this server. The HTML itself is not read here.
+			If addr <> "" And id <> "0" And Len(sha) = 64 And sha <> EMPTY_SHA256 Then
+				If IsElement(dirMailFile(addr)) Then
+					If IsElement(candIndex(addr)) Then
+						' Several signatures for one address: the newest wins (then the higher ID).
+						idx = candIndex(addr)
+						If upd > candUpdated(idx) Or (upd = candUpdated(idx) And CLng(id) > CLng(candId(idx))) Then
+							candId(idx) = id
+							candUpdated(idx) = upd
+							candHtmlSha(idx) = sha
+						End If
+					Else
+						ReDim Preserve candAddress(candCount)
+						ReDim Preserve candKey(candCount)
+						ReDim Preserve candServer(candCount)
+						ReDim Preserve candId(candCount)
+						ReDim Preserve candUpdated(candCount)
+						ReDim Preserve candHtmlSha(candCount)
+						candAddress(candCount) = addr
+						srv = dirMailServer(addr)
+						mf = dirMailFile(addr)
+						candServer(candCount) = srv
+						candKey(candCount) = MailKey(srv, mf)
+						candId(candCount) = id
+						candUpdated(candCount) = upd
+						candHtmlSha(candCount) = sha
+						candIndex(addr) = candCount
+						presentKey(candKey(candCount)) = True
+						candCount = candCount + 1
+					End If
+				End If
+			End If
+		Next
+		If n < PAGE_SIZE Then Exit Do
+		offset = offset + PAGE_SIZE
+		If pages >= 2000 Then
+			LogLine "API: stopped reading after " & pages & " pages."
+			FetchSignatureList = True
+			Exit Function
+		End If
+	Loop
+	listComplete = True
+	If centralMode Then
+		LogLine "API: " & total & " signature(s) read, " & candCount & " for mail files on the listed servers" & TestSuffix() & "."
+	Else
+		LogLine "API: " & total & " signature(s) read, " & candCount & " for mail files on this server" & TestSuffix() & "."
+	End If
+	FetchSignatureList = True
+	Exit Function
+
+Failed:
+	LogLine "ERROR while reading the signature list (" & Err & ", line " & Erl & "): " & Error$
+	Exit Function
+End Function
+
+' The signature as Notes rich text (GET /api/v1/signatures/{id}?notes=dxl).
+Function FetchNotesDxl(sigId As String, dxl As String, complete As Boolean) As Boolean
+	Dim url As String
+	Dim status As Integer
+	Dim errText As String
+	Dim nav As NotesJSONNavigator
+	Dim notesErr As String
+	Dim expectLen As Long
+	Dim st As String
+	Dim k As Integer
+
+	On Error GoTo Failed
+	dxl = ""
+	complete = False
+	url = baseUrl & "/api/v1/signatures/" & CStr(CLng(Val(sigId))) & "?notes=dxl"
+	Set nav = ApiGetNav(url, status, errText)
+	If status <> 200 Then
+		LogLine "  API: " & DescribeFailure(status, errText) & ApiErrorNav(nav)
+		Exit Function
+	End If
+	If nav Is Nothing Then
+		LogLine "  API: empty answer."
+		Exit Function
+	End If
+	notesErr = JsonText(nav, "/notes/error")
+	If notesErr <> "" Then
+		LogLine "  API: the server could not deliver the Notes version (" & notesErr & "): " & JsonText(nav, "/notes/message")
+		Exit Function
+	End If
+	dxl = JsonText(nav, "/notes/dxl")
+	If dxl = "" Then
+		LogLine "  API: the answer has no Notes version of the signature (SubSignature 1.8.0 with notes=dxl is needed)."
+		Exit Function
+	End If
+	expectLen = CLng(Val(JsonText(nav, "/notes/dxl_length")))
+	If expectLen <> Len(dxl) Then
+		LogLine "  API: the Notes version arrived incomplete (" & Len(dxl) & " of " & expectLen & " characters) - not used."
+		dxl = ""
+		Exit Function
+	End If
+	complete = (LCase$(JsonText(nav, "/notes/complete")) = "true")
+	LogLine "  Notes version: " & Len(dxl) & " characters, " & JsonText(nav, "/notes/images_embedded") & " picture(s) embedded."
+	For k = 0 To 19
+		st = JsonText(nav, "/notes/images_missing/" & CStr(k) & "/status")
+		If st = "" Then Exit For
+		LogLine "  picture missing (" & st & "): " & Left$(JsonText(nav, "/notes/images_missing/" & CStr(k) & "/src"), 200) & ImageStatusHint(st)
+	Next
+	For k = 0 To 9
+		st = JsonText(nav, "/notes/warnings/" & CStr(k))
+		If st = "" Then Exit For
+		LogLine "  note from the server: " & st
+	Next
+	FetchNotesDxl = True
+	Exit Function
+
+Failed:
+	LogLine "  ERROR while fetching the Notes version (" & Err & ", line " & Erl & "): " & Error$
+	Exit Function
+End Function
+
+'------------------------------------------------------------------------------
+' State documents: which version was written into which mail file
+'------------------------------------------------------------------------------
+Sub LoadStates()
+	Dim dc As NotesDocumentCollection
+	Dim doc As NotesDocument
+	Dim key As String
+	Dim srv As String
+
+	Set dc = ctlDb.Search({Form = "SubSigState"}, Nothing, 0)
+	Set doc = dc.GetFirstDocument()
+	Do While Not doc Is Nothing
+		key = CStr(doc.GetItemValue("SSS_Key")(0))
+		srv = CStr(doc.GetItemValue("SSS_Server")(0))
+		' Only the mail files this run is responsible for.
+		If key <> "" And srv <> "" Then
+			If centralMode Then
+				If InServerList(srv) Then stateUnid(key) = doc.UniversalID
+			ElseIf LCase$(srv) = LCase$(thisServer) Then
+				stateUnid(key) = doc.UniversalID
+			End If
+		End If
+		Set doc = dc.GetNextDocument(doc)
+	Loop
+End Sub
+
+Function GetState(key As String) As NotesDocument
+	If IsElement(stateUnid(key)) Then Set GetState = ctlDb.GetDocumentByUNID(stateUnid(key))
+End Function
+
+Sub SaveState(state As NotesDocument, key As String, addr As String, mailFile As String, serverName As String, sigId As String, htmlSha As String)
+	If state Is Nothing Then
+		Set state = ctlDb.CreateDocument()
+		Call state.ReplaceItemValue("Form", "SubSigState")
+		Call state.ReplaceItemValue("SSS_Key", key)
+	End If
+	' The server of the mail file (not necessarily the server running the agent).
+	Call state.ReplaceItemValue("SSS_Server", serverName)
+	Call state.ReplaceItemValue("Subject", "SubSignature state - " & addr)
+	Call state.ReplaceItemValue("SSS_Address", addr)
+	Call state.ReplaceItemValue("SSS_MailFile", mailFile)
+	Call state.ReplaceItemValue("SSS_SignatureId", sigId)
+	Call state.ReplaceItemValue("SSS_HtmlSha", htmlSha)
+	Call state.ReplaceItemValue("SSS_Written", Now)
+	Call state.ReplaceItemValue("SSS_Version", AGENT_VERSION)
+	Call state.Save(True, False)
+	stateUnid(key) = state.UniversalID
+End Sub
+
+Sub DropState(key As String)
+	Dim state As NotesDocument
+
+	On Error Resume Next
+	Set state = GetState(key)
+	If Not state Is Nothing Then Call state.Remove(True)
+	If IsElement(stateUnid(key)) Then Erase stateUnid(key)
+End Sub
+
+'------------------------------------------------------------------------------
+' Processing the mail files
+'------------------------------------------------------------------------------
+Sub ProcessCandidates()
+	Dim i As Long
+	Dim stoppedEarly As Boolean
+
+	If candCount = 0 Then
+		LogLine "No signature in SubSignature belongs to a mail file on this server" & TestSuffix() & "."
+	End If
+	For i = 0 To candCount - 1
+		If cfgLimit > 0 And i >= cfgLimit Then
+			LogLine "Limit reached (limit = " & cfgLimit & "): the other " & (candCount - cfgLimit) & " signature(s) are not processed in this run."
+			stoppedEarly = True
+			Exit For
+		End If
+		If cfgMaxMinutes > 0 Then
+			If (Now - startTime) * 1440 >= cfgMaxMinutes Then
+				LogLine "Time limit reached (max_minutes = " & cfgMaxMinutes & "): " & (candCount - i) & " signature(s) follow in the next run."
+				stoppedEarly = True
+				Exit For
+			End If
+		End If
+		Call ProcessOne(i)
+	Next
+	processedAll = Not stoppedEarly
+End Sub
+
+Sub ProcessOne(i As Long)
+	Dim addr As String
+	Dim key As String
+	Dim mf As String
+	Dim srv As String
+	Dim mdb As NotesDatabase
+	Dim prof As NotesDocument
+	Dim state As NotesDocument
+	Dim dxl As String
+	Dim complete As Boolean
+	Dim level As Integer
+
+	On Error GoTo Failed
+	addr = candAddress(i)
+	key = candKey(i)
+	srv = candServer(i)
+	LogLine "--- " & addr & " (signature #" & candId(i) & ")" & OnServer(srv)
+	If IsElement(dirAmbiguous(addr)) Then
+		LogLine "  skipped: several Person documents on this server have this Internet address."
+		Call AddReport(candId(i), "warn", "Domino: several Person documents have this address", "", srv)
+		nSkipped = nSkipped + 1
+		Exit Sub
+	End If
+	mf = dirMailFile(addr)
+	Set mdb = OpenMailDb(srv, mf)
+	If mdb Is Nothing Then
+		LogLine "  ERROR: cannot open the mail file " & mf & OnServer(srv) & " (" & dirFullName(addr) & "): " & lastOpenError & RemoteHint(srv) & "."
+		Call AddReport(candId(i), "error", "Domino: cannot open the mail file", "", srv)
+		nErrors = nErrors + 1
+		Exit Sub
+	End If
+	level = mdb.CurrentAccessLevel
+	If level < SS_ACL_EDITOR Then
+		If cfgMode = "APPLY" Then
+			LogLine "  ERROR: " & session.EffectiveUserName & " has only " & AclName(level) & " access to " & mf & " (Editor or higher is needed)."
+			Call AddReport(candId(i), "error", "Domino: no Editor access to the mail file", "", srv)
+			nErrors = nErrors + 1
+			Exit Sub
+		End If
+		LogLine "  note: APPLY needs Editor access to " & mf & " (now: " & AclName(level) & ")."
+	End If
+	Set prof = mdb.GetProfileDocument("CalendarProfile")
+	If prof.IsNewNote Then
+		LogLine "  skipped: the mail preferences of " & mf & " were never saved (no CalendarProfile yet)."
+		Call AddReport(candId(i), "warn", "Domino: the mail preferences were never saved", "", srv)
+		nSkipped = nSkipped + 1
+		Exit Sub
+	End If
+
+	' Written before and nothing changed since?
+	Set state = GetState(key)
+	If Not cfgForceUpdate And Not state Is Nothing Then
+		If CStr(state.GetItemValue("SSS_HtmlSha")(0)) = candHtmlSha(i) And CStr(state.GetItemValue("SSS_SignatureId")(0)) = candId(i) _
+		And prof.HasItem("Signature_Rich") Then
+			LogLine "  unchanged since " & CStr(state.GetItemValue("SSS_Written")(0)) & "."
+			Call AddReport(candId(i), "ok", "", candHtmlSha(i), srv)
+			nUnchanged = nUnchanged + 1
+			Exit Sub
+		End If
+	End If
+
+	If Not FetchNotesDxl(candId(i), dxl, complete) Then
+		Call AddReport(candId(i), "error", "Domino: the Notes version could not be fetched", "", srv)
+		nErrors = nErrors + 1
+		Exit Sub
+	End If
+	If Not complete Then
+		LogLine "  a picture could not be loaded by the SubSignature server yet - not changed now, again in the next run."
+		Call AddReport(candId(i), "warn", "Domino: a picture is not available yet, retried in the next run", "", srv)
+		nSkipped = nSkipped + 1
+		Exit Sub
+	End If
+	If Not CheckDxlFragment(dxl) Then
+		Call AddReport(candId(i), "error", "Domino: the rich text was refused by the security check", "", srv)
+		nErrors = nErrors + 1
+		Exit Sub
+	End If
+	If Not ImportToTemp(dxl) Then
+		Call RemoveTempDoc()
+		Call AddReport(candId(i), "error", "Domino: the DXL import failed", "", srv)
+		nErrors = nErrors + 1
+		Exit Sub
+	End If
+
+	If cfgMode = "SHOW" Then
+		If state Is Nothing Then
+			LogLine "  SHOW: would write the signature (first time: the current signature items are saved first)."
+		Else
+			LogLine "  SHOW: would write the changed signature."
+		End If
+		Call RemoveTempDoc()
+		nWouldUpdate = nWouldUpdate + 1
+		Exit Sub
+	End If
+
+	If Not EnsureBackup(prof, key, addr, mf, srv) Then
+		Call RemoveTempDoc()
+		Call AddReport(candId(i), "error", "Domino: the backup of the old signature failed", "", srv)
+		nErrors = nErrors + 1
+		Exit Sub
+	End If
+	If Not WriteProfile(prof) Then
+		Call RemoveTempDoc()
+		Call AddReport(candId(i), "error", "Domino: writing the signature failed", "", srv)
+		nErrors = nErrors + 1
+		Exit Sub
+	End If
+	Call RemoveTempDoc()
+	Call SaveState(state, key, addr, mf, srv, candId(i), candHtmlSha(i))
+	Call AddReport(candId(i), "ok", "", candHtmlSha(i), srv)
+	nUpdated = nUpdated + 1
+	Exit Sub
+
+Failed:
+	LogLine "  ERROR (" & Err & ", line " & Erl & "): " & Error$
+	Call RemoveTempDoc()
+	Call AddReport(candId(i), "error", "Domino: unexpected error " & Err, "", srv)
+	nErrors = nErrors + 1
+	Exit Sub
+End Sub
+
+' Signatures deleted in SubSignature (also: owner deactivated or address
+' changed). Only checked after a complete run over all mail files.
+Sub HandleDeleted()
+	Dim state As NotesDocument
+	Dim mdb As NotesDatabase
+	Dim prof As NotesDocument
+	Dim key As String
+	Dim addr As String
+	Dim mf As String
+	Dim srv As String
+	Dim gone() As String
+	Dim n As Long
+	Dim i As Long
+
+	On Error GoTo Failed
+	If cfgTestAddress <> "" Then Exit Sub
+	If Not listComplete Or Not processedAll Then
+		LogLine "Deleted signatures: not checked in this run (limit, time limit or incomplete list) - only a complete run checks them."
+		Exit Sub
+	End If
+	ReDim gone(0)
+	ForAll u In stateUnid
+		If Not IsElement(presentKey(ListTag(u))) Then
+			ReDim Preserve gone(n)
+			gone(n) = ListTag(u)
+			n = n + 1
+		End If
+	End ForAll
+	If n = 0 Then Exit Sub
+	LogLine "Signatures deleted in SubSignature: " & n & " mail file(s), on_deleted = " & cfgOnDeleted & "."
+
+	For i = 0 To n - 1
+		key = gone(i)
+		Set state = GetState(key)
+		If Not state Is Nothing Then
+			addr = CStr(state.GetItemValue("SSS_Address")(0))
+			mf = CStr(state.GetItemValue("SSS_MailFile")(0))
+			srv = CStr(state.GetItemValue("SSS_Server")(0))
+			LogLine "--- " & addr & " (" & mf & OnServer(srv) & "): no signature in SubSignature any more."
+			If cfgMode = "SHOW" Then
+				Select Case cfgOnDeleted
+				Case "keep"
+					LogLine "  SHOW: would keep the Notes signature and stop managing this mail file."
+				Case "restore"
+					LogLine "  SHOW: would put back the signature from before SubSignature."
+				Case "remove"
+					LogLine "  SHOW: would remove the signature and switch it off."
+				End Select
+			ElseIf cfgOnDeleted = "keep" Then
+				Call DropState(key)
+				LogLine "  kept the Notes signature; the mail file is no longer managed."
+				nDeleted = nDeleted + 1
+			Else
+				Set mdb = OpenMailDb(srv, mf)
+				If mdb Is Nothing Then
+					LogLine "  the mail file cannot be opened (" & lastOpenError & RemoteHint(srv) & ") - forgotten."
+					Call DropState(key)
+				ElseIf mdb.CurrentAccessLevel < SS_ACL_EDITOR Then
+					LogLine "  ERROR: no Editor access to " & mf & "."
+					nErrors = nErrors + 1
+				ElseIf cfgOnDeleted = "restore" Then
+					If FindBackup(key) Is Nothing Then
+						LogLine "  there is no backup to put back - the Notes signature is kept."
+						Call DropState(key)
+						nDeleted = nDeleted + 1
+					ElseIf RestoreBackup(mdb, key) Then
+						Call DropState(key)
+						nDeleted = nDeleted + 1
+					Else
+						nErrors = nErrors + 1
+					End If
+				Else
+					Set prof = mdb.GetProfileDocument("CalendarProfile")
+					Call RemoveItems(prof, "Signature_Rich")
+					Call prof.ReplaceItemValue("EnableSignature", "0")
+					Call prof.Save(True, False)
+					LogLine "  signature removed and switched off (the backup from before SubSignature is kept)."
+					Call DropState(key)
+					nDeleted = nDeleted + 1
+				End If
+			End If
+		End If
+	Next
+	Exit Sub
+
+Failed:
+	LogLine "ERROR while handling deleted signatures (" & Err & ", line " & Erl & "): " & Error$
+	nErrors = nErrors + 1
+	Exit Sub
+End Sub
+
+'------------------------------------------------------------------------------
+' Single mail file: RESTORE and EXPORT_DXL (test_address)
+'------------------------------------------------------------------------------
+Function TestMailDb(mailFile As String, serverName As String) As NotesDatabase
+	Dim mdb As NotesDatabase
+
+	If IsElement(dirAmbiguous(cfgTestAddress)) Then
+		LogLine "DIRECTORY: several Person documents have the address " & cfgTestAddress & " - refusing to guess."
+		Exit Function
+	End If
+	mailFile = dirMailFile(cfgTestAddress)
+	serverName = dirMailServer(cfgTestAddress)
+	Set mdb = OpenMailDb(serverName, mailFile)
+	If mdb Is Nothing Then
+		LogLine "MAIL FILE: cannot open " & mailFile & OnServer(serverName) & ": " & lastOpenError & RemoteHint(serverName) & "."
+		Exit Function
+	End If
+	Set TestMailDb = mdb
+End Function
+
+Function RestoreOne() As Boolean
+	Dim mdb As NotesDatabase
+	Dim mf As String
+	Dim srv As String
+
+	Set mdb = TestMailDb(mf, srv)
+	If mdb Is Nothing Then Exit Function
+	Call ShowProfile(mdb, "Signature items of " & mf & OnServer(srv) & " now:")
+	If mdb.CurrentAccessLevel < SS_ACL_EDITOR Then
+		LogLine "RESTORE: Editor access or higher is needed (now: " & AclName(mdb.CurrentAccessLevel) & ")."
+		Exit Function
+	End If
+	If Not RestoreBackup(mdb, MailKey(srv, mf)) Then Exit Function
+	' Forget the written version, so the next APPLY writes the signature again.
+	Call LoadStates()
+	Call DropState(MailKey(srv, mf))
+	Call ShowProfile(mdb, "Signature items of " & mf & OnServer(srv) & " after the restore:")
+	RestoreOne = True
+End Function
+
+Function ExportOne() As Boolean
+	Dim mdb As NotesDatabase
+	Dim mf As String
+	Dim srv As String
+
+	Set mdb = TestMailDb(mf, srv)
+	If mdb Is Nothing Then Exit Function
+	Call ShowProfile(mdb, "Signature items of " & mf & OnServer(srv) & ":")
+	ExportOne = ExportDxl(mdb)
+End Function
+
+Sub ShowProfile(mdb As NotesDatabase, title As String)
+	Dim prof As NotesDocument
+	Dim item As NotesItem
+	Dim found As Boolean
+
+	On Error GoTo Failed
+	LogLine title
+	Set prof = mdb.GetProfileDocument("CalendarProfile")
+	If prof.IsNewNote Then
+		LogLine "  The CalendarProfile does not exist yet (the mail preferences were never saved)."
+		Exit Sub
+	End If
+	ForAll it In prof.Items
+		Set item = it
+		If IsSigItem(item.Name) Then
+			LogLine "  " & item.Name & " [" & ItemTypeName(item.Type) & ", " & item.ValueLength & " bytes] " & ItemPreview(item)
+			found = True
+		End If
+	End ForAll
+	If Not found Then LogLine "  (no signature items)"
+	Exit Sub
+
+Failed:
+	LogLine "ERROR while reading the CalendarProfile (" & Err & ", line " & Erl & "): " & Error$
+	Exit Sub
+End Sub
+
+'------------------------------------------------------------------------------
+' Backup / restore of the signature items (kept in THIS database)
+'------------------------------------------------------------------------------
+
+' Saves every signature item of the CalendarProfile before the first change.
+' An existing backup is kept: it always holds the state before SubSignature.
+Function EnsureBackup(prof As NotesDocument, key As String, addr As String, mailFile As String, serverName As String) As Boolean
+	Dim bak As NotesDocument
+	Dim item As NotesItem
+	Dim names() As String
+	Dim n As Integer
+
+	On Error GoTo Failed
+	If Not FindBackup(key) Is Nothing Then
+		EnsureBackup = True
+		Exit Function
+	End If
+	Set bak = ctlDb.CreateDocument()
+	Call bak.ReplaceItemValue("Form", "SubSigBackup")
+	Call bak.ReplaceItemValue("Subject", "SubSignature backup - " & addr)
+	Call bak.ReplaceItemValue("SSB_Key", key)
+	Call bak.ReplaceItemValue("SSB_Address", addr)
+	Call bak.ReplaceItemValue("SSB_MailServer", serverName)
+	Call bak.ReplaceItemValue("SSB_MailFile", mailFile)
+	Call bak.ReplaceItemValue("SSB_Created", Now)
+	Call bak.ReplaceItemValue("SSB_Version", AGENT_VERSION)
+	ReDim names(0)
+	ForAll it In prof.Items
+		Set item = it
+		If IsSigItem(item.Name) Then
+			Call item.CopyItemToDocument(bak, item.Name)
+			ReDim Preserve names(n)
+			names(n) = item.Name
+			n = n + 1
+		End If
+	End ForAll
+	Call bak.ReplaceItemValue("SSB_Items", names)
+	Call bak.Save(True, False)
+	LogLine "  backup: " & n & " signature item(s) of the mail file saved in this database."
+	EnsureBackup = True
+	Exit Function
+
+Failed:
+	LogLine "  ERROR while saving the backup (" & Err & ", line " & Erl & "): " & Error$
+	Exit Function
+End Function
+
+Function FindBackup(key As String) As NotesDocument
+	Dim dc As NotesDocumentCollection
+
+	Set dc = ctlDb.Search({Form = "SubSigBackup" & SSB_Key = "} & FormulaText(key) & {"}, Nothing, 0)
+	If dc.Count > 0 Then Set FindBackup = dc.GetFirstDocument()
+End Function
+
+' Puts the saved signature items back and deletes the backup.
+Function RestoreBackup(mdb As NotesDatabase, key As String) As Boolean
+	Dim bak As NotesDocument
+	Dim prof As NotesDocument
+	Dim item As NotesItem
+	Dim names() As String
+	Dim n As Integer
+	Dim i As Integer
+
+	On Error GoTo Failed
+	Set bak = FindBackup(key)
+	If bak Is Nothing Then
+		LogLine "  RESTORE: there is no backup for this mail file (nothing was written, or it was restored already)."
+		Exit Function
+	End If
+	Set prof = mdb.GetProfileDocument("CalendarProfile")
+	' Remove every signature item, then copy back the saved ones, so items
+	' that did not exist before SubSignature are gone again.
+	ReDim names(0)
+	ForAll it In prof.Items
+		Set item = it
+		If IsSigItem(item.Name) Then
+			ReDim Preserve names(n)
+			names(n) = item.Name
+			n = n + 1
+		End If
+	End ForAll
+	For i = 0 To n - 1
+		Call RemoveItems(prof, names(i))
+	Next
+	ForAll bt In bak.Items
+		Set item = bt
+		If IsSigItem(item.Name) Then Call item.CopyItemToDocument(prof, item.Name)
+	End ForAll
+	Call prof.Save(True, False)
+	LogLine "  RESTORE: the signature items saved on " & CStr(bak.GetItemValue("SSB_Created")(0)) & " are back; backup deleted."
+	Call bak.RemovePermanently(True)
+	RestoreBackup = True
+	Exit Function
+
+Failed:
+	LogLine "  ERROR while restoring (" & Err & ", line " & Erl & "): " & Error$
+	Exit Function
+End Function
+
+'------------------------------------------------------------------------------
+' Status report to SubSignature (POST /api/v1/status)
+'------------------------------------------------------------------------------
+Sub AddReport(sigId As String, status As String, message As String, htmlSha As String, serverName As String)
+	Dim item As String
+	Dim sha As String
+
+	If cfgMode <> "APPLY" Then Exit Sub
+	item = |{"signature_id":| & CStr(CLng(Val(sigId))) & |,"status":"| & status & |"|
+	If message <> "" Then item = item & |,"message":"| & JsonEscape(Left$(message, 300)) & |"|
+	sha = LCase$(htmlSha)
+	If Len(sha) = 64 And IsHex(sha) Then item = item & |,"html_sha256":"| & sha & |"|
+	item = item & |}|
+	ReDim Preserve repItems(repCount)
+	ReDim Preserve repDevice(repCount)
+	repItems(repCount) = item
+	' The device is the mail server, so SubSignature shows the same device name
+	' in central and in distributed mode.
+	repDevice(repCount) = DeviceName(serverName)
+	repCount = repCount + 1
+End Sub
+
+' One status report per device (mail server), at most MAX_REPORT_ITEMS items
+' per request.
+Sub SendStatusReports()
+	Dim devs List As Boolean
+	Dim i As Long
+
+	If repCount = 0 Then Exit Sub
+	For i = 0 To repCount - 1
+		devs(repDevice(i)) = True
+	Next
+	ForAll d In devs
+		Call SendReportsFor(ListTag(d))
+	End ForAll
+End Sub
+
+Sub SendReportsFor(device As String)
+	Dim url As String
+	Dim body As String
+	Dim resp As Variant
+	Dim status As Integer
+	Dim errText As String
+	Dim i As Long
+	Dim inBatch As Long
+	Dim sent As Long
+
+	url = baseUrl & "/api/v1/status"
+	i = 0
+	Do While i < repCount
+		body = ""
+		inBatch = 0
+		Do While i < repCount And inBatch < MAX_REPORT_ITEMS
+			If repDevice(i) = device Then
+				If inBatch > 0 Then body = body & ","
+				body = body & repItems(i)
+				inBatch = inBatch + 1
+			End If
+			i = i + 1
+		Loop
+		If inBatch > 0 Then
+			body = |{"device_id":"| & device & |","agent_version":"domino-| & AGENT_VERSION & |","items":[| & body & |]}|
+			resp = HttpPost(url, body, status, errText)
+			If status = 200 Then
+				sent = sent + inBatch
+			Else
+				LogLine "WARNING: status report for '" & device & "' failed: " & DescribeFailure(status, errText) & ApiError(resp)
+				If status = 403 Then LogLine |  (the token needs the permission "Report sync status" - or set report_status = false)|
+				Exit Sub
+			End If
+		End If
+	Loop
+	LogLine "Status report: " & sent & " signature(s) reported as device '" & device & "'."
+End Sub
+
+' Escapes a value for a JSON string (control characters become spaces).
+Function JsonEscape(s As String) As String
+	Dim i As Long
+	Dim c As Long
+	Dim ch As String
+	Dim buf As String
+
+	For i = 1 To Len(s)
+		ch = Mid$(s, i, 1)
+		c = Uni(ch)
+		If ch = "\" Then
+			buf = buf & "\\"
+		ElseIf c = 34 Then
+			buf = buf & "\" & Chr$(34)
+		ElseIf c < 32 Then
+			buf = buf & " "
+		Else
+			buf = buf & ch
+		End If
+	Next
+	JsonEscape = buf
+End Function
+
+'------------------------------------------------------------------------------
+' Small helpers
+'------------------------------------------------------------------------------
+' Plain e-mail address check. It also keeps the address safe to embed in the
+' directory search formula (no quotes, backslashes or braces).
+Function ValidAddress(addr As String) As Boolean
+	Dim i As Integer
+	Dim c As Long
+	Dim atCount As Integer
+
+	If Len(addr) < 3 Or Len(addr) > 254 Then Exit Function
+	For i = 1 To Len(addr)
+		c = Uni(Mid$(addr, i, 1))
+		If c <= 32 Or c = 34 Or c = 39 Or c = 44 Or c = 59 Or c = 60 Or c = 62 _
+		Or c = 92 Or c = 123 Or c = 124 Or c = 125 Then Exit Function
+		If c = 64 Then atCount = atCount + 1
+	Next
+	If atCount <> 1 Then Exit Function
+	If Left$(addr, 1) = "@" Or Right$(addr, 1) = "@" Then Exit Function
+	ValidAddress = True
+End Function
+
+Function IsSigItem(itemName As String) As Boolean
+	IsSigItem = (InStr(LCase$(itemName), "signature") > 0)
+End Function
+
+' ByVal: NotesItem.Type is passed directly, and a property cannot be passed
+' by reference to a parameter of another numeric type.
+Function ItemTypeName(ByVal t As Long) As String
+	Select Case t
+	Case SS_ITEM_RICHTEXT
+		ItemTypeName = "rich text"
+	Case SS_ITEM_TEXT
+		ItemTypeName = "text"
+	Case SS_ITEM_MIME
+		ItemTypeName = "MIME"
+	Case SS_ITEM_NUMBERS
+		ItemTypeName = "number"
+	Case SS_ITEM_DATETIMES
+		ItemTypeName = "date"
+	Case Else
+		ItemTypeName = "type " & CStr(t)
+	End Select
+End Function
+
+Function ItemPreview(item As NotesItem) As String
+	Dim s As String
+
+	On Error GoTo NoText
+	If item.Type = SS_ITEM_MIME Then
+		ItemPreview = "(MIME part)"
+		Exit Function
+	End If
+	s = OneLine(item.Text)
+	If Len(s) > 120 Then s = Left$(s, 120) & "..."
+	ItemPreview = "= '" & s & "'"
+	Exit Function
+
+NoText:
+	ItemPreview = ""
+	Exit Function
+End Function
+
+Function AclName(ByVal level As Long) As String
+	Select Case level
+	Case 0
+		AclName = "No Access"
+	Case 1
+		AclName = "Depositor"
+	Case 2
+		AclName = "Reader"
+	Case 3
+		AclName = "Author"
+	Case 4
+		AclName = "Editor"
+	Case 5
+		AclName = "Designer"
+	Case 6
+		AclName = "Manager"
+	Case Else
+		AclName = "level " & CStr(level)
+	End Select
+End Function
+
+Function IsHex(s As String) As Boolean
+	Dim i As Integer
+	For i = 1 To Len(s)
+		If InStr("0123456789abcdef", Mid$(s, i, 1)) = 0 Then Exit Function
+	Next
+	IsHex = True
+End Function
+
+' Escapes a value for a "..." string inside an @formula.
+Function FormulaText(s As String) As String
+	FormulaText = Replace(Replace(s, "\", "\\"), Chr$(34), "\" & Chr$(34))
+End Function
+
+' Domino data directory with a trailing separator, or "" when unknown.
+Function DataDirectory() As String
+	Dim path As String
+
+	path = session.GetEnvironmentString("Directory", True)
+	If path = "" Then Exit Function
+	If Right$(path, 1) <> "\" And Right$(path, 1) <> "/" Then path = path & "\"
+	DataDirectory = path
+End Function
+
+Sub RemoveItems(doc As NotesDocument, itemName As String)
+	Dim guard As Integer
+	Do While doc.HasItem(itemName) And guard < 50
+		Call doc.RemoveItem(itemName)
+		guard = guard + 1
+	Loop
+End Sub
+
+Sub RemoveTempDoc()
+	On Error Resume Next
+	If tmpDoc Is Nothing And tmpUnid <> "" Then Set tmpDoc = ctlDb.GetDocumentByUNID(tmpUnid)
+	If Not tmpDoc Is Nothing Then
+		If Not tmpDoc.IsNewNote Then Call tmpDoc.RemovePermanently(True)
+	End If
+	Set tmpDoc = Nothing
+	tmpUnid = ""
+End Sub
+
+'------------------------------------------------------------------------------
+' HTTP and JSON
+'------------------------------------------------------------------------------
+'------------------------------------------------------------------------------
+' SubSignature API
+'------------------------------------------------------------------------------
+Function CheckApi() As Boolean
+	Dim status As Integer
+	Dim errText As String
+	Dim nav As NotesJSONNavigator
+
+	LogLine "API check: GET " & baseUrl & "/api/v1/"
+	Set nav = ApiGetNav(baseUrl & "/api/v1/", status, errText)
+	If status <> 200 Then
+		LogLine "API: " & DescribeFailure(status, errText) & ApiErrorNav(nav)
+		Exit Function
+	End If
+	If nav Is Nothing Then
+		LogLine "API: empty answer."
+		Exit Function
+	End If
+	LogLine "API: " & JsonText(nav, "/service") & " " & JsonText(nav, "/version") & ", token '" & JsonText(nav, "/token") & "'"
+	CheckApi = True
+End Function
+
+' Device name "Domino <server>" for the status report and the
+' X-SubSignature-Device header. The API allows only letters, digits, space
+' and . _ - @ (max. 80 characters).
+Function DeviceName(serverName As String) As String
+	Dim nm As NotesName
+	Dim s As String
+	Dim buf As String
+	Dim ch As String
+	Dim c As Long
+	Dim i As Integer
+
+	Set nm = New NotesName(serverName)
+	s = "Domino " & nm.Common
+	For i = 1 To Len(s)
+		ch = Mid$(s, i, 1)
+		c = Uni(ch)
+		If (c >= 48 And c <= 57) Or (c >= 65 And c <= 90) Or (c >= 97 And c <= 122) _
+		Or ch = " " Or ch = "." Or ch = "_" Or ch = "-" Or ch = "@" Then
+			buf = buf & ch
+		Else
+			buf = buf & "-"
+		End If
+	Next
+	DeviceName = Left$(buf, 80)
+End Function
+
+' GET for API calls. With PreferJSONNavigator Domino parses the answer itself
+' and returns a NotesJSONNavigator: no 64 KB limit, unlike answers returned as
+' a byte array or a string (a large signature list exceeds it). status = HTTP
+' status, or 0 when the request failed (errText says why). Redirects are not
+' followed.
+Function ApiGetNav(url As String, status As Integer, errText As String) As NotesJSONNavigator
+	Dim req As NotesHTTPRequest
+	Dim nav As NotesJSONNavigator
+	Dim code As Integer
+
+	status = 0
+	errText = ""
+	On Error GoTo Failed
+	Set req = session.CreateHTTPRequest()
+	req.PreferJSONNavigator = True
+	req.TimeoutSec = HTTP_TIMEOUT_SEC
+	req.MaxRedirects = 0
+	Call req.SetHeaderField("User-Agent", "SubSignature-Domino/" & AGENT_VERSION)
+	Call req.SetHeaderField("Authorization", "Bearer " & cfgToken)
+	Call req.SetHeaderField("Accept", "application/json")
+	' Shown as the device in SubSignature's System Logs -> API Requests.
+	Call req.SetHeaderField("X-SubSignature-Device", DeviceName(thisServer))
+	lastHeaders = ""
+	Set nav = req.Get(url)
+	status = SafeStatus(req)
+	lastHeaders = SafeHeaders(req)
+	Set ApiGetNav = nav
+	Exit Function
+
+Failed:
+	' Get raised an error: network or TLS problem, or an answer that is not JSON
+	' (for example an HTML error page from a proxy).
+	errText = "error " & Err & ": " & Error$
+	status = 0
+	If Not req Is Nothing Then
+		lastHeaders = SafeHeaders(req)
+		code = SafeStatus(req)
+		If code <> 0 And code <> 200 Then
+			' A plain HTTP error: report the code like any other HTTP failure.
+			status = code
+		ElseIf code = 200 Then
+			errText = errText & " (HTTP 200, but the answer is not JSON"
+			If lastHeaders <> "" Then errText = errText & ": " & lastHeaders
+			errText = errText & " - check url in the configuration file)"
+		End If
+	End If
+	Exit Function
+End Function
+
+' " (code: message)" from an API error answer, or "" when there is none.
+Function ApiErrorNav(nav As NotesJSONNavigator) As String
+	Dim errCode As String
+
+	On Error GoTo NoJson
+	If nav Is Nothing Then Exit Function
+	errCode = JsonText(nav, "/error/code")
+	If errCode <> "" Then ApiErrorNav = " (" & errCode & ": " & JsonText(nav, "/error/message") & ")"
+	Exit Function
+
+NoJson:
+	Exit Function
+End Function
+
+Function HttpPost(url As String, body As String, status As Integer, errText As String) As Variant
+	Dim req As NotesHTTPRequest
+
+	status = 0
+	errText = ""
+	On Error GoTo Failed
+	Set req = session.CreateHTTPRequest()
+	req.PreferStrings = False
+	req.TimeoutSec = HTTP_TIMEOUT_SEC
+	req.MaxRedirects = 0
+	Call req.SetHeaderField("User-Agent", "SubSignature-Domino/" & AGENT_VERSION)
+	Call req.SetHeaderField("Authorization", "Bearer " & cfgToken)
+	Call req.SetHeaderField("Accept", "application/json")
+	Call req.SetHeaderField("Content-Type", "application/json")
+	Call req.SetHeaderField("X-SubSignature-Device", DeviceName(thisServer))
+	HttpPost = req.Post(url, body)
+	status = SafeStatus(req)
+	Exit Function
+
+Failed:
+	errText = "error " & Err & ": " & Error$
+	If Not req Is Nothing Then
+		If SafeStatus(req) <> 0 Then errText = errText & " (HTTP " & SafeStatus(req) & ")"
+	End If
+	status = 0
+	Exit Function
+End Function
+
+' Content-Type and Content-Length of the response, for the log.
+Function SafeHeaders(req As NotesHTTPRequest) As String
+	Dim h As Variant
+	Dim buf As String
+	Dim hline As String
+
+	On Error GoTo NoHeaders
+	h = req.GetResponseHeaders()
+	If IsArray(h) Then
+		ForAll x In h
+			hline = Trim$(CStr(x))
+			If LCase$(Left$(hline, 13)) = "content-type:" Or LCase$(Left$(hline, 15)) = "content-length:" Then
+				If buf <> "" Then buf = buf & "; "
+				buf = buf & hline
+			End If
+		End ForAll
+	End If
+	SafeHeaders = buf
+	Exit Function
+
+NoHeaders:
+	SafeHeaders = ""
+	Exit Function
+End Function
+
+' ResponseCode is a string; depending on the release it holds "200" or a
+' status line such as "HTTP/1.1 200 OK". Returns 0 when there is none.
+Function SafeStatus(req As NotesHTTPRequest) As Integer
+	Dim s As String
+	Dim p As Integer
+
+	On Error GoTo NoCode
+	s = Trim$(CStr(req.ResponseCode))
+	If LCase$(Left$(s, 5)) = "http/" Then
+		p = InStr(s, " ")
+		If p > 0 Then s = Trim$(Mid$(s, p + 1))
+	End If
+	If Len(s) >= 3 Then
+		If IsNumeric(Left$(s, 3)) Then SafeStatus = CInt(Left$(s, 3))
+	End If
+	Exit Function
+
+NoCode:
+	SafeStatus = 0
+	Exit Function
+End Function
+
+Function DescribeFailure(status As Integer, errText As String) As String
+	Dim le As String
+	If status = 0 Then
+		le = LCase$(errText)
+		If InStr(le, "restricted") > 0 Or InStr(errText, "4179") > 0 Then
+			DescribeFailure = "request failed: " & errText & " (set the agent's runtime security level to 2. Allow restricted operations)"
+		ElseIf InStr(le, "ssl") > 0 Or InStr(le, "certificate") > 0 Or InStr(le, "tls") > 0 Then
+			DescribeFailure = "request failed: " & errText & " (this machine does not trust the server's TLS certificate - see README)"
+		ElseIf InStr(errText, "(HTTP ") > 0 Then
+			DescribeFailure = "request failed: " & errText
+		Else
+			DescribeFailure = "request failed: " & errText & " (check name resolution, firewall/proxy and TLS trust - see README)"
+		End If
+	ElseIf status >= 300 And status < 400 Then
+		DescribeFailure = "HTTP " & status & " redirect, not followed (check url in the configuration file)"
+	Else
+		DescribeFailure = "HTTP " & status
+	End If
+End Function
+
+' " (code: message)" from an API error body, or "" when there is none.
+Function ApiError(resp As Variant) As String
+	Dim nav As NotesJSONNavigator
+	Dim errCode As String
+
+	On Error GoTo NoJson
+	If IsEmpty(resp) Then Exit Function
+	Set nav = session.CreateJSONNavigator(resp)
+	errCode = JsonText(nav, "/error/code")
+	If errCode <> "" Then ApiError = " (" & errCode & ": " & JsonText(nav, "/error/message") & ")"
+	Exit Function
+
+NoJson:
+	ApiError = ""
+	Exit Function
+End Function
+
+' Value at a JSON pointer as text; "" when it does not exist or is null.
+Function JsonText(nav As NotesJSONNavigator, ptr As String) As String
+	Dim el As NotesJSONElement
+
+	On Error GoTo Missing
+	Set el = nav.GetElementByPointer(ptr)
+	If el Is Nothing Then Exit Function
+	JsonText = CStr(el.Value)
+	Exit Function
+
+Missing:
+	JsonText = ""
+	Exit Function
+End Function
+
+' Percent-encodes a query value (UTF-8).
+Function UrlEncode(s As String) As String
+	Dim i As Long
+	Dim c As Long
+	Dim ch As String
+	Dim buf As String
+
+	For i = 1 To Len(s)
+		ch = Mid$(s, i, 1)
+		c = Uni(ch)
+		If (c >= 48 And c <= 57) Or (c >= 65 And c <= 90) Or (c >= 97 And c <= 122) _
+		Or ch = "-" Or ch = "." Or ch = "_" Or ch = "~" Then
+			buf = buf & ch
+		ElseIf c < 128 Then
+			buf = buf & "%" & Right$("0" & Hex$(c), 2)
+		ElseIf c < 2048 Then
+			buf = buf & "%" & Hex$(192 + (c \ 64)) & "%" & Hex$(128 + (c Mod 64))
+		Else
+			buf = buf & "%" & Hex$(224 + (c \ 4096)) & "%" & Hex$(128 + ((c \ 64) Mod 64)) & "%" & Hex$(128 + (c Mod 64))
+		End If
+	Next
+	UrlEncode = buf
+End Function
+
+' "https://host[:port]" in lower case, or "" when url is not an absolute
+' https URL, contains spaces/control characters or carries user info.
+Function OriginOf(url As String) As String
+	Dim rest As String
+	Dim auth As String
+	Dim ch As String
+	Dim p As Long
+	Dim i As Long
+
+	If LCase$(Left$(url, 8)) <> "https://" Then Exit Function
+	For i = 1 To Len(url)
+		If Uni(Mid$(url, i, 1)) <= 32 Then Exit Function
+	Next
+	rest = Mid$(url, 9)
+	p = 1
+	Do While p <= Len(rest)
+		ch = Mid$(rest, p, 1)
+		If ch = "/" Or ch = "?" Or ch = "#" Or ch = "\" Then Exit Do
+		p = p + 1
+	Loop
+	auth = LCase$(Left$(rest, p - 1))
+	If auth = "" Or InStr(auth, "@") > 0 Then Exit Function
+	If Right$(auth, 4) = ":443" Then auth = Left$(auth, Len(auth) - 4)
+	OriginOf = "https://" & auth
+End Function
+
+' What to do about a picture status the server reported.
+Function ImageStatusHint(st As String) As String
+	Select Case st
+	Case "not_allowed"
+		ImageStatusHint = " - add its host in SubSignature under Configuration -> Image hosts for embedding"
+	Case "https_required"
+		ImageStatusHint = " - the template must use an https:// address"
+	Case "fetch_deferred"
+		ImageStatusHint = " - the server fetches it in a later request; run again"
+	Case "fetch_failed", "blocked_address"
+		ImageStatusHint = " - the SubSignature server could not load it (address, firewall, or a private IP)"
+	Case "fetch_unavailable"
+		ImageStatusHint = " - the SubSignature server needs the PHP extension curl"
+	Case Else
+		ImageStatusHint = ""
+	End Select
+End Function
+
+'------------------------------------------------------------------------------
+' Rich text: security check, DXL import, writing the profile, export
+'------------------------------------------------------------------------------
+' Security check of the rich text before it is imported: every element must
+' be on the DXL_ALLOWED list (no comments, processing instructions, CDATA,
+' code, formulas, buttons, fields or references), and every link must be
+' http(s), mailto or tel.
+Function CheckDxlFragment(frag As String) As Boolean
+	Dim n As Long
+	Dim i As Long
+	Dim j As Long
+	Dim c As Long
+	Dim nm As String
+	Dim tags As Long
+
+	n = Len(frag)
+	i = InStr(1, frag, "<")
+	Do While i > 0
+		j = i + 1
+		If Mid$(frag, j, 1) = "/" Then j = j + 1
+		nm = ""
+		Do While j <= n
+			c = Uni(Mid$(frag, j, 1))
+			If (c >= 48 And c <= 57) Or (c >= 65 And c <= 90) Or (c >= 97 And c <= 122) _
+			Or c = 45 Or c = 46 Or c = 58 Or c = 95 Then
+				nm = nm & Chr$(c)
+				j = j + 1
+			Else
+				Exit Do
+			End If
+		Loop
+		If nm = "" Then
+			LogLine "  refused - the rich text contains a comment, a processing instruction or CDATA (character " & i & ")."
+			Exit Function
+		End If
+		If InStr(DXL_ALLOWED, "|" & LCase$(nm) & "|") = 0 Then
+			LogLine "  refused - the rich text contains the element <" & nm & ">. Allowed are only text, fonts, links, pictures and tables."
+			Exit Function
+		End If
+		tags = tags + 1
+		i = InStr(j, frag, "<")
+	Loop
+	If Not CheckDxlLinks(frag, "href='") Then Exit Function
+	If Not CheckDxlLinks(frag, {href="}) Then Exit Function
+	LogLine "  security check passed (" & tags & " tags, only allowed elements and links)."
+	CheckDxlFragment = True
+End Function
+
+Function CheckDxlLinks(frag As String, marker As String) As Boolean
+	Dim i As Long
+	Dim v As String
+
+	i = InStr(1, frag, marker, 1)
+	Do While i > 0
+		v = LCase$(Mid$(frag, i + Len(marker), 8))
+		If Left$(v, 7) <> "http://" And Left$(v, 8) <> "https://" _
+		And Left$(v, 7) <> "mailto:" And Left$(v, 4) <> "tel:" Then
+			LogLine "  refused - a link does not start with http://, https://, mailto: or tel: (" & OneLine(Mid$(frag, i, 60)) & ")."
+			Exit Function
+		End If
+		i = InStr(i + Len(marker), frag, marker, 1)
+	Loop
+	CheckDxlLinks = True
+End Function
+
+' Imports the checked rich text into a temporary document of THIS database
+' (tmpDoc, removed again at the end of the run).
+Function ImportToTemp(frag As String) As Boolean
+	Dim dxl As String
+	Dim importer As NotesDXLImporter
+	Dim noteId As String
+	Dim item As NotesItem
+	Dim nl As String
+
+	On Error GoTo Failed
+	session.ConvertMIME = False
+	nl = Chr$(10)
+	dxl = "<?xml version='1.0'?>" & nl & _
+	"<document xmlns='http://www.lotus.com/dxl' version='14.0' form='SubSigImport'>" & nl & _
+	"<item name='Subject'><text>SubSignature - temporary import document, safe to delete</text></item>" & nl & _
+	"<item name='Signature_Rich'>" & frag & "</item>" & nl & _
+	"</document>"
+
+	Set importer = session.CreateDXLImporter()
+	importer.DocumentImportOption = SS_DXLIMPORT_CREATE
+	importer.InputValidationOption = SS_DXL_VALIDATE_NEVER
+	importer.ReplicaRequiredForReplaceOrUpdate = False
+	importer.ExitOnFirstFatalError = True
+	LogLine "  importing the rich text into a temporary document of this database ..."
+	Call importer.Import(dxl, ctlDb)
+	If importer.ImportedNoteCount < 1 Then
+		LogLine "  import: the DXL importer created no document. Importer log: " & ImporterLog(importer)
+		Exit Function
+	End If
+	noteId = importer.GetFirstImportedNoteID()
+	Set tmpDoc = ctlDb.GetDocumentByID(noteId)
+	If tmpDoc Is Nothing Then
+		LogLine "  import: the imported document cannot be found (note ID " & noteId & ")."
+		Exit Function
+	End If
+	tmpUnid = tmpDoc.UniversalID
+	Set item = tmpDoc.GetFirstItem("Signature_Rich")
+	If item Is Nothing Then
+		LogLine "  import: the imported document has no Signature_Rich item."
+		Exit Function
+	End If
+	If item.Type <> SS_ITEM_RICHTEXT Then
+		LogLine "  import: Signature_Rich was imported as " & ItemTypeName(item.Type) & ", not as rich text."
+		Exit Function
+	End If
+	LogLine "  rich text OK (" & item.ValueLength & " bytes). Text: " & OneLine(Left$(item.Text, 200))
+	If tmpDoc.HasEmbedded Then
+		LogLine "  WARNING: the imported rich text has attachments or embedded objects - pictures should be inline."
+	Else
+		LogLine "  no attachments - the pictures are stored inline."
+	End If
+	ImportToTemp = True
+	Exit Function
+
+Failed:
+	LogLine "  ERROR during the DXL import (" & Err & ", line " & Erl & "): " & Error$
+	If Not importer Is Nothing Then LogLine "  Importer log: " & ImporterLog(importer)
+	Exit Function
+End Function
+
+' The importer's own log (XML with the parser errors), shortened to one line.
+Function ImporterLog(importer As NotesDXLImporter) As String
+	Dim txt As String
+
+	On Error GoTo NoLog
+	txt = OneLine(Left$(importer.Log, 1500))
+	If txt = "" Then txt = "(empty)"
+	ImporterLog = txt
+	Exit Function
+NoLog:
+	ImporterLog = "(not available)"
+	Exit Function
+End Function
+
+' Copies Signature_Rich of the imported temporary document into the
+' CalendarProfile of a mail file (after the backup).
+Function WriteProfile(prof As NotesDocument) As Boolean
+	Dim item As NotesItem
+
+	On Error GoTo Failed
+	If tmpDoc Is Nothing Then Exit Function
+	Set item = tmpDoc.GetFirstItem("Signature_Rich")
+	If item Is Nothing Then Exit Function
+	Call RemoveItems(prof, "Signature_Rich")
+	Call item.CopyItemToDocument(prof, "Signature_Rich")
+	Call prof.ReplaceItemValue("EnableSignature", "1")
+	Call prof.ReplaceItemValue("SignatureOption", "3")
+	Call prof.Save(True, False)
+	LogLine "  signature written (Signature_Rich, EnableSignature = 1, SignatureOption = 3)."
+	WriteProfile = True
+	Exit Function
+
+Failed:
+	LogLine "  ERROR while writing the signature (" & Err & ", line " & Erl & "): " & Error$
+	Exit Function
+End Function
+
+' Copies only the signature items of the CalendarProfile into a temporary
+' document of this database and exports that as DXL, so the file shows how
+' Notes stores the signature (rich text, tables, fonts, pictures) without any
+' other preference of the mail file.
+Function ExportDxl(mdb As NotesDatabase) As Boolean
+	Dim prof As NotesDocument
+	Dim tmp As NotesDocument
+	Dim item As NotesItem
+	Dim exporter As NotesDXLExporter
+	Dim st As NotesStream
+	Dim path As String
+	Dim dxl As String
+	Dim n As Integer
+
+	On Error GoTo Failed
+	session.ConvertMIME = False
+	Set prof = mdb.GetProfileDocument("CalendarProfile")
+	If prof.IsNewNote Then
+		LogLine "EXPORT: the CalendarProfile does not exist yet - set up the signature in the mail preferences first."
+		Exit Function
+	End If
+
+	Set tmp = ctlDb.CreateDocument()
+	Call tmp.ReplaceItemValue("Form", "SubSigExport")
+	Call tmp.ReplaceItemValue("Subject", "SubSignature - temporary export document, safe to delete")
+	ForAll it In prof.Items
+		Set item = it
+		If IsSigItem(item.Name) Then
+			Call item.CopyItemToDocument(tmp, item.Name)
+			n = n + 1
+		End If
+	End ForAll
+	Call tmp.Save(True, False)
+
+	Set exporter = session.CreateDXLExporter()
+	dxl = exporter.Export(tmp)
+	Call tmp.RemovePermanently(True)
+
+	path = DataDirectory()
+	If path = "" Then
+		LogLine "EXPORT: the data directory is unknown (notes.ini Directory)."
+		Exit Function
+	End If
+	path = path & "subsignature-signature.dxl"
+
+	Set st = session.CreateStream()
+	If Not st.Open(path, "UTF-8") Then
+		LogLine "EXPORT: cannot write " & path
+		Exit Function
+	End If
+	Call st.Truncate()
+	Call st.WriteText(dxl)
+	Call st.Close()
+	LogLine "EXPORT: " & n & " signature item(s) written as DXL to " & path & " (" & Len(dxl) & " characters)."
+	LogLine "EXPORT: nothing was changed in the mail file."
+	ExportDxl = True
+	Exit Function
+
+Failed:
+	LogLine "ERROR during the DXL export (" & Err & ", line " & Erl & "): " & Error$
+	Exit Function
+End Function
+
+'------------------------------------------------------------------------------
+' Logging: Print (server console), agent log, and a message box when run in
+' the Notes client.
+'------------------------------------------------------------------------------
+'------------------------------------------------------------------------------
+' Logging: Print (client status bar / server console), agent log, and a
+' message box at the end when run in the Notes client.
+'------------------------------------------------------------------------------
+Sub LogOpen()
+	On Error GoTo NoLog
+	Set agentLog = session.CreateLog("SubSignature for Domino")
+	Call agentLog.OpenAgentLog()
+	Exit Sub
+
+NoLog:
+	Set agentLog = Nothing
+	Exit Sub
+End Sub
+
+Sub LogClose()
+	On Error Resume Next
+	If Not agentLog Is Nothing Then Call agentLog.Close()
+End Sub
+
+Sub LogLine(msg As String)
+	Print msg
+	logText = logText & msg & Chr$(10)
+	If Not agentLog Is Nothing Then
+		On Error Resume Next
+		Call agentLog.LogAction(Left$(msg, 1000))
+	End If
+End Sub
+
+Function OneLine(s As String) As String
+	OneLine = Replace(Replace(Replace(s, Chr$(13), " "), Chr$(10), " "), Chr$(9), " ")
+End Function
+
