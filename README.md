@@ -366,6 +366,10 @@ The focused LDAP JIT provisioning checks can be run with `php tests/LdapJitProvi
 from the repository root. They require PHP with SQLite3 and mbstring; LDAP filter escaping is
 also checked when the LDAP extension is available.
 
+For a manual LDAPS/JIT integration check with an isolated Samba AD, see
+[`tests/iximiuz/README.md`](tests/iximiuz/README.md). Each tester uses their own Iximiuz account;
+the test playground is private and does not expose LDAP ports.
+
 ## License
 
 MIT, see [LICENSE](LICENSE).
