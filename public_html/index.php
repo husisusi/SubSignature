@@ -218,7 +218,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <input type="hidden" name="csrf_token" value="<?php echo e($csrf_token); ?>">
             
             <div class="input-group">
-                <label class="input-label"><i class="fas fa-user"></i> <?= et('Username') ?></label>
+                <label class="input-label"><i class="fas fa-user"></i> <?= et(getSetting($db, 'ldap_auth_enabled', '0') === '1' ? 'Username or directory email' : 'Username') ?></label>
                 <input type="text" name="username" class="input-field" placeholder="<?= et('Enter username') ?>" maxlength="254"
                            required autofocus autocomplete="username"
                        value="<?php echo isset($_POST['username']) && is_string($_POST['username']) ? e($_POST['username']) : ''; ?>"

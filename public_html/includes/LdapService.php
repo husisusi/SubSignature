@@ -81,8 +81,13 @@ class LdapService implements LdapClientInterface, LdapAuthenticatorInterface
         if ($c['encryption'] !== 'none') {
             $mode = $c['verify_cert'] ? LDAP_OPT_X_TLS_DEMAND : LDAP_OPT_X_TLS_NEVER;
             ldap_set_option(null, LDAP_OPT_X_TLS_REQUIRE_CERT, $mode);
-            if ($c['ca_file'] !== '' && is_file($c['ca_file'])) {
-                ldap_set_option(null, LDAP_OPT_X_TLS_CACERTFILE, $c['ca_file']);
+            if ($c['ca_file'] !== '') {
+                if (!is_file($c['ca_file']) || !is_readable($c['ca_file'])) {
+                    throw new RuntimeException(t('Configured LDAP CA certificate file is missing or unreadable.'));
+                }
+                if (!ldap_set_option(null, LDAP_OPT_X_TLS_CACERTFILE, $c['ca_file'])) {
+                    throw new RuntimeException(t('Could not configure the LDAP CA certificate file.'));
+                }
             }
         }
 

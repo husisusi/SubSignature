@@ -38,10 +38,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_profile'])) {
     
     requireCsrf();
 
+    $sourceStmt = $db->prepare('SELECT auth_source FROM users WHERE id = ?');
+    $sourceStmt->bindValue(1, $target_user_id, SQLITE3_INTEGER);
+    $targetSource = $sourceStmt->execute()->fetchArray(SQLITE3_ASSOC);
+    $is_ldap_profile = ($targetSource['auth_source'] ?? 'local') === 'ldap';
+
     $full_name = cleanText($_POST['full_name'] ?? '', 100);
     $email = cleanText($_POST['email'] ?? '', 254);
 
-    if ($email !== '' && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+    if ($is_ldap_profile) {
+        $error = t('Full name and email are managed by LDAP and updated at sign-in.');
+    } elseif ($email !== '' && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
         $error = t('Invalid email address!');
     } else {
         // The email address must stay unique (it is also checked at registration).
@@ -75,11 +82,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_profile'])) {
 }
 
 // 5. Load User Data (Target User)
-$stmt = $db->prepare("SELECT username, email, full_name, role, created_at, last_login 
+$stmt = $db->prepare("SELECT username, email, full_name, role, created_at, last_login, auth_source
                      FROM users WHERE id = ?");
 $stmt->bindValue(1, $target_user_id, SQLITE3_INTEGER);
 $result = $stmt->execute();
 $user = $result->fetchArray(SQLITE3_ASSOC);
+$is_ldap_profile = ($user['auth_source'] ?? 'local') === 'ldap';
 
 if (!$user) {
     if ($is_admin_editing_others) {
@@ -208,15 +216,18 @@ $sig_count = $sig_result->fetchArray(SQLITE3_ASSOC)['count'];
                         <label for="full_name"><?= et('Full Name') ?></label>
                         <input type="text" id="full_name" name="full_name" 
                                value="<?php echo e($user['full_name'] ?? ''); ?>"
-                               placeholder="<?= et('e.g. John Doe') ?>">
+                               placeholder="<?= et('e.g. John Doe') ?>" <?php echo $is_ldap_profile ? 'readonly style="background:var(--bg-subtle); color:var(--text-muted);"' : ''; ?>>
                     </div>
 
                     <div class="form-group">
                         <label for="email"><?= et('Email Address') ?></label>
                         <input type="email" id="email" name="email" 
                                value="<?php echo e($user['email'] ?? ''); ?>"
-                               placeholder="john@example.com">
+                               placeholder="john@example.com" <?php echo $is_ldap_profile ? 'readonly style="background:var(--bg-subtle); color:var(--text-muted);"' : ''; ?>>
                     </div>
+                    <?php if ($is_ldap_profile): ?>
+                        <small style="color:var(--text-muted);"><?= et('Full name and email are managed by LDAP and updated at sign-in.') ?></small>
+                    <?php endif; ?>
 
                     <div class="form-group">
                         <label><?= et('Role') ?></label>
@@ -224,11 +235,13 @@ $sig_count = $sig_result->fetchArray(SQLITE3_ASSOC)['count'];
                                disabled style="background: var(--bg-subtle); color: var(--text-muted);">
                     </div>
 
-                    <div class="form-actions">
-                        <button type="submit" name="update_profile" class="btn btn-primary">
-                            <i class="fas fa-save"></i> <?= et('Save Changes') ?>
-                        </button>
-                    </div>
+                    <?php if (!$is_ldap_profile): ?>
+                        <div class="form-actions">
+                            <button type="submit" name="update_profile" class="btn btn-primary">
+                                <i class="fas fa-save"></i> <?= et('Save Changes') ?>
+                            </button>
+                        </div>
+                    <?php endif; ?>
                 </form>
             </div>
 

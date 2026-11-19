@@ -187,7 +187,7 @@ On the first successful login, SubSignature creates an active account with role 
 
 Local accounts are never linked or converted automatically by matching username or email. If a directory identity collides with a local account, LDAP sign-in is refused until an administrator resolves the conflict. LDAP-backed accounts authenticate only against the directory; the local password path is not a fallback. Existing LDAP users retain their role and activation status. AD titles and groups do not grant privileged roles.
 
-Only signatures with `source = ldap` are created or refreshed by JIT login; manual and CSV signatures are left untouched. Disabling LDAP login prevents new LDAP sign-ins but does not delete previously provisioned users or signatures. The configured user filter should exclude disabled accounts (the AD preset does).
+Only signatures with `source = ldap` are created or refreshed by JIT login; manual and CSV signatures are left untouched. LDAP-backed names, email addresses and mapped signature fields are refreshed at sign-in. Deleting a provisioned LDAP user does not prevent reprovisioning; deactivate the local account or disable the directory account to block future access. Disabling LDAP login prevents new LDAP sign-ins but does not delete previously provisioned users or signatures. The configured user filter should exclude disabled accounts (the AD preset does); an AD-disabled user may still appear active in SubSignature, and an existing app session remains valid until logout or session expiry, because local activation and session state are managed separately.
 
 Re-import behaviour:
 
@@ -340,7 +340,7 @@ No. SubSignature uses SQLite: a single file in the `private_data/` directory.
 
 **Can I import signatures from Active Directory or LDAP?**
 Yes, with a preview in which you choose the entries, the target user, the template and an optional
-tag. The import only creates signatures; it never creates accounts or allows LDAP logins.
+tag. Batch import only creates signatures; optional LDAP JIT login can provision accounts on first sign-in.
 
 **Does SubSignature send data to third parties?**
 No. There are no CDNs, external fonts, analytics or telemetry; all assets are served by your own

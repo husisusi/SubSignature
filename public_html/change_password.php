@@ -7,8 +7,12 @@ requireLogin();
 $message = '';
 $error = '';
 $user_id = (int)$_SESSION['user_id'];
+$isLdapAccount = ($_SESSION['auth_source'] ?? 'local') === 'ldap';
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && $isLdapAccount) {
+    requireCsrf();
+    http_response_code(403);
+} elseif ($_SERVER['REQUEST_METHOD'] === 'POST') {
     requireCsrf();
 
     // Passwords are not trimmed: spaces are valid characters.
@@ -179,13 +183,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         
         <header class="page-header">
             <h2><?= et('Change Password') ?></h2>
-            <p><?= et('Update your credentials to keep your account secure.') ?></p>
+            <?php if (!$isLdapAccount): ?>
+                <p><?= et('Update your credentials to keep your account secure.') ?></p>
+            <?php endif; ?>
         </header>
 
-        <?= flashAlerts((string)$message, (string)$error) ?>
+        <?php if (!$isLdapAccount): ?>
+            <?= flashAlerts((string)$message, (string)$error) ?>
+        <?php endif; ?>
 
-        <div class="form-grid" style="grid-template-columns: 2fr 1fr; gap: 2rem;">
-            
+        <div class="form-grid" style="<?= $isLdapAccount ? 'grid-template-columns: 1fr;' : 'grid-template-columns: 2fr 1fr; gap: 2rem;' ?>">
+
+            <?php if ($isLdapAccount): ?>
+                <section class="card">
+                    <div class="card-header">
+                        <h3><i class="fas fa-key"></i> <?= et('Change Password') ?></h3>
+                    </div>
+                    <p style="color:var(--text-muted);"><?= et('Your password is managed by LDAP. Change it in your directory.') ?></p>
+                    <a href="profile.php" class="btn btn-danger" style="background:var(--bg-white); color:var(--text-main); border:1px solid var(--border)">
+                        <?= et('Cancel') ?>
+                    </a>
+                </section>
+            <?php else: ?>
             <section class="card">
                 <div class="card-header">
                     <h3><i class="fas fa-lock"></i> <?= et('Security Credentials') ?></h3>
@@ -254,6 +273,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 </div>
             </div>
 
+            <?php endif; ?>
         </div>
     </main>
 

@@ -1096,7 +1096,7 @@ $viewerConfig = [
             <input type="hidden" name="id" id="edit_id" value="">
             <div class="modal-body" style="height:auto; max-height:calc(90vh - 130px); overflow-y:auto; padding:1.25rem 1.5rem;">
                 <div id="editLdapWarning" style="display:none; background:var(--warning-bg); color:var(--warning-text); border:1px solid var(--warning-border); border-radius:8px; padding:0.6rem 0.9rem; font-size:0.85rem; margin-bottom:1rem;">
-                    <i class="fas fa-triangle-exclamation"></i> <?= et('This signature came from an LDAP import. The next import may overwrite your changes if this field is still mapped there.') ?>
+                    <i class="fas fa-triangle-exclamation"></i> <?= et('This signature is managed by LDAP. A later import or JIT sign-in may overwrite your changes to mapped fields.') ?>
                 </div>
                 <div style="display:flex; flex-direction:column; gap:0.9rem;">
                     <label>

@@ -18,12 +18,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $self_id = (int)$_SESSION['user_id'];
 
     // Name of the target for the audit log (also verifies that it exists).
-    $stmt = $db->prepare('SELECT username, role FROM users WHERE id = ?');
+    $stmt = $db->prepare('SELECT username, role, auth_source FROM users WHERE id = ?');
     $stmt->bindValue(1, $target_user_id, SQLITE3_INTEGER);
     $target = $stmt->execute()->fetchArray(SQLITE3_ASSOC);
 
     if (!$target) {
         setFlash('error', t('User not found.'));
+    } elseif ($action === 'reset_password' && ($target['auth_source'] ?? 'local') === 'ldap') {
+        setFlash('error', t('LDAP account passwords must be reset in the directory.'));
     } elseif ($action === 'reset_password') {
         $new_password = is_string($_POST['new_password'] ?? null) ? $_POST['new_password'] : '';
         $policyErrors = validatePasswordPolicy($new_password);
@@ -163,9 +165,12 @@ $technician_users = array_filter($users, function ($u) { return $u['role'] === R
         
         .btn-icon { width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; border-radius: 6px; border: 1px solid transparent; color: var(--text-muted); transition: all 0.2s; text-decoration: none; cursor: pointer; }
         .btn-icon:hover { background: var(--bg-subtle); color: var(--primary); }
+        .btn-icon:disabled { opacity: 1; cursor: not-allowed; pointer-events: none; background: var(--bg-subtle); border-color: var(--border); color: var(--text-muted); }
         .btn-icon.danger:hover { background: var(--danger-bg); color: var(--danger-text); border-color: var(--danger-border); }
         .btn-icon.warning:hover { background: var(--warning-bg); color: var(--warning-text); border-color: var(--warning-border); }
         .btn-icon.success:hover { background: var(--success-bg); color: var(--success-text); border-color: var(--success-border); }
+        .disabled-password-icon { position: relative; display: inline-flex; }
+        .disabled-password-icon .fa-ban { position: absolute; right: -0.35rem; bottom: -0.25rem; font-size: 0.65rem; color: var(--danger-text); background: var(--bg-subtle); border-radius: 50%; }
         
         .username-link { color: var(--text-main); font-weight: 600; text-decoration: none; display: inline-flex; align-items: center; }
         .username-link:hover { color: var(--primary); text-decoration: underline; }
@@ -303,11 +308,22 @@ $technician_users = array_filter($users, function ($u) { return $u['role'] === R
                             <td style="text-align:right;">
                                 <div style="display:inline-flex; gap:0.25rem;">
                                     <?php if ($user['id'] != $_SESSION['user_id']): ?>
-                                        <button type="button" class="btn-icon warning" 
-                                                data-reset-id="<?php echo (int)$user['id']; ?>" data-reset-name="<?php echo e($user['username']); ?>"
-                                                title="<?= et('Reset Password') ?>">
-                                            <i class="fas fa-key"></i>
-                                        </button>
+                                        <?php if (($user['auth_source'] ?? 'local') === 'ldap'): ?>
+                                            <span tabindex="0" title="<?= et('LDAP account passwords must be reset in the directory.') ?>" aria-label="<?= et('LDAP account passwords must be reset in the directory.') ?>" style="display:inline-flex;">
+                                                <button type="button" class="btn-icon warning" disabled aria-label="<?= et('Reset Password') ?>">
+                                                    <span class="disabled-password-icon">
+                                                        <i class="fas fa-key" aria-hidden="true"></i>
+                                                        <i class="fas fa-ban" aria-hidden="true"></i>
+                                                    </span>
+                                                </button>
+                                            </span>
+                                        <?php else: ?>
+                                            <button type="button" class="btn-icon warning"
+                                                    data-reset-id="<?php echo (int)$user['id']; ?>" data-reset-name="<?php echo e($user['username']); ?>"
+                                                    title="<?= et('Reset Password') ?>">
+                                                <i class="fas fa-key"></i>
+                                            </button>
+                                        <?php endif; ?>
 
                                         <?php if ($user['is_active']): ?>
                                             <button type="button" data-post="admin_users.php" data-params='{"action":"deactivate","user_id":"<?php echo (int)$user['id']; ?>"}' class="btn-icon warning" data-confirm="<?= et('Deactivate this user?') ?>" title="<?= et('Deactivate') ?>"><i class="fas fa-user-slash"></i></button>
@@ -317,7 +333,7 @@ $technician_users = array_filter($users, function ($u) { return $u['role'] === R
                                         
                                         <button type="button" class="btn-icon" data-role-id="<?php echo (int)$user['id']; ?>" data-role-name="<?php echo e($user['username']); ?>" data-role-current="<?php echo e(isValidRole($user['role']) ? $user['role'] : ROLE_USER); ?>" title="<?= et('Change role') ?>"><i class="fas fa-user-shield"></i></button>
 
-                                        <button type="button" data-post="admin_users.php" data-params='{"action":"delete","user_id":"<?php echo (int)$user['id']; ?>"}' class="btn-icon danger" data-confirm="<?= et('Permanently delete?') ?>" title="<?= et('Delete') ?>"><i class="fas fa-trash"></i></button>
+                                        <button type="button" data-post="admin_users.php" data-params='{"action":"delete","user_id":"<?php echo (int)$user['id']; ?>"}' class="btn-icon danger" data-confirm="<?= et(($user['auth_source'] ?? 'local') === 'ldap' ? 'This LDAP account may be provisioned again on its next successful sign-in while LDAP login is enabled. Deactivate it to block local access.' : 'Permanently delete?') ?>" title="<?= et('Delete') ?>"><i class="fas fa-trash"></i></button>
                                     <?php else: ?>
                                         <a href="profile.php" class="btn-icon" title="<?= et('Edit My Profile') ?>"><i class="fas fa-user-edit"></i></a>
                                     <?php endif; ?>

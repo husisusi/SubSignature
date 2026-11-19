@@ -1,9 +1,9 @@
 <?php
 /**
- * admin_ldap.php - LDAP / Active Directory IMPORT of signatures (read-only, no LDAP login).
+ * admin_ldap.php - LDAP / Active Directory import and optional JIT login configuration.
  *
  * Workflow: configure -> test connection -> preview -> choose entries, target user
- * and template -> import. Only signatures are created; no user accounts.
+ * and template -> import. JIT login can separately provision directory users.
  * Nothing is written before the administrator has seen the preview.
  */
 require_once 'includes/config.php';
@@ -134,7 +134,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 if ($action === 'test') {
                     $sample = $service->search($cfg['base_dn'], $cfg['user_filter'], $importer->requestedAttributes(), 5);
-                    $message = t('Connection successful. The filter returned entries (sample of up to 5 read: {count}).', ['count' => count($sample)]);
+                    $message = $sample
+                        ? t('Connection successful. The filter returned entries (sample of up to 5 read: {count}).', ['count' => count($sample)])
+                        : t('Connection succeeded, but the filter returned no entries.');
                 } else {
                     $stored = $importer->fetchRows($service);
                     $plan_token = bin2hex(random_bytes(16));
@@ -283,7 +285,7 @@ $presetsJson = json_encode(LdapConfig::PRESETS, JSON_HEX_TAG | JSON_HEX_AMP | JS
     <main class="main-content">
         <header class="page-header">
             <h2><?= et('LDAP / Active Directory Import') ?></h2>
-            <p><?= et('Create signatures from your directory data (name, role, email, phone) and assign them to a user. No user accounts are created.') ?></p>
+            <p><?= et('Batch import creates signatures from directory data and assigns them to existing users. Optional LDAP login below can provision user accounts on first sign-in.') ?></p>
         </header>
 
         <?php if ($importResult !== null): ?>
@@ -458,6 +460,7 @@ $presetsJson = json_encode(LdapConfig::PRESETS, JSON_HEX_TAG | JSON_HEX_AMP | JS
                         <div>
                             <label class="form-label" for="ca_file"><?= et('CA file (optional)') ?></label>
                             <input type="text" name="ca_file" id="ca_file" class="form-input" placeholder="<?= et('/etc/ssl/certs/corp-ca.pem') ?>" maxlength="255" value="<?php echo e($cfg['ca_file']); ?>">
+                            <span class="form-hint"><?= et('Path on the server; the PHP process must be able to read this file.') ?></span>
                         </div>
                     </div>
 
@@ -514,8 +517,9 @@ $presetsJson = json_encode(LdapConfig::PRESETS, JSON_HEX_TAG | JSON_HEX_AMP | JS
                             <input type="text" name="attr_id" id="attr_id" class="form-input" maxlength="70" value="<?php echo e($cfg['attr_id']); ?>">
                         </div>
                         <div>
-                            <label class="form-label" for="attr_role"><?= et('Role / title attribute') ?></label>
+                            <label class="form-label" for="attr_role"><?= et('Signature role/title attribute') ?></label>
                             <input type="text" name="attr_role" id="attr_role" class="form-input" maxlength="70" placeholder="<?= et('title') ?>" value="<?php echo e($cfg['attr_role']); ?>">
+                            <span class="form-hint"><?= et('This attribute sets the signature title only; it does not grant application permissions.') ?></span>
                         </div>
                         <div>
                             <label class="form-label" for="attr_phone"><?= et('Phone attribute') ?></label>
@@ -543,7 +547,7 @@ $presetsJson = json_encode(LdapConfig::PRESETS, JSON_HEX_TAG | JSON_HEX_AMP | JS
 
                     <div class="config-item">
                         <div>
-                            <h4 style="margin:0; font-size:0.95rem;"><?= et('Template for new signatures') ?></h4>
+                            <h4 style="margin:0; font-size:0.95rem;"><?= et('Template for batch import') ?></h4>
                         </div>
                         <select name="template" class="form-input" style="max-width:240px;">
                             <option value=""><?= et('System default') ?></option>
@@ -552,6 +556,9 @@ $presetsJson = json_encode(LdapConfig::PRESETS, JSON_HEX_TAG | JSON_HEX_AMP | JS
                             <?php endforeach; ?>
                         </select>
                     </div>
+                    <p class="form-hint" style="margin-top:0.5rem;">
+                        <?= et('This template applies to batch imports. JIT sign-ins use the system default template.') ?>
+                    </p>
 
                     <p class="form-hint" style="margin-top:1rem;">
                         <?= et('Signatures that were created manually are never changed. Imported signatures are recognised by their directory ID and updated on the next import.') ?>
@@ -565,6 +572,7 @@ $presetsJson = json_encode(LdapConfig::PRESETS, JSON_HEX_TAG | JSON_HEX_AMP | JS
                 <button type="submit" name="action" value="preview" class="btn btn-success" <?php echo $ldap_available ? '' : 'disabled'; ?>><i class="fas fa-search"></i> <?= et('Preview import') ?></button>
             </div>
             <span class="form-hint"><?= eth('Test and preview use the {saved} settings. Save first after making changes.', ['saved' => '<em>' . et('saved') . '</em>']) ?></span>
+            <span class="form-hint"><?= et('Test connection checks the service account and search filter, not an end-user password.') ?></span>
         </form>
     </main>
 
