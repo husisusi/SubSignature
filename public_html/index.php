@@ -18,7 +18,7 @@ if (isset($_GET['timeout'])) {
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $username = cleanText($_POST['username'] ?? '', 64);
+    $username = cleanText($_POST['username'] ?? '', 254);
     $password = is_string($_POST['password'] ?? null) ? $_POST['password'] : '';
 
     if (!verifyCSRFToken($_POST['csrf_token'] ?? '')) {
@@ -34,14 +34,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $error = t('Too many failed attempts for this account. Try again in 15 minutes.');
         logSecurityEventToDB($db, 'ACCOUNT_LOCKED', null, 'User: ' . $username);
     } else {
-        $stmt = $db->prepare('SELECT id, username, password_hash, role, full_name, email, is_active FROM users WHERE username = ?');
+        $stmt = $db->prepare('SELECT id, username, password_hash, role, full_name, email, is_active, auth_source FROM users WHERE username = ?');
         $stmt->bindValue(1, $username, SQLITE3_TEXT);
         $user = $stmt->execute()->fetchArray(SQLITE3_ASSOC);
 
         // Always run one password_verify() so the response time is the same
         // for unknown and known accounts.
-        $hash = $user ? $user['password_hash'] : DUMMY_PASSWORD_HASH;
-        $passwordOk = password_verify($password, $hash) && $user;
+        $localAccount = $user && ($user['auth_source'] ?? 'local') !== 'ldap';
+        $hash = $localAccount ? $user['password_hash'] : DUMMY_PASSWORD_HASH;
+        $passwordOk = password_verify($password, $hash) && $localAccount;
 
         if ($passwordOk && (int)$user['is_active'] === 1) {
             if (password_needs_rehash($user['password_hash'], PASSWORD_DEFAULT)) {
@@ -70,6 +71,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // to tell the user (the caller proved they know the password).
             $error = t('Your account is deactivated. Please contact the administrator.');
         } else {
+            $ldapUser = null;
+            try {
+                if (getSetting($db, 'ldap_auth_enabled', '0') === '1' && $password !== '') {
+                    if (!function_exists('ldap_connect')) {
+                        throw new RuntimeException(t('The PHP "ldap" extension is not installed.'));
+                    }
+                    require_once 'includes/LdapService.php';
+                    require_once 'includes/LdapJit.php';
+                    $ldapConfig = LdapConfig::load($db);
+                    $ldap = new LdapService($ldapConfig);
+                    $entry = $ldap->authenticateUser($username, $password);
+                    if ($entry !== null) {
+                        $ldapUser = LdapJitProvisioner::provision($db, $entry, $ldapConfig);
+                    }
+                }
+            } catch (Throwable $e) {
+                error_log('LDAP JIT login failed: ' . $e->getMessage());
+            }
+
+            if ($ldapUser && (int)$ldapUser['is_active'] === 1) {
+                startUserSession($ldapUser);
+                rateLimitReset('login_user', mb_strtolower($username, 'UTF-8'));
+                rateLimitReset('login_user', mb_strtolower($ldapUser['username'], 'UTF-8'));
+                logLoginAttempt($db, $ldapUser['username'], true);
+                if (random_int(1, 100) === 1) {
+                    pruneOldLogs($db);
+                }
+                header('Location: generator.php');
+                exit;
+            }
+
             usleep(random_int(100000, 300000));
             $error = t('Invalid username or password!');
         }
@@ -187,8 +219,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             
             <div class="input-group">
                 <label class="input-label"><i class="fas fa-user"></i> <?= et('Username') ?></label>
-                <input type="text" name="username" class="input-field" placeholder="<?= et('Enter username') ?>" 
-                       required autofocus autocomplete="username"
+                <input type="text" name="username" class="input-field" placeholder="<?= et('Enter username') ?>" maxlength="254"
+                           required autofocus autocomplete="username"
                        value="<?php echo isset($_POST['username']) && is_string($_POST['username']) ? e($_POST['username']) : ''; ?>"
                        id="usernameInput">
             </div>

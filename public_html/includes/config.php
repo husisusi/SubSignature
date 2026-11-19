@@ -411,7 +411,7 @@ function logLoginAttempt($db, $username, $successful, $ip = null, $user_agent = 
 {
     $ip = $ip ?? getClientIp();
     $ua = cleanText($user_agent ?? ($_SERVER['HTTP_USER_AGENT'] ?? 'Unknown'), 255);
-    $username = cleanText($username, 64);
+    $username = cleanText($username, 254);
 
     $stmt = $db->prepare('INSERT INTO login_attempts (ip_address, username, successful, user_agent) VALUES (?, ?, ?, ?)');
     $stmt->bindValue(1, $ip, SQLITE3_TEXT);

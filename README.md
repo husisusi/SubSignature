@@ -66,8 +66,8 @@ locally, and nothing is sent to third parties.
 * **Company-wide placeholders** `{{COMPANY}}`, `{{WEBSITE}}`, `{{ADDRESS}}`, `{{DISCLAIMER}}`:
   maintained once in Admin -> Configuration and filled into every signature.
 * **LDAP / Active Directory import** of signatures from directory data with selection in a
-  preview, target user and template (import only, no accounts are created, no LDAP login). See
-  [LDAP import](#ldap--active-directory-import).
+  preview, target user and template. An optional, disabled-by-default LDAP login can create
+  employee accounts on first sign-in. See [LDAP import](#ldap--active-directory-import).
 * **CSV import / export** of signatures (delimiter `,` or `;`, formula-injection safe export);
   administrators and technicians can put a **tag** on every imported signature.
 * **Signature rollout by email:** administrators and technicians send signatures to users (SMTP).
@@ -115,7 +115,7 @@ locally, and nothing is sent to third parties.
 
 * PHP 8.0 or newer (tested with 8.x), with the extensions `sqlite3`, `mbstring`, `fileinfo`,
   `zip`, and `openssl` or `sodium`.
-* Optional: the `ldap` extension for the LDAP import (`apt install php-ldap`), the `curl`
+* Optional: the `ldap` extension for LDAP import and login (`apt install php-ldap`), the `curl`
   extension to deliver template images from other servers embedded through the API, and the
   `dom` extension (usually built in, `php-xml` on Debian/Ubuntu) for the HCL Notes output.
 * Apache 2.4 with `mod_rewrite` and `mod_headers` (the shipped `.htaccess` is written for it).
@@ -155,7 +155,7 @@ Back up the whole `private_data/` directory **including `secret.key`**. The key 
 
 ## LDAP / Active Directory import
 
-**Admin → LDAP Import** creates **signatures** from directory data (name, role, email, phone) and assigns them to existing SubSignature users. It is an **import only**: **no user accounts are created** and directory users cannot log in with their directory password.
+**Admin → LDAP Import** creates **signatures** from directory data (name, role, email, phone) and assigns them to existing SubSignature users. Batch import remains import-only. The same saved connection can optionally support LDAP JIT login; that feature is **disabled by default** and must be explicitly enabled by an administrator.
 
 Workflow: configure → *Test connection* → *Preview* → choose entries, target user, template and an optional tag → *Import selected*. A green **Import successful** summary (created / updated / unchanged / tagged) is shown afterwards. Nothing is written before you have reviewed the preview, and the import runs in a single database transaction.
 
@@ -177,6 +177,17 @@ In the preview you can
 | Base DN / filter | The AD default filter excludes disabled accounts. |
 | Assign signatures to | Default target in the preview (a user or *Automatically by email address*). |
 | Template | Default template for new imported signatures. |
+| Enable LDAP login | When enabled, users can sign in with their directory password. New users are provisioned as active `user` accounts and receive a signature from the system default template. Requires LDAPS or STARTTLS with certificate verification enabled and the configured service bind account. |
+
+### Optional LDAP login and JIT provisioning
+
+Enable **LDAP login (JIT account provisioning)** under *Admin → LDAP Import* only after testing the connection and directory filter. A login searches the configured Base DN using the configured active-user filter and matches the submitted identifier against the username or email attributes. Exactly one match is required; the submitted password is checked by binding as that entry's DN. JIT login refuses unencrypted LDAP, unverified TLS certificates, and anonymous service binds.
+
+On the first successful login, SubSignature creates an active account with role `user`, an unusable random local password hash, and a signature populated from the configured directory attributes. Each successful login refreshes that LDAP-backed profile and signature. The system default signature template is used.
+
+Local accounts are never linked or converted automatically by matching username or email. If a directory identity collides with a local account, LDAP sign-in is refused until an administrator resolves the conflict. LDAP-backed accounts authenticate only against the directory; the local password path is not a fallback. Existing LDAP users retain their role and activation status. AD titles and groups do not grant privileged roles.
+
+Only signatures with `source = ldap` are created or refreshed by JIT login; manual and CSV signatures are left untouched. Disabling LDAP login prevents new LDAP sign-ins but does not delete previously provisioned users or signatures. The configured user filter should exclude disabled accounts (the AD preset does).
 
 Re-import behaviour:
 
@@ -350,6 +361,10 @@ deliberately references by URL.
 
 Contributions are welcome! If you find a bug, please open an issue. If you find this project
 useful, please give it a **star** ⭐ - it helps others find it.
+
+The focused LDAP JIT provisioning checks can be run with `php tests/LdapJitProvisionerTest.php`
+from the repository root. They require PHP with SQLite3 and mbstring; LDAP filter escaping is
+also checked when the LDAP extension is available.
 
 ## License
 

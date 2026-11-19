@@ -2,15 +2,15 @@
 /**
  * includes/LdapService.php
  *
- * LDAP / Active Directory access for the user IMPORT (read-only).
+ * LDAP / Active Directory access for import and optional JIT login.
  *
- * Passwords of directory users are never read or checked: SubSignature does
- * not use LDAP for logging in. The only credentials used are those of a
- * read-only service account that is configured by an administrator; its
- * password is stored encrypted (see crypto.php).
+ * Directory passwords are only passed to ldap_bind() for JIT authentication;
+ * they are never read or stored. The service-account password is encrypted
+ * at rest (see crypto.php).
  *
  * Contents:
  *   - LdapClientInterface   what the importer needs from a directory
+ *   - LdapAuthenticatorInterface optional direct user authentication
  *   - LdapService           implementation on top of PHP's ldap extension
  *   - LdapConfig            settings storage, presets and validation
  */
@@ -27,7 +27,16 @@ interface LdapClientInterface
     public function search(string $baseDn, string $filter, array $attributes, int $limit = 0): array;
 }
 
-class LdapService implements LdapClientInterface
+interface LdapAuthenticatorInterface
+{
+    /**
+     * Finds exactly one active directory user and authenticates its DN.
+     * Returns the normalised entry on success, otherwise null.
+     */
+    public function authenticateUser(string $identifier, string $password): ?array;
+}
+
+class LdapService implements LdapClientInterface, LdapAuthenticatorInterface
 {
     private $link = null;
     private $config;
@@ -41,6 +50,13 @@ class LdapService implements LdapClientInterface
      */
     public function __construct(array $config)
     {
+        if (!empty($config['auth_enabled'])
+            && (($config['encryption'] ?? 'none') === 'none'
+                || empty($config['verify_cert'])
+                || ($config['bind_dn'] ?? '') === ''
+                || ($config['bind_pass'] ?? '') === '')) {
+            throw new RuntimeException(t('LDAP login requires verified TLS and a service bind account.'));
+        }
         if (!function_exists('ldap_connect')) {
             throw new RuntimeException(t('The PHP "ldap" extension is not installed.'));
         }
@@ -138,6 +154,59 @@ class LdapService implements LdapClientInterface
         return $entries;
     }
 
+    public function authenticateUser(string $identifier, string $password): ?array
+    {
+        $c = $this->config;
+        if ($c['encryption'] === 'none' || !$c['verify_cert'] || $c['bind_dn'] === '' || $c['bind_pass'] === '') {
+            throw new RuntimeException(t('LDAP login requires verified TLS and a service bind account.'));
+        }
+        if (trim($identifier) === '' || strlen($identifier) > 254 || $password === '' || strlen($password) > 1024) {
+            return null;
+        }
+        $attributes = array_values(array_unique(array_filter([
+            $c['attr_username'], $c['attr_email'], $c['attr_name'], $c['attr_role'], $c['attr_phone'], $c['attr_id'],
+        ])));
+        $filter = self::buildUserFilter($c, $identifier);
+        $entries = $this->search($c['base_dn'], $filter, $attributes, 2);
+
+        if (count($entries) !== 1 || $entries[0]['dn'] === '') {
+            return null;
+        }
+        if (!@ldap_bind($this->link, $entries[0]['dn'], $password)) {
+            return null;
+        }
+        return $entries[0];
+    }
+
+    public static function buildUserFilter(array $config, string $identifier): string
+    {
+        if (!LdapConfig::isValidFilter($config['user_filter'] ?? '')) {
+            throw new RuntimeException(t('The LDAP user filter is invalid.'));
+        }
+
+        $lookupAttributes = array_values(array_unique(array_filter([
+            $config['attr_username'] ?? '',
+            $config['attr_email'] ?? '',
+        ])));
+        foreach ($lookupAttributes as $attribute) {
+            if (!LdapConfig::isValidAttributeName((string)$attribute)) {
+                throw new RuntimeException(t('The LDAP username or email attribute is invalid.'));
+            }
+        }
+        if (!$lookupAttributes) {
+            throw new RuntimeException(t('An LDAP username or email attribute is required.'));
+        }
+
+        $escaped = ldap_escape($identifier, '', LDAP_ESCAPE_FILTER);
+        $matches = array_map(
+            static function (string $attribute) use ($escaped): string {
+                return '(' . $attribute . '=' . $escaped . ')';
+            },
+            $lookupAttributes
+        );
+        return '(&' . $config['user_filter'] . '(|' . implode('', $matches) . '))';
+    }
+
     /**
      * Converts one LDAP entry into a plain array.
      */
@@ -202,7 +271,7 @@ class LdapConfig
     private const KEYS = [
         'host', 'port', 'encryption', 'verify_cert', 'ca_file', 'bind_dn', 'bind_pass', 'base_dn',
         'preset', 'user_filter', 'attr_username', 'attr_email', 'attr_name', 'attr_role', 'attr_phone', 'attr_id',
-        'template', 'target',
+        'template', 'target', 'auth_enabled',
     ];
 
     public static function defaults(): array
@@ -210,7 +279,7 @@ class LdapConfig
         return array_merge([
             'host' => '', 'port' => 636, 'encryption' => 'ldaps', 'verify_cert' => true, 'ca_file' => '',
             'bind_dn' => '', 'bind_pass' => '', 'base_dn' => '', 'preset' => 'ad',
-            'template' => '', 'target' => '',
+            'template' => '', 'target' => '', 'auth_enabled' => false,
         ], array_diff_key(self::PRESETS['ad'], ['label' => 1]));
     }
 
@@ -233,6 +302,7 @@ class LdapConfig
                     $cfg[$key] = (int)$value;
                     break;
                 case 'verify_cert':
+                case 'auth_enabled':
                     $cfg[$key] = $value === '1';
                     break;
                 case 'bind_pass':
@@ -307,6 +377,15 @@ class LdapConfig
         $cfg['base_dn'] = cleanText($in['base_dn'] ?? '', 512);
         if ($cfg['base_dn'] === '') {
             $errors[] = 'Base DN is required (e.g. dc=example,dc=com).';
+        }
+        $cfg['auth_enabled'] = ($in['auth_enabled'] ?? '0') === '1';
+        if ($cfg['auth_enabled']) {
+            if ($cfg['encryption'] === 'none' || !$cfg['verify_cert']) {
+                $errors[] = 'LDAP login requires LDAPS or STARTTLS with certificate verification enabled.';
+            }
+            if ($cfg['bind_dn'] === '' || $cfg['bind_pass'] === '') {
+                $errors[] = 'LDAP login requires a service bind account and password.';
+            }
         }
 
         if ($cfg['preset'] !== 'custom') {

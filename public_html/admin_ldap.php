@@ -478,6 +478,13 @@ $presetsJson = json_encode(LdapConfig::PRESETS, JSON_HEX_TAG | JSON_HEX_AMP | JS
                         <label class="form-label" for="base_dn"><?= et('Base DN') ?></label>
                         <input type="text" name="base_dn" id="base_dn" class="form-input" placeholder="<?= et('OU=Staff,DC=example,DC=com') ?>" maxlength="512" value="<?php echo e($cfg['base_dn']); ?>">
                     </div>
+                    <div style="margin-top:1rem;">
+                        <label class="form-label">
+                            <input type="checkbox" name="auth_enabled" value="1" <?php echo $cfg['auth_enabled'] ? 'checked' : ''; ?>>
+                            <?= et('Enable LDAP login (JIT account provisioning)') ?>
+                        </label>
+                        <span class="form-hint"><?= et('Requires LDAPS or STARTTLS with certificate verification and a service bind account. New users are active; local accounts are never linked automatically, and existing LDAP roles are preserved.') ?></span>
+                    </div>
                 </section>
 
                 <section class="config-card">
