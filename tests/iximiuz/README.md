@@ -1,6 +1,6 @@
 # Manual LDAP JIT test with Iximiuz Labs
 
-This optional test starts an isolated Samba AD domain in a Docker playground. Each tester uses their **own** Iximiuz account; the script never reads or publishes account tokens or account names. Playground IDs and random test passwords exist only in the local process and terminal output, never in the repository. The playground is private, and LDAPS is bound only to its loopback interface.
+This optional test starts an isolated Samba AD domain in an Iximiuz Docker playground. Each tester uses their **own** Iximiuz account; the script never reads or publishes account tokens or account names. Playground IDs and random test passwords exist only in the local process and terminal output, never in the repository. The playground is private, and LDAPS is bound only to its loopback interface.
 
 ## Requirements
 
@@ -17,7 +17,7 @@ From the repository root, run:
 pwsh -NoProfile -File .\tests\iximiuz\start-samba.ps1
 ```
 
-The script starts a free-tier Docker playground, builds a pinned Samba AD image, provisions the `teste.local` domain, creates one service-bind account plus active and disabled test users, and saves the temporary CA certificate under `%TEMP%`. It prints the one-time passwords and the playground ID only to your local terminal.
+The script starts a free-tier playground, pulls the upstream-published `nowsci/samba-domain` image by immutable digest, provisions the `teste.local` domain, creates one service-bind account plus active and disabled test users, and saves the temporary CA certificate under `%TEMP%`. Docker runs in the remote playground; Docker Desktop is not required on your machine. The script prints the one-time passwords and playground ID only to your local terminal.
 
 The script intentionally leaves a successfully initialized playground running so you can test the login flow. It destroys the playground automatically if setup fails.
 

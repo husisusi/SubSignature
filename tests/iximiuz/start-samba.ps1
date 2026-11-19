@@ -31,6 +31,7 @@ try {
         throw 'The Iximiuz SSH key is missing. Run labctl auth login, then retry.'
     }
 
+    $sambaImage = 'nowsci/samba-domain@sha256:1332280d188fa374afa26a7858706032c7e938b19ce16da4c443181bc396a83c'
     $playgroundOutput = & labctl playground start docker --as-free-tier-user --title $Title --quiet
     if ($LASTEXITCODE -ne 0) {
         throw 'Could not start the free-tier Docker playground.'
@@ -40,11 +41,7 @@ try {
         throw 'labctl started no playground or returned an empty ID.'
     }
 
-    $sourceCommit = '68b22b7f771d9c3aa9cc94b7565b277a075c7d53'
-    Invoke-Labctl @('ssh', $playgroundId, '--', 'mkdir', '-p', '/tmp/samba-domain')
-    Invoke-Labctl @('ssh', $playgroundId, '--', 'curl', '-fsSL', "https://github.com/Fmstrat/samba-domain/archive/$sourceCommit.tar.gz", '-o', '/tmp/samba-domain.tar.gz')
-    Invoke-Labctl @('ssh', $playgroundId, '--', 'tar', '-xzf', '/tmp/samba-domain.tar.gz', '--strip-components=1', '-C', '/tmp/samba-domain')
-    Invoke-Labctl @('ssh', $playgroundId, '--', 'docker', 'build', '-t', 'local/samba-domain:source', '/tmp/samba-domain')
+    Invoke-Labctl @('ssh', $playgroundId, '--', 'docker', 'pull', $sambaImage)
 
     $domainPassword = New-TestPassword
     $servicePassword = New-TestPassword
@@ -59,7 +56,7 @@ try {
         '-e', "DOMAINPASS=$domainPassword",
         '-p', '127.0.0.1:1636:636',
         '--privileged',
-        'local/samba-domain:source'
+        $sambaImage
     )
 
     $domainReady = $false
